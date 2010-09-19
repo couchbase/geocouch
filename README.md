@@ -169,22 +169,15 @@ New stuff
 Get it running
 --------------
 
-Note: always replace <vanilla-couch> with the path to your CouchDB source and <geocouch> with
-the location of the GeoCouch source.
+Note: always replace <vanilla-couch> with the path to your CouchDB
+source and <geocouch> with the location of the GeoCouch source.
 
  - Set the COUCH_SRC environment to the directory that contains the
    CouchDB core source (<vanilla-couch>/src/couchdb/)
  - run "make" in your <geocouch> directory
  - "make dev" your vanilla couch.
- - add the spatial indexer to you <vanilla-couch>/etc/couchdb/local_dev.ini
- 
-    [daemons]
-    spatial_manager={couch_spatial, start_link, []}
-
-    [httpd_design_handlers]
-    _spatial = {couch_httpd_spatial, handle_spatial_req}
-    _spatiallist = {couch_httpd_spatial_list, handle_spatial_list_req}
-
+ - copy the configuration file for GeoCouch from
+   <geocouch>/etc/couchdb/local.d/ to <vanilla-couch>/etc/couchdb/local.d/
  - copy Futon tests over (from <geocouch>/share/www/script/test to
    <vanilla-couch>/share/www/script/test)
  - add them to <vanilla-couch>/share/www/script/test/couch_tests.js
