@@ -1,7 +1,7 @@
 .SUFFIXES: .erl .beam
 
 .erl.beam:
-	erlc -I ${COUCH_SRC} -o ebin -W +debug_info -DTEST $<
+	erlc -I ${COUCH_SRC} -o build -W +debug_info -DTEST $<
 
 MODS = \
     src/vtree/vtree \
@@ -14,15 +14,15 @@ MODS = \
 
 ERL = erl -boot start_clean
 
-all: ebin compile 
+all: builddir compile 
 
 compile: ${MODS:%=%.beam}
 	@echo "make clean - clean up"
 
-ebin:
-	@mkdir ebin
+builddir:
+	@mkdir build
 
 clean:	
-	rm -rf ebin
+	rm -rf build
 #erl_crash.dump 
 

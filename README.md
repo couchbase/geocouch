@@ -194,5 +194,5 @@ the location of the GeoCouch source.
 
  - Now run your CouchDB with GeoCouch in the Erlang path:
 
-    ERL_FLAGS="-pa <geocouch>/ebin" <vanilla-couch>/utils/run
+    ERL_FLAGS="-pa <geocouch>/build" <vanilla-couch>/utils/run
 
