@@ -172,7 +172,8 @@ Get it running
 Note: always replace <vanilla-couch> with the path to your CouchDB source and <geocouch> with
 the location of the GeoCouch source.
 
- - change "-I" path in <geocouch>/Makefile to match <vanilla-couch>/src/couchdb
+ - Set the COUCH_SRC environment to the directory that contains the
+   CouchDB core source (<vanilla-couch>/src/couchdb/)
  - run "make" in your <geocouch> directory
  - "make dev" your vanilla couch.
  - add the spatial indexer to you <vanilla-couch>/etc/couchdb/local_dev.ini
@@ -194,3 +195,4 @@ the location of the GeoCouch source.
  - Now run your CouchDB with GeoCouch in the Erlang path:
 
     ERL_FLAGS="-pa <geocouch>/ebin" <vanilla-couch>/utils/run
+

@@ -1,7 +1,7 @@
 .SUFFIXES: .erl .beam
 
 .erl.beam:
-	erlc -I ../couchdb/src/couchdb -o ebin -W +debug_info -DTEST $<
+	erlc -I ${COUCH_SRC} -o ebin -W +debug_info -DTEST $<
 
 MODS = \
     src/vtree/vtree \
@@ -25,7 +25,4 @@ ebin:
 clean:	
 	rm -rf ebin
 #erl_crash.dump 
-
-run:	
-	LD_LIBRARY_PATH=/usr/lib/xulrunner-1.9.2.8 ERL_FLAGS="-pa ebin" ../couchdb/utils/run
 
