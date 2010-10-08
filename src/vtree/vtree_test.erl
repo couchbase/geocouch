@@ -11,7 +11,7 @@
 % the License.
 
 -module(vtree_test).
--export([start/0]).
+-export([start/0, build_random_tree/2]).
 
 -define(FILENAME, "/tmp/vtree.bin").
 
@@ -677,3 +677,32 @@ test_delete() ->
     etap:is(vtree:delete(Fd, Node5Id, Node5Mbr, Pos5_6), not_found,
             "Node can't be found (tree height=2)"),
     ok.
+
+
+-spec build_random_tree(Filename::string(), Num::integer()) ->
+    {ok, {file:io_device(), integer()}} | {error, string()}.
+build_random_tree(Filename, Num) ->
+    case couch_file:open(Filename, [create, overwrite]) of
+    {ok, Fd} ->
+        Max = 1000,
+        Tree = lists:foldl(
+            fun(Count, CurTreePos) ->
+                {W, X, Y, Z} = {random:uniform(Max), random:uniform(Max),
+                                random:uniform(Max), random:uniform(Max)},
+                RandomMbr = {erlang:min(W, X), erlang:min(Y, Z),
+                             erlang:max(W, X), erlang:max(Y, Z)},
+                %io:format("~p~n", [RandomMbr]),
+                {ok, _, NewRootPos} = vtree:insert(
+                    Fd, CurTreePos,
+                    list_to_binary("Node" ++ integer_to_list(Count)),
+                    {RandomMbr, #node{type=leaf},
+                     list_to_binary("Node" ++ integer_to_list(Count))}),
+                %io:format("test_insertion: ~p~n", [NewRootPos]),
+                NewRootPos
+            end, nil, lists:seq(1,Num)),
+        %io:format("Tree: ~p~n", [Tree]),
+        {ok, {Tree, Fd}};
+    {error, Reason} ->
+        io:format("ERROR: Couldn't open file (~s) for tree storage~n",
+                  [Filename])
+    end.
