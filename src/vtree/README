@@ -1,0 +1,7 @@
+If you want to have an visual output of your tree, you need to know the
+filename and the position of the root node.
+
+erl -pa PATH-TO-COUCHDB-BEAM-FILES -noshell -s run_vtreeviz run -s init stop -file /tmp/randtree.bin -pos 7581
+
+The output is a Graphviz dot file. Create a PNG out of it with:
+dot -Tpng -o randtree.png YOUR-DOT-FILE
