@@ -34,13 +34,13 @@ print_children(Fd, ParentPos) ->
 print_nodes(ParentPos, Children) ->
     ChildrenIds = if is_integer(hd(Children)) ->
         ChildrenLabels = lists:map(fun(ChildPos) ->
-            io_lib:format("<f~w>~w", [ChildPos, ChildPos])
+            io_lib:format("<f~w>~w foo", [ChildPos, ChildPos])
         end, Children),
         string_join("|", ChildrenLabels);
     true ->
         {_, _, ChildrenLabels} = lists:unzip3(Children),
         string_join("|", ChildrenLabels,
-                    fun(X) -> io_lib:format("~s", [X]) end)
+                    fun({Id, Val}) -> io_lib:format("~s", [Id]) end)
     end,
     io:format("node~w [label=\"{~s}\"];~n", [ParentPos, ChildrenIds]).
 
