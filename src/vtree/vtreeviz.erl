@@ -26,23 +26,33 @@ get_children(Fd, Pos) ->
     Children.
 
 print_children(Fd, ParentPos) ->
-    Children = get_children(Fd, ParentPos),
-    %io:format("Children: ~p~n", [Children]),
-    print_nodes(ParentPos, Children),
-    print_edges(Fd, ParentPos, Children).
-
-print_nodes(ParentPos, Children) ->
-    ChildrenIds = if is_integer(hd(Children)) ->
-        ChildrenLabels = lists:map(fun(ChildPos) ->
-            io_lib:format("<f~w>~w foo", [ChildPos, ChildPos])
-        end, Children),
-        string_join("|", ChildrenLabels);
+    ChildrenPos = get_children(Fd, ParentPos),
+    ChildrenLabels = if is_integer(hd(ChildrenPos)) ->
+        ChildrenMbr = lists:map(fun(ChildPos) ->
+            %io:format("ChildPos: ~p~n", [ChildPos]),
+            {ok, {Mbr, _Meta, _Children}} = couch_file:pread_term(Fd, ChildPos),
+            Mbr
+        end, ChildrenPos),
+        node_labels(ChildrenPos, ChildrenMbr);
     true ->
-        {_, _, ChildrenLabels} = lists:unzip3(Children),
-        string_join("|", ChildrenLabels,
-                    fun({Id, Val}) -> io_lib:format("~s", [Id]) end)
+        node_labels(ChildrenPos)
     end,
-    io:format("node~w [label=\"{~s}\"];~n", [ParentPos, ChildrenIds]).
+    io:format("node~w [label=\"{~s}\"];~n", [ParentPos, ChildrenLabels]),
+    print_edges(Fd, ParentPos, ChildrenPos).
+
+% leaf nodes
+node_labels(Children) ->
+    string_join("|", Children, fun({Mbr, _, {Id, _Val}}) ->
+        io_lib:format("~s ~p", [Id, tuple_to_list(Mbr)])
+    end).
+
+% inner nodes
+node_labels(ChildrenPos, ChildrenMbr) ->
+    Children = lists:zip(ChildrenPos, ChildrenMbr),
+    ChildrenLabels = lists:map(fun({ChildPos, ChildMbr}) ->
+        io_lib:format("<f~w>~w ~p", [ChildPos, ChildPos, tuple_to_list(ChildMbr)])
+    end, Children),
+    string_join("|", ChildrenLabels).
 
 print_edges(Fd, ParentPos, Children) ->  
     lists:foreach(fun(ChildPos) ->
