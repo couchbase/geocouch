@@ -15,6 +15,10 @@
 
 -define(LOG_DEBUG(Msg), io:format(user, "DEBUG: ~p~n", [Msg])).
 
+-record(seedtree_leaf, {
+    orig = [],
+    new = []
+}).
 
 % @doc Lookup a bounding box in the tree. Return the path to the node. Every
 %     list element is the child node position, e.g. [1,2,0] means:
@@ -59,39 +63,40 @@ lookup_path(Fd, RootPos, Bbox, MaxDepth, Depth) ->
     end.
 
 % @doc Put an on disk tree into memory
--spec cache_tree(Fd::file:io_device(), RootPos::integer(),
+-spec seedtree(Fd::file:io_device(), RootPos::integer(),
         MaxDepth::integer()) -> [integer()].
-cache_tree(Fd, RootPos, MaxDepth) ->
-    cache_tree(Fd, RootPos, MaxDepth, 0).
--spec cache_tree(Fd::file:io_device(), RootPos::integer(),
+seedtree(Fd, RootPos, MaxDepth) ->
+    seedtree(Fd, RootPos, MaxDepth, 0).
+-spec seedtree(Fd::file:io_device(), RootPos::integer(),
         MaxDepth::integer(), Depth::integer()) -> [integer()].
-cache_tree(Fd, RootPos, MaxDepth, Depth) when Depth == MaxDepth ->
+seedtree(Fd, RootPos, MaxDepth, Depth) when Depth == MaxDepth ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
-    Parent;
-cache_tree(Fd, RootPos, MaxDepth, Depth) ->
+    {ParentMbr, ParentMeta, EntriesPos} = Parent,
+    {ParentMbr, ParentMeta, #seedtree_leaf{orig=EntriesPos}};
+seedtree(Fd, RootPos, MaxDepth, Depth) ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
     Children = lists:foldl(fun(EntryPos, Acc) ->
-        Child = cache_tree(Fd, EntryPos, MaxDepth, Depth+1),
+        Child = seedtree(Fd, EntryPos, MaxDepth, Depth+1),
         [Child|Acc]
     end, [], EntriesPos),
     {ParentMbr, ParentMeta, lists:reverse(Children)}.
 
-cache_tree_test() ->
+seedtree_test() ->
     {ok, {RootPos, Fd}} = vtree_test:build_random_tree("/tmp/randtree.bin", 20),
     ?debugVal(RootPos),
-    CacheTree1 = cache_tree(Fd, RootPos, 1),
+    SeedTree1 = seedtree(Fd, RootPos, 1),
     ?assertEqual({{4,43,980,986}, {node,inner},
-        [{{4,43,980,960}, {node,inner},[7518,6520]},
-         {{27,163,597,986},{node,inner},[6006,5494]}]}, CacheTree1),
-    CacheTree2 = cache_tree(Fd, RootPos, 2),
+        [{{4,43,980,960}, {node,inner},{seedtree_leaf,[7518,6520],[]}},
+         {{27,163,597,986},{node,inner},{seedtree_leaf,[6006,5494],[]}}]}, SeedTree1),
+    SeedTree2 = seedtree(Fd, RootPos, 2),
     ?assertEqual({{4,43,980,986}, {node,inner},
         [{{4,43,980,960}, {node,inner},
-            [{{4,43,865,787},{node,inner},[6688,7127,7348]},
-             {{220,45,980,960},{node,inner},[6286,3391]}]},
+            [{{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[]}},
+             {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[]}}]},
          {{27,163,597,986}, {node,inner},
-            [{{37,163,597,911},{node,inner},[3732,5606]},
-             {{27,984,226,986},{node,inner},[5039]}]}]}, CacheTree2).
+            [{{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
+             {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]}, SeedTree2).
 
 % @doc Find the first node that encloses the input MBR completely at a certain
 %     level. Return the the position relative to other children (starting
