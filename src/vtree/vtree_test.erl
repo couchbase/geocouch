@@ -680,8 +680,14 @@ test_delete() ->
 
 
 -spec build_random_tree(Filename::string(), Num::integer()) ->
-    {ok, {file:io_device(), integer()}} | {error, string()}.
+        {ok, {file:io_device(), integer()}} | {error, string()}.
 build_random_tree(Filename, Num) ->
+    build_random_tree(Filename, Num, {654, 642, 698}).
+-spec build_random_tree(Filename::string(), Num::integer(),
+        Seed::{integer(), integer(), integer()}) ->
+        {ok, {file:io_device(), integer()}} | {error, string()}.
+build_random_tree(Filename, Num, Seed) ->
+    random:seed(Seed),
     case couch_file:open(Filename, [create, overwrite]) of
     {ok, Fd} ->
         Max = 1000,
