@@ -11,7 +11,7 @@
 % the License.
 
 -module(vtree_test).
--export([start/0, build_random_tree/2]).
+-export([start/0, build_random_tree/2, random_node/0, random_node/1]).
 
 -define(FILENAME, "/tmp/vtree.bin").
 
@@ -708,7 +708,23 @@ build_random_tree(Filename, Num, Seed) ->
             end, nil, lists:seq(1,Num)),
         %io:format("Tree: ~p~n", [Tree]),
         {ok, {Tree, Fd}};
-    {error, Reason} ->
+    {error, _Reason} ->
         io:format("ERROR: Couldn't open file (~s) for tree storage~n",
                   [Filename])
     end.
+
+% @doc Create a random node. Return the ID of the node and the node itself.
+-spec random_node() -> {string(), tuple()}.
+random_node() ->
+    random_node({654, 642, 698}).
+-spec random_node(Seed::{integer(), integer(), integer()}) -> {string(), tuple()}.
+random_node(Seed) ->
+    random:seed(Seed),
+    Max = 1000,
+    {W, X, Y, Z} = {random:uniform(Max), random:uniform(Max),
+                    random:uniform(Max), random:uniform(Max)},
+    RandomMbr = {erlang:min(W, X), erlang:min(Y, Z),
+                 erlang:max(W, X), erlang:max(Y, Z)},
+    {list_to_binary("Node" ++ integer_to_list(Y) ++ integer_to_list(Z)),
+     {RandomMbr, #node{type=leaf},
+      list_to_binary("Value" ++ integer_to_list(Y) ++ integer_to_list(Z))}}.

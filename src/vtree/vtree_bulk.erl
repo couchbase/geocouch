@@ -15,10 +15,17 @@
 
 -define(LOG_DEBUG(Msg), io:format(user, "DEBUG: ~p~n", [Msg])).
 
--record(seedtree_leaf, {
-    orig = [],
-    new = []
+-record(seedtree_root, {
+    tree = [] :: list(),
+    outliers = [] :: list()
 }).
+-record(seedtree_leaf, {
+    orig = [] :: list(),
+    new = [] :: list()
+}).
+
+-type seedtree_root() :: tuple().
+-type seedtree_node() :: tuple().
 
 % @doc Lookup a bounding box in the tree. Return the path to the node. Every
 %     list element is the child node position, e.g. [1,2,0] means:
@@ -62,13 +69,123 @@ lookup_path(Fd, RootPos, Bbox, MaxDepth, Depth) ->
         -1
     end.
 
-% @doc Put an on disk tree into memory
+% @doc Insert an new item into the seed tree
+-spec seedtree_insert(Tree::seedtree_root(), Node::tuple()) -> seedtree_root().
+seedtree_insert(#seedtree_root{tree=Tree, outliers=Outliers}=Root, Node) ->
+    case seedtree_insert_children([Tree], Node) of
+    {ok, [Tree2]} ->
+        Root#seedtree_root{tree=Tree2};
+    {not_inserted, _} ->
+        Root#seedtree_root{outliers=[Node|Outliers]}
+    end.
+-spec seedtree_insert_children(Children::[seedtree_node()],
+        Node::seedtree_node()) ->
+        {ok, seedtree_node()} | {not_inserted}.
+seedtree_insert_children([], Node) ->
+    {not_inserted, Node};
+seedtree_insert_children(#seedtree_leaf{new=Old}=Children, Node) when
+        not is_list(Children) ->
+    %?debugMsg("done."),
+    %?debugVal(Children),
+    New = [Node|Old],
+    Children2 = Children#seedtree_leaf{new=New},
+    {ok, Children2};
+seedtree_insert_children([H|T], Node) ->
+    %?debugVal(H),
+    %?debugVal(T),
+    {Mbr, Meta, Children} = H,
+    {NodeMbr, _, _Data} = Node,
+    case vtree:within(NodeMbr, Mbr) of
+    true ->
+        {Status, Children2} = seedtree_insert_children(Children, Node),
+        {Status, [{Mbr, Meta, Children2}|T]};
+    false ->
+        {Status, T2} = seedtree_insert_children(T, Node),
+        {Status, [H|T2]}
+    end.
+
+seedtree_insert_test() ->
+    {ok, {RootPos, Fd}} = vtree_test:build_random_tree("/tmp/randtree.bin", 20),
+    ?debugVal(RootPos),
+    SeedTree = seedtree(Fd, RootPos, 2),
+    {NodeId, {NodeMbr, NodeMeta, NodeData}} = vtree_test:random_node(),
+    Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+    SeedTree2 = seedtree_insert(SeedTree, Node),
+    SeedTree2Tree = SeedTree2#seedtree_root.tree,
+    ?assertEqual({{4,43,980,986},{node,inner},[
+        {{4,43,980,960},{node,inner},[
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
+                [{{66,132,252,718},{node,leaf},
+                    {<<"Node718132">>,<<"Value718132">>}}]}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[]}}]},
+        {{27,163,597,986},{node,inner},[
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+        SeedTree2Tree),
+    NodeNotInTree3 = {{2,3,4,5}, NodeMeta, {<<"notintree">>, datafoo}},
+    SeedTree3 = seedtree_insert(SeedTree, NodeNotInTree3),
+    Outliers3 = SeedTree3#seedtree_root.outliers,
+    ?assertEqual([{{2,3,4,5},{node,leaf},{<<"notintree">>,datafoo}}],
+        Outliers3),
+    NodeNotInTree4 = {{-2,300.5,4.4,50.45},{node,leaf},
+        {<<"notintree2">>,datafoo2}},
+    SeedTree4 = seedtree_insert(SeedTree2, NodeNotInTree4),
+    Outliers4 = SeedTree4#seedtree_root.outliers,
+    ?assertEqual(
+        [{{-2,300.5,4.4,50.45},{node,leaf},{<<"notintree2">>,datafoo2}}],
+        Outliers4
+    ),
+    SeedTree5 = seedtree_insert(SeedTree3, NodeNotInTree4),
+    Outliers5 = SeedTree5#seedtree_root.outliers,
+    ?assertEqual(
+        [{{-2,300.5,4.4,50.45},{node,leaf},{<<"notintree2">>,datafoo2}},
+         {{2,3,4,5},{node,leaf},{<<"notintree">>,datafoo}}],
+        Outliers5
+    ),
+    Node6 = {{342,456,959,513}, NodeMeta, {<<"intree01">>, datafoo3}},
+    SeedTree6 = seedtree_insert(SeedTree, Node6),
+    SeedTree6Tree = SeedTree6#seedtree_root.tree,
+    ?assertEqual({{4,43,980,986},{node,inner},[
+        {{4,43,980,960},{node,inner},[
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[]}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],
+                [{{342,456,959,513},{node,leaf},
+                    {<<"intree01">>, datafoo3}}]}}]},
+        {{27,163,597,986},{node,inner},[
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+        SeedTree6Tree),
+    SeedTree7 = seedtree_insert(SeedTree2, Node6),
+    SeedTree7Tree = SeedTree7#seedtree_root.tree,
+    ?assertEqual({{4,43,980,986},{node,inner},[
+        {{4,43,980,960},{node,inner},[
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
+                [{{66,132,252,718},{node,leaf},
+                    {<<"Node718132">>,<<"Value718132">>}}]}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],
+                [{{342,456,959,513},{node,leaf},
+                    {<<"intree01">>, datafoo3}}]}}]},
+        {{27,163,597,986},{node,inner},[
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+        SeedTree7Tree).
+%    SeedTree3 = lists:foldl(fun(I, STree) ->
+%        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+%            vtree_test:random_node({I,20,30}),
+%        Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+%        seedtree_insert(STree, Node)
+%    end, SeedTree, lists:seq(1,100)),
+%    ?LOG_DEBUG(SeedTree3).
+
+% @doc Put an on disk tree into memory and prepare it to store new nodes in
+%     the leafs
 -spec seedtree(Fd::file:io_device(), RootPos::integer(),
-        MaxDepth::integer()) -> [integer()].
+        MaxDepth::integer()) -> seedtree_root().
 seedtree(Fd, RootPos, MaxDepth) ->
-    seedtree(Fd, RootPos, MaxDepth, 0).
+    Tree = seedtree(Fd, RootPos, MaxDepth, 0),
+    #seedtree_root{tree=Tree}.
 -spec seedtree(Fd::file:io_device(), RootPos::integer(),
-        MaxDepth::integer(), Depth::integer()) -> [integer()].
+        MaxDepth::integer(), Depth::integer()) -> seedtree_node().
 seedtree(Fd, RootPos, MaxDepth, Depth) when Depth == MaxDepth ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
@@ -86,17 +203,19 @@ seedtree_test() ->
     {ok, {RootPos, Fd}} = vtree_test:build_random_tree("/tmp/randtree.bin", 20),
     ?debugVal(RootPos),
     SeedTree1 = seedtree(Fd, RootPos, 1),
-    ?assertEqual({{4,43,980,986}, {node,inner},
+    ?assertEqual({seedtree_root, {{4,43,980,986}, {node,inner},
         [{{4,43,980,960}, {node,inner},{seedtree_leaf,[7518,6520],[]}},
-         {{27,163,597,986},{node,inner},{seedtree_leaf,[6006,5494],[]}}]}, SeedTree1),
+         {{27,163,597,986},{node,inner},{seedtree_leaf,[6006,5494],[]}}]},[]},
+        SeedTree1),
     SeedTree2 = seedtree(Fd, RootPos, 2),
-    ?assertEqual({{4,43,980,986}, {node,inner},
+    ?assertEqual({seedtree_root, {{4,43,980,986}, {node,inner},
         [{{4,43,980,960}, {node,inner},
             [{{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[]}},
              {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[]}}]},
          {{27,163,597,986}, {node,inner},
             [{{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
-             {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]}, SeedTree2).
+             {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},[]},
+        SeedTree2).
 
 % @doc Find the first node that encloses the input MBR completely at a certain
 %     level. Return the the position relative to other children (starting
