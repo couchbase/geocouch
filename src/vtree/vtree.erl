@@ -30,10 +30,10 @@
 % Design question: Should not fully filled nodes have only as many members as nodes, or be filled up with nils to their maximum number of nodes? - Current implementation is the first one (dynamic number of members).
 
 % Nodes maximum/minimum filling grade (TODO vmx: shouldn't be hard-coded)
-%-define(MAX_FILLED, 40).
-%-define(MIN_FILLED, 20).
--define(MAX_FILLED, 4).
--define(MIN_FILLED, 2).
+-define(MAX_FILLED, 40).
+-define(MIN_FILLED, 20).
+%-define(MAX_FILLED, 4).
+%-define(MIN_FILLED, 2).
 
 
 % NOTE vmx: At the moment "leaf" is used for the nodes that
@@ -45,6 +45,8 @@
 }).
 
 % XXX vmx: tests are missing
+add_remove(_Fd, Pos, [], []) ->
+    {ok, Pos};
 add_remove(Fd, Pos, AddKeyValues, KeysToRemove) ->
     % XXX vmx not sure about the structure of "KeysToRemove"
     NewPos = lists:foldl(fun({Mbr, DocId}, CurPos) ->
@@ -52,14 +54,28 @@ add_remove(Fd, Pos, AddKeyValues, KeysToRemove) ->
         {ok, CurPos2} = delete(Fd, DocId, Mbr, CurPos),
         CurPos2
     end, Pos, KeysToRemove),
-    NewPos2 = lists:foldl(fun({{Mbr, DocId}, Value}, CurPos) ->
-        io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
-        {ok, _NewMbr, CurPos2} = insert(Fd, CurPos, DocId,
-                                        {Mbr, #node{type=leaf}, Value}),
-        CurPos2
-    end, NewPos, AddKeyValues),
+    T1 = get_timestamp(),
+%    NewPos2 = lists:foldl(fun({{Mbr, DocId}, Value}, CurPos) ->
+%        %io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
+%        {ok, _NewMbr, CurPos2} = insert(Fd, CurPos, DocId,
+%                                        {Mbr, #node{type=leaf}, Value}),
+%        CurPos2
+%    end, NewPos, AddKeyValues),
+    %{_Megaseconds,Seconds,_Microseconds} = erlang:now(),
+    AddKeyValues2 = lists:foldl(fun({{Mbr, DocId}, Value}, Acc) ->
+        [{Mbr, #node{type=leaf}, {DocId, Value}}|Acc]
+    end, [], AddKeyValues),
+    Omt = vtree_bulk:omt_load(AddKeyValues2, ?MAX_FILLED),
+    {ok, NewPos2} = vtree_bulk:omt_write_tree(Fd, Omt),
+    T2 = get_timestamp(),
+    io:format(user, "It took: ~ps~n", [T2-T1]),
     {ok, NewPos2}.
+    %{ok, 0}.
 
+% Based on http://snipplr.com/view/23910/how-to-get-a-timestamp-in-milliseconds-from-erlang/ (2010-10-22)
+get_timestamp() ->
+    {Mega,Sec,Micro} = erlang:now(),
+    ((Mega*1000000+Sec)*1000000+Micro)/1000000.
 
 % Returns the number of matching geometries only
 count_lookup(Fd, Pos, Bbox) ->

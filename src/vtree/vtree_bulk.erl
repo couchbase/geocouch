@@ -13,6 +13,8 @@
 -module(vtree_bulk).
 -include_lib("eunit/include/eunit.hrl").
 
+-export([omt_load/2, omt_write_tree/2]).
+
 -define(LOG_DEBUG(Msg), io:format(user, "DEBUG: ~p~n", [Msg])).
 
 % same as in vtree
@@ -149,6 +151,8 @@ omt_write_tree(Fd, [H|T], Acc) ->
 % @doc Sort nodes by a certain dimension (which is the first element of the
 %     node tuple)
 -spec omt_sort_nodes(Nodes::[omt_node()], Dimension::integer()) -> [omt_node()].
+% NOTE vmx: in the future the dimensions won't be stored in tuples, but
+% in lists.
 omt_sort_nodes(Nodes, Dimension) ->
     lists:sort(fun({Mbr1, _, _}, {Mbr2, _, _}) ->
         Val1 = element(Dimension, Mbr1),
@@ -171,6 +175,8 @@ seedtree_insert(#seedtree_root{tree=Tree, outliers=Outliers}=Root, Node) ->
 -spec seedtree_insert_children(Children::[seedtree_node()],
         Node::seedtree_node()) ->
         {ok, seedtree_node()} | {not_inserted}.
+% XXX TODO vmx: also keep the current depth, so we can determine whether
+%     we need to recluster or not (3rd case in the paper).
 seedtree_insert_children([], Node) ->
     {not_inserted, Node};
 seedtree_insert_children(#seedtree_leaf{new=Old}=Children, Node) when
@@ -204,6 +210,9 @@ seedtree(Fd, RootPos, MaxDepth) ->
     #seedtree_root{tree=Tree}.
 -spec seedtree(Fd::file:io_device(), RootPos::integer(),
         MaxDepth::integer(), Depth::integer()) -> seedtree_node().
+% XXX vmx: the original values (the position of the children) also
+%     need to be stored in the leafs of the seed try, as we might
+%     need to load additional children (when reclustering)
 seedtree(Fd, RootPos, MaxDepth, Depth) when Depth == MaxDepth ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
