@@ -714,19 +714,33 @@ seedtree_write_test() ->
 %    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
 %    ?assertEqual(208, length(Lookup3)),
     
-    % Test 4: input tree produces splits (recursively) (seedtree height=3)
-    TargetTreeNodeNum4 = 900,
-    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
-    ?debugVal(TargetTreeHeight4),
-    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
-        14, TargetTreeNodeNum4, 4),
-    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 3),
-    ?debugVal(Seedtree4_1),
-    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
-    {ok, ResultPos4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
-    ?debugVal(ResultPos4),
-    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
-    ?assertEqual(914, length(Lookup4)),
+%    % Test 4: input tree produces splits (recursively) (seedtree height=3)
+%    TargetTreeNodeNum4 = 900,
+%    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
+%    ?debugVal(TargetTreeHeight4),
+%    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
+%        14, TargetTreeNodeNum4, 4),
+%    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 3),
+%    ?debugVal(Seedtree4_1),
+%    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
+%    {ok, ResultPos4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+%    ?debugVal(ResultPos4),
+%    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
+%    ?assertEqual(914, length(Lookup4)),
+
+    % Test 5: adding new data with height=4 (seedtree height=1)
+    TargetTreeNodeNum5 = 800,
+    TargetTreeHeight5 = log_n_ceil(4, TargetTreeNodeNum5),
+    ?debugVal(TargetTreeHeight5),
+    {Nodes5, Fd5, RootPos5} = create_random_nodes_and_packed_tree(
+        251, TargetTreeNodeNum5, 4),
+    Seedtree5_1 = seedtree_init(Fd5, RootPos5, 1),
+    ?debugVal(Seedtree5_1),
+    Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
+    {ok, ResultPos5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
+    ?debugVal(ResultPos5),
+    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
+    ?assertEqual(1051, length(Lookup5)),
 
 
 ok.
