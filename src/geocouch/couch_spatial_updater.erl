@@ -253,11 +253,10 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
         KeysToRemove = couch_util:dict_find(Index#spatial.id_num, KeysToRemoveByIndex, []),
         %?LOG_DEBUG("storing spatial data: ~n~p~n~p~n~p",
         %           [Index, AddKeyValues, KeysToRemove]),
-        {ok, IndexTreePos} = vtree:add_remove(Fd, Index#spatial.treepos,
-                                              AddKeyValues, KeysToRemove),
-        Index#spatial{treepos=IndexTreePos}
+        {ok, IndexTreePos, IndexTreeHeight} = vtree:add_remove(
+                Fd, Index#spatial.treepos, AddKeyValues, KeysToRemove),
+        Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight}
     end, Group#spatial_group.indexes, IndexKeyValuesToAdd),
-
     Group2 = Group#spatial_group{indexes=Indexes2, current_seq=NewSeq, id_btree=IdBtree2},
     {ok, Group2}.
 

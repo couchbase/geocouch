@@ -33,6 +33,7 @@
     % XXX delete fds, it's not needed any longer
     fds=[],
     treepos=nil,
+    treeheight=0, % height of the tree
     btree=nil,
     id_num = 0, % comes from couch_spatial_group requirements
     def = nil, % The function in the query/view server

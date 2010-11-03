@@ -698,7 +698,7 @@ build_random_tree(Filename, Num, Seed) ->
                 RandomMbr = {erlang:min(W, X), erlang:min(Y, Z),
                              erlang:max(W, X), erlang:max(Y, Z)},
                 %io:format("~p~n", [RandomMbr]),
-                {ok, _, NewRootPos} = vtree:insert(
+                {ok, _, NewRootPos, _} = vtree:insert(
                     Fd, CurTreePos,
                     list_to_binary("Node" ++ integer_to_list(Count)),
                     {RandomMbr, #node{type=leaf},

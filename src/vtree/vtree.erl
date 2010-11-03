@@ -30,10 +30,10 @@
 % Design question: Should not fully filled nodes have only as many members as nodes, or be filled up with nils to their maximum number of nodes? - Current implementation is the first one (dynamic number of members).
 
 % Nodes maximum/minimum filling grade (TODO vmx: shouldn't be hard-coded)
--define(MAX_FILLED, 40).
--define(MIN_FILLED, 20).
-%-define(MAX_FILLED, 4).
-%-define(MIN_FILLED, 2).
+%-define(MAX_FILLED, 40).
+%-define(MIN_FILLED, 20).
+-define(MAX_FILLED, 4).
+-define(MIN_FILLED, 2).
 
 
 % NOTE vmx: At the moment "leaf" is used for the nodes that
@@ -55,21 +55,23 @@ add_remove(Fd, Pos, AddKeyValues, KeysToRemove) ->
         CurPos2
     end, Pos, KeysToRemove),
     T1 = get_timestamp(),
-%    NewPos2 = lists:foldl(fun({{Mbr, DocId}, Value}, CurPos) ->
-%        %io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
-%        {ok, _NewMbr, CurPos2} = insert(Fd, CurPos, DocId,
-%                                        {Mbr, #node{type=leaf}, Value}),
-%        CurPos2
-%    end, NewPos, AddKeyValues),
+    {NewPos2, TreeHeight} = lists:foldl(fun({{Mbr, DocId}, Value}, {CurPos, _}) ->
+        %io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
+        {ok, _NewMbr, CurPos2, TreeHeight} = insert(Fd, CurPos, DocId,
+                {Mbr, #node{type=leaf}, Value}),
+        {CurPos2, TreeHeight}
+    end, {NewPos, 0}, AddKeyValues),
     %{_Megaseconds,Seconds,_Microseconds} = erlang:now(),
-    AddKeyValues2 = lists:foldl(fun({{Mbr, DocId}, Value}, Acc) ->
-        [{Mbr, #node{type=leaf}, {DocId, Value}}|Acc]
-    end, [], AddKeyValues),
-    Omt = vtree_bulk:omt_load(AddKeyValues2, ?MAX_FILLED),
-    {ok, NewPos2} = vtree_bulk:omt_write_tree(Fd, Omt),
+%    AddKeyValues2 = lists:foldl(fun({{Mbr, DocId}, Value}, Acc) ->
+%        [{Mbr, #node{type=leaf}, {DocId, Value}}|Acc]
+%    end, [], AddKeyValues),
+%    TreeHeight = -1,
+%    Omt = vtree_bulk:omt_load(AddKeyValues2, ?MAX_FILLED),
+%    {ok, NewPos2,} = vtree_bulk:omt_write_tree(Fd, Omt),
     T2 = get_timestamp(),
     io:format(user, "It took: ~ps~n", [T2-T1]),
-    {ok, NewPos2}.
+    io:format(user, "Tree height: ~p~n", [TreeHeight]),
+    {ok, NewPos2, TreeHeight}.
     %{ok, 0}.
 
 % Based on http://snipplr.com/view/23910/how-to-get-a-timestamp-in-milliseconds-from-erlang/ (2010-10-22)
@@ -266,7 +268,7 @@ split_node({_Mbr, Meta, _Entries}=Node) ->
 
 
 % Return values of insert:
-% At top-level: {ok, MBR, position_in_file}
+% At top-level: {ok, MBR, position_in_file, heigh_of_tree}
 % XXX vmx MBR_of_both_nodes could be calculated if needed
 % If a split occurs: {splitted, MBR_of_both_nodes,
 %                     {MBR_of_node1, position_in_file_node1},
@@ -274,7 +276,7 @@ split_node({_Mbr, Meta, _Entries}=Node) ->
 insert(Fd, nil, Id, {Mbr, Meta, Value}) ->
     InitialTree = {Mbr, #node{type=leaf}, [{Mbr, Meta, {Id, Value}}]},
     {ok, Pos} = couch_file:append_term(Fd, InitialTree),
-    {ok, Mbr, Pos};
+    {ok, Mbr, Pos, 1};
 
 insert(Fd, RootPos, Id, Node) ->
     insert(Fd, RootPos, Id, Node, 0).
@@ -306,7 +308,7 @@ insert(Fd, RootPos, NewNodeId,
         EntryNum < ?MAX_FILLED ->
             %io:format("There's plenty of space (leaf node)~n", []),
             {ok, Pos} = couch_file:append_term(Fd, LeafNode),
-            {ok, LeafNodeMbr, Pos};
+            {ok, LeafNodeMbr, Pos, CallDepth};
         % do the fancy split algorithm
         true ->
             %io:format("We need to split (leaf node)~n~p~n", [LeafNode]),
@@ -314,7 +316,8 @@ insert(Fd, RootPos, NewNodeId,
                     = split_node(LeafNode),
             {ok, Pos1} = couch_file:append_term(Fd, Node1),
             {ok, Pos2} = couch_file:append_term(Fd, Node2),
-            {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2}}
+            {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2},
+             CallDepth}
         end;
     % If the nodes are inner nodes, they only contain pointers to their child
     % nodes. We only need their MBRs, position, but not their children's
@@ -343,7 +346,7 @@ insert(Fd, RootPos, NewNodeId,
         MinPos = find_area_min_nth(Expanded),
         SubTreePos = lists:nth(MinPos, EntriesPos),
         case insert(Fd, SubTreePos, NewNodeId, NewNode, CallDepth+1) of
-        {ok, ChildMbr, ChildPos} ->
+        {ok, ChildMbr, ChildPos, TreeHeight} ->
             %io:format("not splitted:~n", []),
             NewMbr = merge_mbr(TreeMbr, ChildMbr),
             {A, B} = lists:split(MinPos-1, EntriesPos),
@@ -352,8 +355,9 @@ insert(Fd, RootPos, NewNodeId,
             %     end of the list.
             NewNode2 = {NewMbr, #node{type=inner}, A ++ [ChildPos] ++ tl(B)},
             {ok, Pos} = couch_file:append_term(Fd, NewNode2),
-            {ok, NewMbr, Pos};
-        {splitted, ChildMbr, {Child1Mbr, ChildPos1}, {Child2Mbr, ChildPos2}} ->
+            {ok, NewMbr, Pos, TreeHeight};
+        {splitted, ChildMbr, {Child1Mbr, ChildPos1}, {Child2Mbr, ChildPos2},
+         TreeHeight} ->
             %io:format("EntryNum: ~p~n", [EntryNum]),
             NewMbr = merge_mbr(TreeMbr, ChildMbr),
             if
@@ -363,7 +367,7 @@ insert(Fd, RootPos, NewNodeId,
                 NewNode2 = {NewMbr, #node{type=inner},
                             A ++ [ChildPos1, ChildPos2] ++ tl(B)},
                 {ok, Pos} = couch_file:append_term(Fd, NewNode2),
-                {ok, NewMbr, Pos};
+                {ok, NewMbr, Pos, TreeHeight};
             % We need to split the inner node
             true ->
                 %io:format("We need to split (inner node)~n~p~n", [Entries]),
@@ -379,19 +383,20 @@ insert(Fd, RootPos, NewNodeId,
                                       A ++ [Child1, Child2] ++ tl(B)}),
                 {ok, Pos1} = couch_file:append_term(Fd, Node1),
                 {ok, Pos2} = couch_file:append_term(Fd, Node2),
-                {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2}}
+                {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2},
+                 TreeHeight}
             end
         end
     end,
     case {Inserted, CallDepth} of
         % Root node needs to be split => new root node
         {{splitted, NewRootMbr, {SplittedNode1Mbr, SplittedNode1},
-          {SplittedNode2Mbr, SplittedNode2}}, 0} ->
+          {SplittedNode2Mbr, SplittedNode2}, TreeHeight2}, 0} ->
             %io:format("Creating new root node~n", []),
             NewRoot = {NewRootMbr, #node{type=inner},
                            [SplittedNode1, SplittedNode2]},
             {ok, NewRootPos} = couch_file:append_term(Fd, NewRoot),
-            {ok, NewRootMbr, NewRootPos};
+            {ok, NewRootMbr, NewRootPos, TreeHeight2};
         _ ->
             Inserted
     end.
@@ -474,7 +479,7 @@ calc_nodes_mbr(Nodes) ->
     {Mbrs, _Meta, _Ids} = lists:unzip3(Nodes),
     calc_mbr(Mbrs).
 
-calc_mbr(Mbrs) when length(Mbrs) == 0 ->
+calc_mbr([]) ->
     error;
 calc_mbr([H|T]) ->
     calc_mbr(T, H).
