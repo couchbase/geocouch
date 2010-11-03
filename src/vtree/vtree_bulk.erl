@@ -567,7 +567,7 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
        %{ok, [Nodes2|Acc]};
        {ok, Nodes2};
     % Node can be written as-is, as the number of children is low enough
-    {level_done, Level} when Level =< ?MAX_FILLED->
+    {level_done, Level} when length(Level) =< ?MAX_FILLED->
         ?debugMsg("Level done (fits in)"),
         ?debugVal(Level),
         ?debugVal(Acc),
@@ -591,8 +591,9 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
         %{ok, [Parent|LevelAcc]}
     % Node needs to be split. Normal split algorithm (like Ang/Tan) could be
     % used. We use OMT.
-    {level_done, Level} when Level > ?MAX_FILLED ->
+    {level_done, Level} when length(Level) > ?MAX_FILLED ->
         ?debugMsg("Level done (doesn't fit in)"),
+        ?debugVal(Level),
         {Level2, _} = omt_load(Level, ?MAX_FILLED),
 
         Parents = lists:foldl(fun(Level3, LevelAcc) ->
@@ -671,50 +672,61 @@ seedtree_write_test() ->
 %    ?debugVal(WrittenOmt),
 %    ?debugMsg("------------------------------"),
     
-    % Test "Case 1: input R-tree fits in the target node" (chapter 6.1)
-    % Test 1: input tree fits in
-    % NOTE vmx: seedtree's maximum height should/must be height of the
-    %    targetree - 2
-    Seedtree1 = seedtree_init(Fd, RootPos, 1),
-    ?debugVal(Seedtree1),
-    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
-    {ok, ResultPos1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
-    ?debugVal(ResultPos1),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
-    ?assertEqual(37, length(Lookup1)),
+%    % Test "Case 1: input R-tree fits in the target node" (chapter 6.1)
+%    % Test 1: input tree fits in
+%    % NOTE vmx: seedtree's maximum height should/must be height of the
+%    %    targetree - 2
+%    Seedtree1 = seedtree_init(Fd, RootPos, 1),
+%    ?debugVal(Seedtree1),
+%    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
+%    {ok, ResultPos1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+%    ?debugVal(ResultPos1),
+%    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+%    ?assertEqual(37, length(Lookup1)),
 
-    % Test 2: input tree produces splits (seedtree height=2)
-    TargetTreeNodeNum2 = 64,
-    TargetTreeHeight2 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum2),
-    {Nodes2, Fd2, RootPos2} = create_random_nodes_and_packed_tree(
-        12, TargetTreeNodeNum2, ?MAX_FILLED),
+%    % Test 2: input tree produces splits (seedtree height=2)
+%    TargetTreeNodeNum2 = 64,
+%    TargetTreeHeight2 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum2),
+%    {Nodes2, Fd2, RootPos2} = create_random_nodes_and_packed_tree(
+%        12, TargetTreeNodeNum2, ?MAX_FILLED),
+%
+%    Seedtree2_1 = seedtree_init(Fd2, RootPos2, 1),
+%    ?debugVal(Seedtree2_1),
+%    Seedtree2_2 = seedtree_insert_list(Seedtree2_1, Nodes2),
+%    {ok, ResultPos2} = seedtree_write(Fd2, Seedtree2_2, TargetTreeHeight2),
+%    ?debugVal(ResultPos2),
+%    {ok, Lookup2} = vtree:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
+%    ?assertEqual(76, length(Lookup2)),
 
-    Seedtree2_1 = seedtree_init(Fd2, RootPos2, 1),
-    ?debugVal(Seedtree2_1),
-    Seedtree2_2 = seedtree_insert_list(Seedtree2_1, Nodes2),
-    {ok, ResultPos2} = seedtree_write(Fd2, Seedtree2_2, TargetTreeHeight2),
-    ?debugVal(ResultPos2),
-    {ok, Lookup2} = vtree:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
-    ?assertEqual(76, length(Lookup2)),
 
-
-    % Test 3: input tree produces splits (recursively) (seedtree height=2)
-    % It would create a root node with 5 nodes
-    TargetTreeNodeNum3 = 196,
-    TargetTreeHeight3 = log_n_ceil(4, TargetTreeNodeNum3),
-    ?debugVal(TargetTreeHeight3),
-    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
-        12, TargetTreeNodeNum3, 4),
-    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 2),
-    ?debugVal(Seedtree3_1),
-    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
-    {ok, ResultPos3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
-    ?debugVal(ResultPos3),
-    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
-    ?assertEqual(208, length(Lookup3)),
+%    % Test 3: input tree produces splits (recursively) (seedtree height=2)
+%    % It would create a root node with 5 nodes
+%    TargetTreeNodeNum3 = 196,
+%    TargetTreeHeight3 = log_n_ceil(4, TargetTreeNodeNum3),
+%    ?debugVal(TargetTreeHeight3),
+%    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
+%        12, TargetTreeNodeNum3, 4),
+%    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 2),
+%    ?debugVal(Seedtree3_1),
+%    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
+%    {ok, ResultPos3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
+%    ?debugVal(ResultPos3),
+%    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
+%    ?assertEqual(208, length(Lookup3)),
     
     % Test 4: input tree produces splits (recursively) (seedtree height=3)
-    % XXX vmx: MISSING
+    TargetTreeNodeNum4 = 900,
+    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
+    ?debugVal(TargetTreeHeight4),
+    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
+        14, TargetTreeNodeNum4, 4),
+    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 3),
+    ?debugVal(Seedtree4_1),
+    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
+    {ok, ResultPos4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+    ?debugVal(ResultPos4),
+    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
+    ?assertEqual(914, length(Lookup4)),
 
 
 ok.
