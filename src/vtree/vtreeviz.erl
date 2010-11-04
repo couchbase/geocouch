@@ -43,14 +43,14 @@ print_children(Fd, ParentPos) ->
 % leaf nodes
 node_labels(Children) ->
     string_join("|", Children, fun({Mbr, _, {Id, _Val}}) ->
-        io_lib:format("~s ~p", [Id, tuple_to_list(Mbr)])
+        io_lib:format("~s ~w", [Id, tuple_to_list(Mbr)])
     end).
 
 % inner nodes
 node_labels(ChildrenPos, ChildrenMbr) ->
     Children = lists:zip(ChildrenPos, ChildrenMbr),
     ChildrenLabels = lists:map(fun({ChildPos, ChildMbr}) ->
-        io_lib:format("<f~w>~w ~p", [ChildPos, ChildPos, tuple_to_list(ChildMbr)])
+        io_lib:format("<f~w>~w ~w", [ChildPos, ChildPos, tuple_to_list(ChildMbr)])
     end, Children),
     string_join("|", ChildrenLabels).
 
