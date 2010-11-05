@@ -680,34 +680,34 @@ test_delete() ->
 
 
 -spec build_random_tree(Filename::string(), Num::integer()) ->
-        {ok, {file:io_device(), integer()}} | {error, string()}.
+        {ok, {file:io_device(), {integer(), integer()}}} | {error, string()}.
 build_random_tree(Filename, Num) ->
     build_random_tree(Filename, Num, {654, 642, 698}).
 -spec build_random_tree(Filename::string(), Num::integer(),
         Seed::{integer(), integer(), integer()}) ->
-        {ok, {file:io_device(), integer()}} | {error, string()}.
+        {ok, {file:io_device(), {integer(), integer()}}} | {error, string()}.
 build_random_tree(Filename, Num, Seed) ->
     random:seed(Seed),
     case couch_file:open(Filename, [create, overwrite]) of
     {ok, Fd} ->
         Max = 1000,
-        Tree = lists:foldl(
-            fun(Count, CurTreePos) ->
+        {Tree, TreeHeight} = lists:foldl(
+            fun(Count, {CurTreePos, _CurTreeHeight}) ->
                 {W, X, Y, Z} = {random:uniform(Max), random:uniform(Max),
                                 random:uniform(Max), random:uniform(Max)},
                 RandomMbr = {erlang:min(W, X), erlang:min(Y, Z),
                              erlang:max(W, X), erlang:max(Y, Z)},
                 %io:format("~p~n", [RandomMbr]),
-                {ok, _, NewRootPos, _} = vtree:insert(
+                {ok, _, NewRootPos, NewTreeHeight} = vtree:insert(
                     Fd, CurTreePos,
                     list_to_binary("Node" ++ integer_to_list(Count)),
                     {RandomMbr, #node{type=leaf},
                      list_to_binary("Node" ++ integer_to_list(Count))}),
                 %io:format("test_insertion: ~p~n", [NewRootPos]),
-                NewRootPos
-            end, nil, lists:seq(1,Num)),
+                {NewRootPos, NewTreeHeight}
+            end, {nil, 0}, lists:seq(1,Num)),
         %io:format("Tree: ~p~n", [Tree]),
-        {ok, {Tree, Fd}};
+        {ok, {Fd, {Tree, TreeHeight}}};
     {error, _Reason} ->
         io:format("ERROR: Couldn't open file (~s) for tree storage~n",
                   [Filename])
