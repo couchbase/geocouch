@@ -268,7 +268,7 @@ split_node({_Mbr, Meta, _Entries}=Node) ->
 
 
 % Return values of insert:
-% At top-level: {ok, MBR, position_in_file, heigh_of_tree}
+% At top-level: {ok, MBR, position_in_file, height_of_tree}
 % XXX vmx MBR_of_both_nodes could be calculated if needed
 % If a split occurs: {splitted, MBR_of_both_nodes,
 %                     {MBR_of_node1, position_in_file_node1},
@@ -279,7 +279,8 @@ insert(Fd, nil, Id, {Mbr, Meta, Value}) ->
     {ok, Mbr, Pos, 1};
 
 insert(Fd, RootPos, Id, Node) ->
-    insert(Fd, RootPos, Id, Node, 0).
+    {ok, Mbr, NewPos, Height} = insert(Fd, RootPos, Id, Node, 0),
+    {ok, Mbr, NewPos, Height+1}.
 
 insert(Fd, RootPos, NewNodeId,
        {NewNodeMbr, NewNodeMeta, NewNodeValue}, CallDepth) ->
