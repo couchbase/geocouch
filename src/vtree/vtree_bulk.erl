@@ -360,14 +360,15 @@ seedtree_write(Fd, Seedtree, TargetHeight) ->
     ?debugMsg("almost done."),
     ?debugVal(Level),
     Root = if
-    is_tuple(Level) ->
-        Level;
+    length(Level) == 1 ->
+        hd(Level);
     true ->
         ParentMbr = vtree:calc_nodes_mbr(Level),
         ChildrenPos = write_nodes(Fd, Level),
         {ParentMbr, #node{type=inner}, ChildrenPos}
     end,
     ?debugVal(Root),
+
 %    {ok, Pos} = couch_file:append_term(Fd, Parent),
     {ok, Pos} = couch_file:append_term(Fd, Root),
     %{ok, Acc} = seedtree_write(Fd, [Tree], InsertHeight, []),
@@ -399,7 +400,8 @@ seedtree_write(_Fd, #seedtree_leaf{orig=Orig, new=[]}, _InsertHeight, _Acc) ->
 % This function returns a new list of children, as some children were
 % rewritten due to repacking. The MBR doesn't change (that's the nature of
 % this algorithm).
-seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New}, InsertHeight, Acc) ->
+seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
+        InsertHeight, Acc) ->
     ?debugMsg("leaf!!!!!!!!!!!!!!!!!!"),
     ?debugVal(Orig),
     ?debugVal(New),
@@ -425,11 +427,22 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New}, InsertHeight, Acc) ->
         MbrAndPos = seedtree_write_finish(NewChildren);
     % insert tree is too small => expand seedtree
     HeightDiff > 0 ->
-        % Create new seedtree
-        %SeedTree = seedtree_init(Fd,        
-        %{ok, Parent} = couch_file:pread_term(Fd, RootPos),
-        ?debugVal(Acc),
-        ok = foo;
+        ?debugVal(ParentPos),
+        % Create new seedtree (HeightDiff+1 as we like to load the level
+        % of the children)
+        Seedtree = seedtree_init(Fd, ParentPos, HeightDiff+1),
+        ?debugVal(Seedtree),
+        Seedtree2 = seedtree_insert_list(Seedtree, New),
+        ?debugVal(Seedtree2),
+        %{ok, SeedtreePos} = seedtree_write(Fd, Seedtree2, InsertHeight+1),
+        %?debugVal(SeedtreePos),
+%        {ok, {SeedtreeMbr, _, SeedtreeChildren}} = couch_file:pread_term(Fd, SeedtreePos),
+%        ?debugVal(SeedtreeChildren),
+%        ?debugVal([{SeedtreePos, SeedtreeMbr}]),
+%        [{SeedtreeMbr, SeedtreePos}];
+        {level_done, Level} = seedtree_write(Fd, [Seedtree2#seedtree_root.tree], InsertHeight+1-Seedtree2#seedtree_root.height, []),
+        MbrAndPos = [{Mbr, Pos} || {Mbr, _, Pos} <- Level],
+        ?debugVal(MbrAndPos);
     % insert tree is too high => use its children
     HeightDiff < 0 ->
         {OmtTree, _OmtHeight} = omt_load(New, ?MAX_FILLED),
@@ -900,7 +913,7 @@ seedtree_write_case3_test() ->
     {ok, ResultPos1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
     ?debugVal(ResultPos1),
     {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
-    ?assertEqual(105, length(Lookup1)),
+    ?assertEqual(37, length(Lookup1)),
 ok.
 
 % @doc Loads nodes from file
