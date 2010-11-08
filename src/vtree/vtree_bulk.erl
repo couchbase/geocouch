@@ -37,7 +37,9 @@
 }).
 -record(seedtree_leaf, {
     orig = [] :: list(),
-    new = [] :: list()
+    new = [] :: list(),
+    % position in file (of this node)
+    pos = -1 :: integer()
 }).
 
 -type seedtree_root() :: tuple().
@@ -287,7 +289,7 @@ seedtree_insert_children([H|T], Node) ->
 
 
 % @doc Put an on disk tree into memory and prepare it to store new nodes in
-%     the leafs. It contains a list of nodes in the leafs, not OMT trees, yet.
+%     the leafs.
 -spec seedtree_init(Fd::file:io_device(), RootPos::integer(),
         MaxDepth::integer()) -> seedtree_root().
 seedtree_init(Fd, RootPos, MaxDepth) ->
@@ -300,7 +302,7 @@ seedtree_init(Fd, RootPos, MaxDepth) ->
 seedtree_init(Fd, RootPos, MaxDepth, Depth) when Depth+1 == MaxDepth ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
-    {ParentMbr, ParentMeta, #seedtree_leaf{orig=EntriesPos}};
+    {ParentMbr, ParentMeta, #seedtree_leaf{orig=EntriesPos, pos=RootPos}};
 seedtree_init(Fd, RootPos, MaxDepth, Depth) ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
@@ -397,17 +399,14 @@ seedtree_write(_Fd, #seedtree_leaf{orig=Orig, new=[]}, _InsertHeight, _Acc) ->
 % This function returns a new list of children, as some children were
 % rewritten due to repacking. The MBR doesn't change (that's the nature of
 % this algorithm).
-seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New}, InsertHeight, _Acc) ->
+seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New}, InsertHeight, Acc) ->
     ?debugMsg("leaf!!!!!!!!!!!!!!!!!!"),
     ?debugVal(Orig),
     ?debugVal(New),
     NewNum = length(New),
-    %% Height of the OMT tree
-    %Height = log_n_ceil(?MAX_FILLED, NewNum),
-    % We can build the OMT tree now, as it is needed in any case
-    {OmtTree, OmtHeight} = omt_load(New, ?MAX_FILLED),
+    % Height of the OMT tree
+    OmtHeight = log_n_ceil(?MAX_FILLED, NewNum),
     ?debugVal(OmtHeight),
-    ?debugVal(OmtTree),
 
     % It's (Height + 1), as the OMT trees root node always needs to be a
     % sinlgle position in file (but the omt_load returns a root node with
@@ -418,12 +417,25 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New}, InsertHeight, _Acc) ->
     NewChildrenPos2 = if
     % Input tree can be inserted as-is into the target tree
     HeightDiff == 0 ->
+        {OmtTree, _OmtHeight} = omt_load(New, ?MAX_FILLED),
+        %?debugVal(OmtHeight),
+        ?debugVal(OmtTree),
+
         NewChildren = seedtree_write_insert(Fd, Orig, OmtTree),
         MbrAndPos = seedtree_write_finish(NewChildren);
+    % insert tree is too small => expand seedtree
     HeightDiff > 0 ->
+        % Create new seedtree
+        %SeedTree = seedtree_init(Fd,        
+        %{ok, Parent} = couch_file:pread_term(Fd, RootPos),
+        ?debugVal(Acc),
         ok = foo;
     % insert tree is too high => use its children
     HeightDiff < 0 ->
+        {OmtTree, _OmtHeight} = omt_load(New, ?MAX_FILLED),
+        %?debugVal(OmtHeight),
+        ?debugVal(OmtTree),
+
         % flatten the OMT tree until it has the expected height to be
         % inserted into the target tree (one subtree at a time).
         OmtTrees = lists:foldl(fun(_I, Acc) ->
@@ -437,9 +449,8 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New}, InsertHeight, _Acc) ->
         {NewMbrs, NewPos} = lists:unzip(MbrAndPos2),
         ?debugVal({NewMbrs, NewPos}),
 
-        % XXX vmx: Case (and test) is missing when node overflowed
-        %     (>?MAX_FILLED^2 children). seedtree_write_finish/1 will
-        %     probably go crazy
+        % NOTE vmx: seedtree_write_finish/1 might still go crazy with
+        %     huge node overflows
         MbrAndPos = seedtree_write_finish(lists:zip(NewMbrs, NewPos))
     end,
     % XXX vmx: Check NewChildrenPos2 for length. It might overflow the node
@@ -697,7 +708,7 @@ seedtree_write_finish(NewChildren) ->
     NewChildrenMbrAndPos.
 
 % XXX vmx: rename to _test when it should be run again
-seedtree_write_case1_test() ->
+seedtree_write_case1() ->
     % Test "Case 1: input R-tree fits in the target node" (chapter 6.1)
     % Test 1.1: input tree fits in
     % NOTE vmx: seedtree's maximum height should/must be height of the
@@ -781,7 +792,7 @@ seedtree_write_case1_test() ->
     ?assertEqual(1051, length(Lookup5)).
 
 
-seedtree_write_case2_test() ->
+seedtree_write_case2() ->
     % Test "Case 2: input R-tree is not shorter than the level of the
     % target node" (chapter 6.2)
     % Test 2.1: input tree is too high (1 level)
@@ -867,6 +878,30 @@ seedtree_write_case2_test() ->
     {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     ?assertEqual(296, length(Lookup5)).
 
+seedtree_write_case3_test() ->
+    % Test "Case 3: input R-tree is shorter than the level of the child level of the target node" (chapter 6.3)
+    % Test 3.1: input tree is too small (1 level)
+    TargetTreeNodeNum = 25,
+    % NOTE vmx: wonder why this tree is not really dense
+    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
+            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
+    ?debugVal(TargetTreeHeight),
+    ?debugVal(RootPos),
+    Nodes1 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,12)),
+
+    Seedtree1 = seedtree_init(Fd, RootPos, 1),
+    ?debugVal(Seedtree1),
+    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
+    {ok, ResultPos1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    ?debugVal(ResultPos1),
+    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    ?assertEqual(105, length(Lookup1)),
+ok.
 
 % @doc Loads nodes from file
 -spec load_nodes(Fd::file:io_device(), Positions::[integer()]) -> list().
@@ -1245,11 +1280,11 @@ seedtree_insert_test() ->
         {{4,43,980,960},{node,inner},[
             {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
                 [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,<<"Value718132">>}}]}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[]}}]},
+                    {<<"Node718132">>,<<"Value718132">>}}],7518}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[],6520}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
         SeedTree2Tree),
     NodeNotInTree3 = {{2,3,4,5}, NodeMeta, {<<"notintree">>, datafoo}},
     SeedTree3 = seedtree_insert(SeedTree, NodeNotInTree3),
@@ -1276,13 +1311,13 @@ seedtree_insert_test() ->
     SeedTree6Tree = SeedTree6#seedtree_root.tree,
     ?assertEqual({{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[]}},
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[],7518}},
             {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],
                 [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>, datafoo3}}]}}]},
+                    {<<"intree01">>, datafoo3}}],6520}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
         SeedTree6Tree),
     SeedTree7 = seedtree_insert(SeedTree2, Node6),
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
@@ -1290,13 +1325,13 @@ seedtree_insert_test() ->
         {{4,43,980,960},{node,inner},[
             {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
                 [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,<<"Value718132">>}}]}},
+                    {<<"Node718132">>,<<"Value718132">>}}],7518}},
             {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],
                 [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>, datafoo3}}]}}]},
+                    {<<"intree01">>, datafoo3}}],6520}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
         SeedTree7Tree).
 
 
@@ -1313,11 +1348,11 @@ seedtree_insert_list_test() ->
         {{4,43,980,960},{node,inner},[
             {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
                 [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,<<"Value718132">>}}]}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[]}}]},
+                    {<<"Node718132">>,<<"Value718132">>}}],7518}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[],6520}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
         SeedTree2Tree),
 
     NodeNotInTree3 = {{2,3,4,5}, NodeMeta, {<<"notintree">>, datafoo}},
@@ -1339,13 +1374,13 @@ seedtree_insert_list_test() ->
         {{4,43,980,960},{node,inner},[
             {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
                 [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,<<"Value718132">>}}]}},
+                    {<<"Node718132">>,<<"Value718132">>}}],7518}},
             {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],
                 [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>, datafoo3}}]}}]},
+                    {<<"intree01">>, datafoo3}}],6520}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
         SeedTree7Tree).
 
 
@@ -1356,17 +1391,17 @@ seedtree_init_test() ->
     ?debugVal(RootPos),
     SeedTree1 = seedtree_init(Fd, RootPos, 2),
     ?assertEqual({seedtree_root, {{4,43,980,986}, {node,inner},
-        [{{4,43,980,960}, {node,inner},{seedtree_leaf,[7518,6520],[]}},
-         {{27,163,597,986},{node,inner},{seedtree_leaf,[6006,5494],[]}}]},
+        [{{4,43,980,960}, {node,inner},{seedtree_leaf,[7518,6520],[],7579}},
+         {{27,163,597,986},{node,inner},{seedtree_leaf,[6006,5494],[],6174}}]},
          [], 2},
         SeedTree1),
     SeedTree2 = seedtree_init(Fd, RootPos, 3),
     ?assertEqual({seedtree_root, {{4,43,980,986}, {node,inner},
         [{{4,43,980,960}, {node,inner},
-            [{{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[]}},
-             {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[]}}]},
+            [{{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[],7518}},
+             {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[],6520}}]},
          {{27,163,597,986}, {node,inner},
-            [{{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[]}},
-             {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[]}}]}]},
+            [{{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
+             {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
          [], 3},
         SeedTree2).
