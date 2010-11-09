@@ -14,6 +14,11 @@
 
 -export([visualize/2]).
 
+-record(node, {
+    % type = inner | leaf
+    type = inner
+}).
+
 
 visualize(Fd, ParentPos) ->
     io:format("digraph G~n{~n    node [shape = record];~n", []),
@@ -28,12 +33,12 @@ get_children(Fd, Pos) ->
 print_children(Fd, ParentPos) ->
     ChildrenPos = get_children(Fd, ParentPos),
     ChildrenLabels = if is_integer(hd(ChildrenPos)) ->
-        ChildrenMbr = lists:map(fun(ChildPos) ->
+        ChildrenMbrMeta = lists:map(fun(ChildPos) ->
             %io:format("ChildPos: ~p~n", [ChildPos]),
-            {ok, {Mbr, _Meta, _Children}} = couch_file:pread_term(Fd, ChildPos),
-            Mbr
+            {ok, {Mbr, Meta, _Children}} = couch_file:pread_term(Fd, ChildPos),
+            {Mbr, Meta}
         end, ChildrenPos),
-        node_labels(ChildrenPos, ChildrenMbr);
+        node_labels(ChildrenPos, ChildrenMbrMeta);
     true ->
         node_labels(ChildrenPos)
     end,
@@ -42,15 +47,16 @@ print_children(Fd, ParentPos) ->
 
 % leaf nodes
 node_labels(Children) ->
-    string_join("|", Children, fun({Mbr, _, {Id, _Val}}) ->
-        io_lib:format("~s ~w", [Id, tuple_to_list(Mbr)])
+    string_join("|", Children, fun({Mbr, Meta, {Id, _Val}}) ->
+        io_lib:format("~s ~w ~w", [Id, tuple_to_list(Mbr), Meta#node.type])
     end).
 
 % inner nodes
-node_labels(ChildrenPos, ChildrenMbr) ->
-    Children = lists:zip(ChildrenPos, ChildrenMbr),
-    ChildrenLabels = lists:map(fun({ChildPos, ChildMbr}) ->
-        io_lib:format("<f~w>~w ~w", [ChildPos, ChildPos, tuple_to_list(ChildMbr)])
+node_labels(ChildrenPos, ChildrenMbrMeta) ->
+    Children = lists:zip(ChildrenPos, ChildrenMbrMeta),
+    ChildrenLabels = lists:map(fun({ChildPos, {ChildMbr, ChildMeta}}) ->
+        io_lib:format("<f~w>~w ~w ~w", [ChildPos, ChildPos,
+                tuple_to_list(ChildMbr), ChildMeta#node.type])
     end, Children),
     string_join("|", ChildrenLabels).
 
