@@ -25,8 +25,20 @@
 
 
 print(Fd, ParentPos) ->
-    Result = seedtree_init(Fd, ParentPos),
-    io:format("Result: ~w~n", [Result]).
+    Stats = seedtree_init(Fd, ParentPos),
+    Inner = Stats#stats.numinner,
+    Leafs = Stats#stats.numleafs,
+    Depth = Stats#stats.depth,
+    io:format("Result: ~w~n", [Stats]),
+    io:format("innernodes (~w)~n", [length(Inner)]),
+    io:format("  avg (min, max): ~.1f (~w, ~w)~n",
+        [lists:sum(Inner)/length(Inner), lists:min(Inner), lists:max(Inner)]),
+
+    io:format("leafs (~w)~n", [length(Leafs)]),
+    io:format("  avgnum (min, max): ~.1f (~w, ~w)~n",
+        [lists:sum(Leafs)/length(Leafs), lists:min(Leafs), lists:max(Leafs)]),
+    io:format("  avgdepth (min, max): ~.1f (~w, ~w)~n",
+        [lists:sum(Depth)/length(Depth), lists:min(Depth), lists:max(Depth)]).
 
 seedtree_init(Fd, RootPos) ->
     Stats = seedtree_init(Fd, RootPos, 0, #stats{}),
