@@ -12,7 +12,7 @@
 
 -module(vtreestats).
 
--export([print/2]).
+-export([print/2, leaf_depths/2]).
 
 -record(stats, {
     % number of children in inner nodes
@@ -39,6 +39,14 @@ print(Fd, ParentPos) ->
         [lists:sum(Leafs)/length(Leafs), lists:min(Leafs), lists:max(Leafs)]),
     io:format("  avgdepth (min, max): ~.1f (~w, ~w)~n",
         [lists:sum(Depth)/length(Depth), lists:min(Depth), lists:max(Depth)]).
+
+
+% @doc Returns a list of leaf node depth (one value for every depth)
+-spec leaf_depths(Fd::file:io_device(), integer) -> [integer()].
+leaf_depths(Fd, RootPos) ->
+    Stats = stats(Fd, RootPos),
+    sets:to_list(sets:from_list(Stats#stats.depth)).
+
 
 stats(Fd, RootPos) ->
     Stats = stats(Fd, RootPos, 0, #stats{}),
