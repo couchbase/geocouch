@@ -28,6 +28,7 @@
 
 % {ok, Fd} = couch_file:open("/tmp/seedtree_write.bin").
 % {ok, Fd} = couch_file:open("/tmp/omt.bin").
+% {ok, Fd} = couch_file:open("/tmp/random_packed_tree.bin").
 % couch_file:pread_term(Fd, 2498).
 
 
@@ -167,8 +168,8 @@ omt_write_tree(_Fd, [], _Depth, Acc) ->
 % leaf node
 omt_write_tree(Fd, [H|_T]=Leafs, Depth, _Acc) when is_tuple(H) ->
     %{leaf_nodes, Leafs};
-    ?debugVal(length(Leafs)),
-    ?debugVal(Leafs),
+    %?debugVal(length(Leafs)),
+    %?debugVal(Leafs),
     % Don't write leafs nodes to disk now, they will be written later on.
     % Instead return a list of of tuples with the node's MBR and the node
     % itself
@@ -193,11 +194,9 @@ omt_write_tree(Fd, [H|T], Depth, Acc) ->
 %        {ok, [{Mbr, Pos}|Acc]};
     {leaf_nodes, MbrAndPos} ->
         %{ok, [MbrAndPos|Acc]};
-?debugVal(length(Acc)),
         %{ok, MbrAndPos ++ Acc};
         {ok, [MbrAndPos|Acc]};
     {level_done, Level} ->
-?debugVal(Level),
         % NOTE vmx: reversing Level is probably not neccessary
         {Mbrs, Children} = lists:unzip(lists:reverse(Level)),
         Mbr = vtree:calc_mbr(Mbrs),
@@ -208,9 +207,7 @@ omt_write_tree(Fd, [H|T], Depth, Acc) ->
         %    false -> #node{type=inner}
         %end,
         Meta = #node{type=inner},
-?debugVal(Meta), ?debugVal(Children),
         {ok, Pos} = couch_file:append_term(Fd, {Mbr, Meta, Children}),
-?debugVal(Pos),
         {ok, [{Mbr, Pos}|Acc]}
     end,
     {_, Acc3} = omt_write_tree(Fd, T, Depth, Acc2),
@@ -389,29 +386,77 @@ seedtree_write(Fd, Seedtree, TargetHeight) ->
     {level_done, Level} = seedtree_write(Fd, [Tree], InsertHeight, []),
     ?debugMsg("almost done."),
     ?debugVal(Level),
+    ?debugVal(length(Level)),
     Root = if
     length(Level) == 1 ->
-        hd(Level);
+    %    hd(Level);
+        Level;
+    % NOTE vmx: not sure why this can't be done in the {level_done, _} case
+    length(Level) > ?MAX_FILLED ->
+        ?debugMsg("overflow"),
+        {Level2, _} = omt_load(Level, ?MAX_FILLED),
+        
+        Parents = lists:foldl(fun(Level3, LevelAcc) ->
+            ParentMbr = vtree:calc_nodes_mbr(Level3),
+            ChildrenPos = write_nodes(Fd, Level3),
+            % XXX vmx: Not sure if type=inner is always right
+            Parent = {ParentMbr, #node{type=inner}, ChildrenPos},
+            [Parent|LevelAcc]
+        end, [], Level2),
+        ?debugVal(Parents),
+        MbrAndPosList = [{Mbr, Pos} || {Mbr, _, Pos} <- Parents];
+        %{ok, [Parents|Acc]}
+        %{ok, Parents}
+        %Parents;
+%         Level;
     true ->
+?debugMsg("Fooooooooooooooo"),
         ParentMbr = vtree:calc_nodes_mbr(Level),
         ChildrenPos = write_nodes(Fd, Level),
-        {ParentMbr, #node{type=inner}, ChildrenPos}
+        %{ParentMbr, #node{type=inner}, ChildrenPos}
+        [{ParentMbr, #node{type=inner}, ChildrenPos}]
     end,
     ?debugVal(Root),
+    {ok, Root}.
 
 %    {ok, Pos} = couch_file:append_term(Fd, Parent),
-    {ok, Pos} = couch_file:append_term(Fd, Root),
-    %{ok, Acc} = seedtree_write(Fd, [Tree], InsertHeight, []),
-    %{level_done, [{_,_,[Pos]}]} = seedtree_write(Fd, [Tree], InsertHeight, []),
+    %{ok, Pos} = couch_file:append_term(Fd, Root),
+%    MbrAndPosList = lists:map(fun({NodeMbr, _, _}=Node) ->
+%?debugVal(Node),
+%        {ok, NodePos} = couch_file:append_term(Fd, Node),
+%?debugVal(NodePos),
+%        {NodeMbr, [NodePos]}
+%    end, Root),
+%?debugVal(MbrAndPosList),
+%?debugVal(element(2, hd(MbrAndPosList))),
+%?debugVal(tl(MbrAndPosList)),
 
-    % Insert outliers one by one
-    {Pos2, TreeHeight} = lists:foldl(fun(
-            {Mbr, Meta, {DocId, Value}}=Foo, {CurPos, _}) ->
-        {ok, _NewMbr, CurPos2, TreeHeight} = vtree:insert(
-                Fd, CurPos, DocId, {Mbr, Meta, Value}),
-        {CurPos2, TreeHeight}
-    end, {Pos, 0}, Seedtree#seedtree_root.outliers),
-    {ok, Pos2}.
+
+%    MbrAndPosList = [{Mbr, Pos} || {Mbr, _, Pos} <- Root],
+%    {ok, MbrAndPosList}.
+
+
+%    ParentMbr2 = vtree:calc_nodes_mbr(Root),
+%    ChildrenPos2 = write_nodes(Fd, Root),
+%?debugVal(ChildrenPos2),
+%    % XXX vmx: Not sure if type=inner is always right
+%    MbrAndPosList = [{ParentMbr2, ChildrenPos2}],
+%    {ok, MbrAndPosList}.
+
+ 
+%    % XXX vmx: OUTLINER INSERTION IS DISABLED ATM
+%    % Insert outliers one by one
+%    {MbrAndPos, TreeHeight} = lists:foldl(fun(
+%            {Mbr, Meta, {DocId, Value}}=Foo, {{_, CurPos}, _}) ->
+%        {ok, NewMbr, CurPos2, TreeHeight} = vtree:insert(
+%                Fd, CurPos, DocId, {Mbr, Meta, Value}),
+%        {{NewMbr, CurPos2}, TreeHeight}
+%    %end, {Pos, 0}, Seedtree#seedtree_root.outliers),
+%    %{ok, Pos2}.
+%    end, {hd(MbrAndPosList), -1}, Seedtree#seedtree_root.outliers),
+%    ?debugVal(MbrAndPos),
+%    {ok, [MbrAndPos|tl(MbrAndPosList)]}.
+
 seedtree_write(_Fd, [], InsertHeight, Acc) ->
     ?debugMsg("No more siblings!!!!!!!!!!!!!!!!!!"),
     {no_more_siblings, Acc};
@@ -464,14 +509,23 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         % Create new seedtree
         % NOTE vmx: HeightDiff+1 makes sense as we like to load the level
         % of the children, not sure why we need +2 here)
-        Seedtree = seedtree_init(Fd, ParentPos, HeightDiff+2),
+        %Seedtree = seedtree_init(Fd, ParentPos, HeightDiff+2),
+        Seedtree = seedtree_init(Fd, ParentPos, HeightDiff+1),
         ?debugVal(Seedtree),
         Seedtree2 = seedtree_insert_list(Seedtree, New),
         ?debugVal(Seedtree2),
         ?debugVal(length(Seedtree2#seedtree_root.outliers)),
-        {ok, Pos} = seedtree_write(Fd, Seedtree2, InsertHeight+1),
-        {ok, {Mbr, _, Pos2}} = couch_file:pread_term(Fd, Pos),
-        [{Mbr, Pos2}];
+        %{ok, Pos} = seedtree_write(Fd, Seedtree2, InsertHeight+1),
+        %{ok, {Mbr, _, Pos2}} = couch_file:pread_term(Fd, Pos),
+        %[{Mbr, Pos2}];
+        % XXX vmx: TODO make seedtree_write to return the MBR as well
+        {ok, MbrAndPosList} = seedtree_write(Fd, Seedtree2, InsertHeight+1),
+        %MbrAndPos = lists:map(fun(Pos) ->
+        %    {ok, {Mbr, _, Pos2}} = couch_file:pread_term(Fd, Pos),
+        %    {Mbr, Pos2}
+        %end, PosList),
+        %MbrAndPos;
+        MbrAndPosList;
     % insert tree is too high => use its children
     HeightDiff < 0 ->
         {OmtTree, _OmtHeight} = omt_load(New, ?MAX_FILLED),
@@ -557,19 +611,23 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
     {level_done, Level} when length(Level) > ?MAX_FILLED ->
         ?debugMsg("Level done (doesn't fit in)"),
         ?debugVal(Level),
-        {Level2, _} = omt_load(Level, ?MAX_FILLED),
 
-        Parents = lists:foldl(fun(Level3, LevelAcc) ->
-            ParentMbr = vtree:calc_nodes_mbr(Level3),
-            ChildrenPos = write_nodes(Fd, Level3),
-            % XXX vmx: Not sure if type=inner is always right
-            Parent = {ParentMbr, #node{type=inner}, ChildrenPos},
-            [Parent|LevelAcc]
-        end, Acc, Level2),
-        ?debugVal(Parents),
-
+        %{Level2, _} = omt_load(Level, ?MAX_FILLED),
+        %
+        %Parents = lists:foldl(fun(Level3, LevelAcc) ->
+        %    ParentMbr = vtree:calc_nodes_mbr(Level3),
+        %    ChildrenPos = write_nodes(Fd, Level3),
+        %    % XXX vmx: Not sure if type=inner is always right
+        %    Parent = {ParentMbr, #node{type=inner}, ChildrenPos},
+        %    [Parent|LevelAcc]
+        %end, Acc, Level2),
+        %?debugVal(Parents),
         %{ok, [Parents|Acc]}
-        {ok, Parents}
+        %{ok, Parents}
+
+        % NOTE vmx: don't split now. We might need to split some upper levels
+        %     as well (recursively)
+        {ok, Level}
     end,
     ?debugVal(T),
     {Info, Acc3} = seedtree_write(Fd, T, InsertHeight, Acc2),
@@ -946,7 +1004,7 @@ seedtree_write_case2() ->
     {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
     ?assertEqual(246, length(Lookup4)),
 
-    % Test 2.5: input tree is too hight (2 level) and produces multiple
+    % Test 2.5: input tree is too high (2 levels) and produces multiple
     % splits (recusively) (seedtree height=2)
     % XXX vmx: not really sure if there's more than one split
     TargetTreeNodeNum5 = 196,
@@ -962,7 +1020,7 @@ seedtree_write_case2() ->
     {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     ?assertEqual(296, length(Lookup5)).
 
-seedtree_write_case3_test() ->
+seedtree_write_case3() ->
     % Test "Case 3: input R-tree is shorter than the level of the child level of the target node" (chapter 6.3)
     % Test 3.1: input tree is too small (1 level)
     TargetTreeNodeNum = 25,
@@ -1009,7 +1067,70 @@ seedtree_write_case3_test() ->
     ?debugVal(ResultPos2_1),
     {ok, Lookup2_1} = vtree:lookup(Fd2, ResultPos2_1, {0,0,1001,1001}),
     ?assertEqual(92, length(Lookup2_1)),
+
+    % Test 3.3: input tree is too small (1 level) and procudes split
+    % (seedtree height=1)
+    TargetTreeNodeNum3 = 64,
+    TargetTreeHeight3 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum3),
+    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
+        4, TargetTreeNodeNum3, ?MAX_FILLED),
+
+    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 1),
+    ?debugVal(Seedtree3_1),
+    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
+    {ok, ResultPos3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
+    ?debugVal(RootPos3),
+    ?debugVal(ResultPos3),
+    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
+    ?assertEqual(114, length(Lookup3)),
 ok.
+seedtree_write_case3_test() ->
+
+    % Test 4.4: input tree is too small (1 level) and produces multiple
+    % splits (recusively) (seedtree height=2)
+    % XXX vmx: not really sure if there's more than one split
+    TargetTreeNodeNum4 = 196,
+    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
+    ?debugVal(TargetTreeHeight4),
+    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
+        4, TargetTreeNodeNum4, 4),
+    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 2),
+    ?debugVal(Seedtree4_1),
+    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
+    {ok, ResultPos4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+    ?debugVal(RootPos4),
+    ?debugVal(ResultPos4),
+
+    % Several parents => create new root node
+    ResultNodes4 = [{Mbr, #node{type=inner}, Pos} || {Mbr, Pos} <- ResultPos4],
+    Mbr4 = vtree:calc_nodes_mbr(ResultNodes4),
+    ChildrenPos4 = write_nodes(Fd4, ResultNodes4),
+    {ok, ResultPos4_2} = couch_file:append_term(
+         Fd4, {Mbr4, #node{type=inner}, ChildrenPos4}),
+    ?debugVal(ResultPos4_2),
+
+    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4_2, {0,0,1001,1001}),
+    ?assertEqual(200, length(Lookup4)),
+    LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4_2),
+    ?assertEqual([4], LeafDepths4),
+ok.
+seedtree_write_case3_test_foo() ->
+    % Test 3.5: input tree is too small (2 levels) and produces multiple
+    % splits (recusively) (seedtree height=2)
+    % XXX vmx: not really sure if there's more than one split
+    TargetTreeNodeNum5 = 196,
+    TargetTreeHeight5 = log_n_ceil(4, TargetTreeNodeNum5),
+    ?debugVal(TargetTreeHeight5),
+    {Nodes5, Fd5, RootPos5} = create_random_nodes_and_packed_tree(
+        4, TargetTreeNodeNum5, 4),
+    Seedtree5_1 = seedtree_init(Fd5, RootPos5, 2),
+    ?debugVal(Seedtree5_1),
+    Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
+    {ok, ResultPos5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
+    ?debugVal(ResultPos5),
+    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
+    ?assertEqual(296, length(Lookup5)).
+
 
 % @doc Loads nodes from file
 -spec load_nodes(Fd::file:io_device(), Positions::[integer()]) -> list().
