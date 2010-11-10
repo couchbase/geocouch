@@ -25,7 +25,7 @@
 
 
 print(Fd, ParentPos) ->
-    Stats = seedtree_init(Fd, ParentPos),
+    Stats = stats(Fd, ParentPos),
     Inner = Stats#stats.numinner,
     Leafs = Stats#stats.numleafs,
     Depth = Stats#stats.depth,
@@ -40,13 +40,13 @@ print(Fd, ParentPos) ->
     io:format("  avgdepth (min, max): ~.1f (~w, ~w)~n",
         [lists:sum(Depth)/length(Depth), lists:min(Depth), lists:max(Depth)]).
 
-seedtree_init(Fd, RootPos) ->
-    Stats = seedtree_init(Fd, RootPos, 0, #stats{}),
+stats(Fd, RootPos) ->
+    Stats = stats(Fd, RootPos, 0, #stats{}),
     Stats#stats{numinner=lists:reverse(Stats#stats.numinner),
             numleafs=lists:reverse(Stats#stats.numleafs),
             depth=lists:reverse(Stats#stats.depth)}.
 
-seedtree_init(Fd, RootPos, Depth, Stats) ->
+stats(Fd, RootPos, Depth, Stats) ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
 
@@ -58,7 +58,7 @@ seedtree_init(Fd, RootPos, Depth, Stats) ->
     % inner node
     true ->
         Stats4 = lists:foldl(fun(EntryPos, Stats2) ->
-            Stats3 = seedtree_init(Fd, EntryPos, Depth+1, Stats2)
+            Stats3 = stats(Fd, EntryPos, Depth+1, Stats2)
         end, Stats, EntriesPos),
         Stats4#stats{numinner=[length(EntriesPos)|Stats4#stats.numinner]}
     end.
