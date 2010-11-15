@@ -15,7 +15,7 @@
 -export([lookup/3, lookup/4, within/2, intersect/2, disjoint/2, insert/4,
          area/1, merge_mbr/2, find_area_min_nth/1, partition_node/1,
          calc_nodes_mbr/1, calc_mbr/1, best_split/1, minimal_overlap/2,
-         calc_overlap/2, minimal_coverage/2, delete/4, add_remove/4,
+         calc_overlap/2, minimal_coverage/2, delete/4, add_remove/5,
          split_flipped_bbox/2, count_lookup/3]).
 
 -export([get_node/2]).
@@ -30,10 +30,10 @@
 % Design question: Should not fully filled nodes have only as many members as nodes, or be filled up with nils to their maximum number of nodes? - Current implementation is the first one (dynamic number of members).
 
 % Nodes maximum/minimum filling grade (TODO vmx: shouldn't be hard-coded)
-%-define(MAX_FILLED, 40).
-%-define(MIN_FILLED, 20).
--define(MAX_FILLED, 4).
--define(MIN_FILLED, 2).
+-define(MAX_FILLED, 40).
+-define(MIN_FILLED, 20).
+%-define(MAX_FILLED, 4).
+%-define(MIN_FILLED, 2).
 
 
 % NOTE vmx: At the moment "leaf" is used for the nodes that
@@ -45,9 +45,9 @@
 }).
 
 % XXX vmx: tests are missing
-add_remove(_Fd, Pos, [], []) ->
-    {ok, Pos};
-add_remove(Fd, Pos, AddKeyValues, KeysToRemove) ->
+add_remove(_Fd, Pos, TargetTreeeHeight, [], []) ->
+    {ok, Pos, TargetTreeeHeight};
+add_remove(Fd, Pos, TargetTreeHeight, AddKeyValues, KeysToRemove) ->
     % XXX vmx not sure about the structure of "KeysToRemove"
     NewPos = lists:foldl(fun({Mbr, DocId}, CurPos) ->
         io:format("vtree: delete (~p:~p): ~p~n", [Fd, CurPos, DocId]),
@@ -55,19 +55,24 @@ add_remove(Fd, Pos, AddKeyValues, KeysToRemove) ->
         CurPos2
     end, Pos, KeysToRemove),
     T1 = get_timestamp(),
-    {NewPos2, TreeHeight} = lists:foldl(fun({{Mbr, DocId}, Value}, {CurPos, _}) ->
-        %io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
-        {ok, _NewMbr, CurPos2, TreeHeight} = insert(Fd, CurPos, DocId,
-                {Mbr, #node{type=leaf}, Value}),
-        {CurPos2, TreeHeight}
-    end, {NewPos, 0}, AddKeyValues),
+%    {NewPos2, TreeHeight} = lists:foldl(fun({{Mbr, DocId}, Value}, {CurPos, _}) ->
+%        %io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
+%        {ok, _NewMbr, CurPos2, TreeHeight} = insert(Fd, CurPos, DocId,
+%                {Mbr, #node{type=leaf}, Value}),
+%        {CurPos2, TreeHeight}
+%    end, {NewPos, 0}, AddKeyValues),
     %{_Megaseconds,Seconds,_Microseconds} = erlang:now(),
 %    AddKeyValues2 = lists:foldl(fun({{Mbr, DocId}, Value}, Acc) ->
 %        [{Mbr, #node{type=leaf}, {DocId, Value}}|Acc]
 %    end, [], AddKeyValues),
-%    TreeHeight = -1,
-%    Omt = vtree_bulk:omt_load(AddKeyValues2, ?MAX_FILLED),
-%    {ok, NewPos2,} = vtree_bulk:omt_write_tree(Fd, Omt),
+%    {Omt, TreeHeight} = vtree_bulk:omt_load(AddKeyValues2, ?MAX_FILLED),
+%    {ok, MbrAndPosList} = vtree_bulk:omt_write_tree(Fd, Omt),
+%    [{_Mbr, NewPos2}] = MbrAndPosList,
+    AddKeyValues2 = lists:foldl(fun({{Mbr, DocId}, Value}, Acc) ->
+        [{Mbr, #node{type=leaf}, {DocId, Value}}|Acc]
+    end, [], AddKeyValues),
+    {ok, NewPos2, TreeHeight} = vtree_bulk:bulk_load(
+            Fd, Pos, TargetTreeHeight, AddKeyValues2),
     T2 = get_timestamp(),
     io:format(user, "It took: ~ps~n", [T2-T1]),
     io:format(user, "Tree height: ~p~n", [TreeHeight]),

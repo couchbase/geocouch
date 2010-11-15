@@ -254,7 +254,8 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
         %?LOG_DEBUG("storing spatial data: ~n~p~n~p~n~p",
         %           [Index, AddKeyValues, KeysToRemove]),
         {ok, IndexTreePos, IndexTreeHeight} = vtree:add_remove(
-                Fd, Index#spatial.treepos, AddKeyValues, KeysToRemove),
+                Fd, Index#spatial.treepos, Index#spatial.treeheight,
+                AddKeyValues, KeysToRemove),
         Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight}
     end, Group#spatial_group.indexes, IndexKeyValuesToAdd),
     Group2 = Group#spatial_group{indexes=Indexes2, current_seq=NewSeq, id_btree=IdBtree2},
