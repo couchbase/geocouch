@@ -1043,359 +1043,6 @@ seedtree_write_finish(NewChildren) ->
     NewChildrenMbrAndPos.
 
 
-seedtree_write_single_test() ->
-    % insert single new node
-    TargetTreeNodeNum = 7,
-    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
-            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
-
-    ?debugVal(RootPos),
-    Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
-            vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
-        [Node|Acc]
-    end, [], lists:seq(1,1)),
-
-    Seedtree1 = seedtree_init(Fd, RootPos, 1),
-    ?debugVal(Seedtree1),
-    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
-    %?debugVal(Seedtree2),
-    {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
-    ?debugVal(Result1),
-    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
-    ?assertEqual(8, length(Lookup1)),
-    LeafDepths = vtreestats:leaf_depths(Fd, ResultPos1),
-    ?assertEqual([1], LeafDepths).
-
-seedtree_write_case1_test() ->
-    % Test "Case 1: input R-tree fits in the target node" (chapter 6.1)
-    % Test 1.1: input tree fits in
-    % NOTE vmx: seedtree's maximum height should/must be height of the
-    %    targetree - 2
-    % XXX vmx: This test creates a strange root node
-    % NOTE vmx: Not sure if that's still the case
-    TargetTreeNodeNum = 25,
-    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
-            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
-
-    ?debugVal(RootPos),
-    Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
-            vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
-        [Node|Acc]
-    end, [], lists:seq(1,20)),
-
-    Seedtree1 = seedtree_init(Fd, RootPos, 1),
-    ?debugVal(Seedtree1),
-    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
-    {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
-    ?debugVal(Result1),
-    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
-    ?assertEqual(45, length(Lookup1)),
-    LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
-    ?assertEqual([3], LeafDepths1),
-
-    % Test 1.2: input tree produces splits (seedtree height=1)
-    TargetTreeNodeNum2 = 64,
-    TargetTreeHeight2 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum2),
-    {Nodes2, Fd2, RootPos2} = create_random_nodes_and_packed_tree(
-        12, TargetTreeNodeNum2, ?MAX_FILLED),
-
-    Seedtree2_1 = seedtree_init(Fd2, RootPos2, 1),
-    ?debugVal(Seedtree2_1),
-    Seedtree2_2 = seedtree_insert_list(Seedtree2_1, Nodes2),
-    {ok, Result2} = seedtree_write(Fd2, Seedtree2_2, TargetTreeHeight2),
-    ?debugVal(Result2),
-    {ok, ResultPos2} = write_parent(Fd2, Result2),
-    ?debugVal(ResultPos2),
-    {ok, Lookup2} = vtree:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
-    ?assertEqual(76, length(Lookup2)),
-    LeafDepths2 = vtreestats:leaf_depths(Fd2, ResultPos2),
-    ?assertEqual([3], LeafDepths2),
-
-
-    % Test 1.3: input tree produces splits (recursively) (seedtree height=2)
-    % It would create a root node with 5 nodes
-    TargetTreeNodeNum3 = 196,
-    TargetTreeHeight3 = log_n_ceil(4, TargetTreeNodeNum3),
-    ?debugVal(TargetTreeHeight3),
-    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
-        12, TargetTreeNodeNum3, 4),
-    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 2),
-    ?debugVal(Seedtree3_1),
-    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
-    {ok, Result3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
-    ?debugVal(Result3),
-    {ok, ResultPos3} = write_parent(Fd3, Result3),
-    ?debugVal(ResultPos3),
-    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
-    ?assertEqual(208, length(Lookup3)),
-    LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
-    ?assertEqual([4], LeafDepths3),
-
-    % Test 1.4: input tree produces splits (recursively) (seedtree height=3)
-    TargetTreeNodeNum4 = 900,
-    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
-    ?debugVal(TargetTreeHeight4),
-    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
-        14, TargetTreeNodeNum4, 4),
-    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 3),
-    ?debugVal(Seedtree4_1),
-    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
-    {ok, Result4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
-    ?debugVal(Result4),
-    {ok, ResultPos4} = write_parent(Fd4, Result4),
-    ?debugVal(ResultPos4),
-    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
-    ?assertEqual(914, length(Lookup4)),
-    LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4),
-    ?assertEqual([5], LeafDepths4),
-
-    % Test 1.5: adding new data with height=4 (seedtree height=1)
-    TargetTreeNodeNum5 = 800,
-    TargetTreeHeight5 = log_n_ceil(4, TargetTreeNodeNum5),
-    ?debugVal(TargetTreeHeight5),
-    {Nodes5, Fd5, RootPos5} = create_random_nodes_and_packed_tree(
-        251, TargetTreeNodeNum5, 4),
-    Seedtree5_1 = seedtree_init(Fd5, RootPos5, 1),
-    ?debugVal(Seedtree5_1),
-    Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
-    {ok, Result5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
-    ?debugVal(Result5),
-    {ok, ResultPos5} = write_parent(Fd5, Result5),
-    ?debugVal(ResultPos5),
-    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
-    ?assertEqual(1051, length(Lookup5)),
-    LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
-    ?assertEqual([5], LeafDepths5).
-
-seedtree_write_case2_test() ->
-    % Test "Case 2: input R-tree is not shorter than the level of the
-    % target node" (chapter 6.2)
-    % Test 2.1: input tree is too high (1 level)
-    TargetTreeNodeNum = 25,
-    % NOTE vmx: wonder why this tree is not really dense
-    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
-            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
-    ?debugVal(TargetTreeHeight),
-    ?debugVal(RootPos),
-    Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
-            vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
-        [Node|Acc]
-    end, [], lists:seq(1,80)),
-
-    Seedtree1 = seedtree_init(Fd, RootPos, 1),
-    ?debugVal(Seedtree1),
-    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
-    {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
-    ?debugVal(Result1),
-    {ok, ResultPos1} = write_parent(Fd, Result1),
-    ?debugVal(ResultPos1),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
-    ?assertEqual(105, length(Lookup1)),
-    LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
-    ?assertEqual([4], LeafDepths1),
-
-    % Test 2.2: input tree is too high (2 levels)
-    Nodes2 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
-            vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
-        [Node|Acc]
-    end, [], lists:seq(1,300)),
-
-    Seedtree2_2 = seedtree_insert_list(Seedtree1, Nodes2),
-    {ok, Result2} = seedtree_write(Fd, Seedtree2_2, TargetTreeHeight),
-    ?debugVal(Result2),
-    {ok, ResultPos2} = write_parent(Fd, Result2),
-    ?debugVal(ResultPos2),
-    {ok, Lookup2} = vtree:lookup(Fd, ResultPos2, {0,0,1001,1001}),
-    ?assertEqual(325, length(Lookup2)),
-    LeafDepths2 = vtreestats:leaf_depths(Fd, ResultPos2),
-    ?assertEqual([5], LeafDepths2),
-
-    % Test 2.3: input tree is too high (1 level) and procudes split
-    % (seedtree height=1)
-    TargetTreeNodeNum3 = 64,
-    TargetTreeHeight3 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum3),
-    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
-        50, TargetTreeNodeNum3, ?MAX_FILLED),
-
-    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 1),
-    ?debugVal(Seedtree3_1),
-    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
-    {ok, Result3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
-    ?debugVal(Result3),
-    {ok, ResultPos3} = write_parent(Fd3, Result3),
-    ?debugVal(ResultPos3),
-    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
-    ?assertEqual(114, length(Lookup3)),
-    LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
-    ?assertEqual([3], LeafDepths3),
-
-    % Test 2.4: input tree is too high (1 level) and produces multiple
-    % splits (recusively) (seedtree height=2)
-    % XXX vmx: not really sure if there's more than one split
-    TargetTreeNodeNum4 = 196,
-    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
-    ?debugVal(TargetTreeHeight4),
-    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
-        50, TargetTreeNodeNum4, 4),
-    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 2),
-    ?debugVal(Seedtree4_1),
-    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
-    {ok, Result4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
-    ?debugVal(Result4),
-    {ok, ResultPos4} = write_parent(Fd4, Result4),
-    ?debugVal(ResultPos4),
-    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
-    ?assertEqual(246, length(Lookup4)),
-    LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4),
-    ?assertEqual([4], LeafDepths4),
-
-    % Test 2.5: input tree is too high (2 levels) and produces multiple
-    % splits (recusively) (seedtree height=2)
-    % XXX vmx: not really sure if there's more than one split
-    TargetTreeNodeNum5 = 196,
-    TargetTreeHeight5 = log_n_ceil(4, TargetTreeNodeNum5),
-    ?debugVal(TargetTreeHeight5),
-    {Nodes5, Fd5, RootPos5} = create_random_nodes_and_packed_tree(
-        100, TargetTreeNodeNum5, 4),
-    Seedtree5_1 = seedtree_init(Fd5, RootPos5, 2),
-    ?debugVal(Seedtree5_1),
-    Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
-    {ok, Result5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
-    ?debugVal(Result5),
-    {ok, ResultPos5} = write_parent(Fd5, Result5),
-    ?debugVal(ResultPos5),
-    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
-    ?assertEqual(296, length(Lookup5)),
-    LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
-    ?assertEqual([4], LeafDepths5).
-
-seedtree_write_case3_test() ->
-    % Test "Case 3: input R-tree is shorter than the level of the child level of the target node" (chapter 6.3)
-    % Test 3.1: input tree is too small (1 level)
-    TargetTreeNodeNum = 25,
-    % NOTE vmx: wonder why this tree is not really dense
-    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
-            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
-    ?debugVal(TargetTreeHeight),
-    ?debugVal(RootPos),
-    Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
-            vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
-        [Node|Acc]
-    end, [], lists:seq(1,12)),
-
-    Seedtree1 = seedtree_init(Fd, RootPos, 1),
-    ?debugVal(Seedtree1),
-    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
-    {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
-    ?debugVal(Result1),
-    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
-    ?assertEqual(37, length(Lookup1)),
-    LeafDepths = vtreestats:leaf_depths(Fd, ResultPos1),
-    ?assertEqual([3], LeafDepths),
-
-    % Test 3.2: input tree is too small (2 levels)
-    TargetTreeNodeNum2 = 80,
-    % NOTE vmx: wonder why this tree is not really dense
-    {ok, {Fd2, {RootPos2, TargetTreeHeight2}}} = vtree_test:build_random_tree(
-            "/tmp/seedtree_write.bin", TargetTreeNodeNum2),
-    ?debugVal(TargetTreeHeight2),
-    ?debugVal(RootPos2),
-
-    Nodes2 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
-            vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
-        [Node|Acc]
-    end, [], lists:seq(1,12)),
-
-    Seedtree2_1 = seedtree_init(Fd2, RootPos2, 1),
-    ?debugVal(Seedtree2_1),
-    Seedtree2_2 = seedtree_insert_list(Seedtree2_1, Nodes2),
-    {ok, Result2} = seedtree_write(Fd2, Seedtree2_2, TargetTreeHeight2),
-    ?debugVal(Result2),
-    {ok, ResultPos2} = write_parent(Fd2, Result2),
-    ?debugVal(ResultPos2),
-    {ok, Lookup2_1} = vtree:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
-    ?assertEqual(92, length(Lookup2_1)),
-    LeafDepths2 = vtreestats:leaf_depths(Fd2, ResultPos2),
-    ?assertEqual([5], LeafDepths2),
-
-    % Test 3.3: input tree is too small (1 level) and procudes split
-    % (seedtree height=1)
-    TargetTreeNodeNum3 = 64,
-    TargetTreeHeight3 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum3),
-    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
-        4, TargetTreeNodeNum3, ?MAX_FILLED),
-
-    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 1),
-    ?debugVal(Seedtree3_1),
-    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
-    {ok, Result3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
-    ?debugVal(Result3),
-    % Several parents => create new root node
-    {ok, ResultPos3} = write_parent(Fd3, Result3),
-    ?debugVal(RootPos3),
-    ?debugVal(ResultPos3),
-    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
-    ?assertEqual(68, length(Lookup3)),
-    LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
-    ?assertEqual([3], LeafDepths3),
-
-
-    % Test 3.4: input tree is too small (1 level) and produces multiple
-    % splits (recusively) (seedtree height=2)
-    TargetTreeNodeNum4 = 196,
-    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
-    ?debugVal(TargetTreeHeight4),
-    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
-        4, TargetTreeNodeNum4, 4),
-    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 2),
-    ?debugVal(Seedtree4_1),
-    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
-    {ok, Result4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
-    ?debugVal(RootPos4),
-    ?debugVal(Result4),
-    {ok, ResultPos4} = write_parent(Fd4, Result4),
-    ?debugVal(ResultPos4),
-    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
-    ?assertEqual(200, length(Lookup4)),
-    LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4),
-    ?assertEqual([4], LeafDepths4),
-
-
-    % Test 3.5: input tree is too small (2 levels) and produces multiple
-    % splits (recusively) (seedtree height=2)
-    TargetTreeNodeNum5 = 768,
-    TargetTreeHeight5 = log_n_ceil(4, TargetTreeNodeNum5),
-    ?debugVal(TargetTreeHeight5),
-    {Nodes5, Fd5, RootPos5} = create_random_nodes_and_packed_tree(
-        4, TargetTreeNodeNum5, 4),
-    Seedtree5_1 = seedtree_init(Fd5, RootPos5, 2),
-    ?debugVal(Seedtree5_1),
-    Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
-    {ok, Result5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
-    ?debugVal(Result5),
-    {ok, ResultPos5} = couch_file:append_term(Fd5, hd(Result5)),
-    ?debugVal(ResultPos5),
-    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
-    ?assertEqual(772, length(Lookup5)),
-    LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
-    ?assertEqual([4], LeafDepths5).
-
-
 % @doc Loads nodes from file
 -spec load_nodes(Fd::file:io_device(), Positions::[integer()]) -> list().
 load_nodes(Fd, Positions) ->
@@ -1976,3 +1623,356 @@ seedtree_init_test() ->
              {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
          [], 3},
         SeedTree2).
+
+
+seedtree_write_single_test() ->
+    % insert single new node
+    TargetTreeNodeNum = 7,
+    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
+            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
+
+    ?debugVal(RootPos),
+    Nodes1 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,1)),
+
+    Seedtree1 = seedtree_init(Fd, RootPos, 1),
+    ?debugVal(Seedtree1),
+    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
+    %?debugVal(Seedtree2),
+    {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    ?debugVal(Result1),
+    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
+    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    ?assertEqual(8, length(Lookup1)),
+    LeafDepths = vtreestats:leaf_depths(Fd, ResultPos1),
+    ?assertEqual([1], LeafDepths).
+
+seedtree_write_case1_test() ->
+    % Test "Case 1: input R-tree fits in the target node" (chapter 6.1)
+    % Test 1.1: input tree fits in
+    % NOTE vmx: seedtree's maximum height should/must be height of the
+    %    targetree - 2
+    % XXX vmx: This test creates a strange root node
+    % NOTE vmx: Not sure if that's still the case
+    TargetTreeNodeNum = 25,
+    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
+            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
+
+    ?debugVal(RootPos),
+    Nodes1 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,20)),
+
+    Seedtree1 = seedtree_init(Fd, RootPos, 1),
+    ?debugVal(Seedtree1),
+    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
+    {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    ?debugVal(Result1),
+    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
+    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    ?assertEqual(45, length(Lookup1)),
+    LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
+    ?assertEqual([3], LeafDepths1),
+
+    % Test 1.2: input tree produces splits (seedtree height=1)
+    TargetTreeNodeNum2 = 64,
+    TargetTreeHeight2 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum2),
+    {Nodes2, Fd2, RootPos2} = create_random_nodes_and_packed_tree(
+        12, TargetTreeNodeNum2, ?MAX_FILLED),
+
+    Seedtree2_1 = seedtree_init(Fd2, RootPos2, 1),
+    ?debugVal(Seedtree2_1),
+    Seedtree2_2 = seedtree_insert_list(Seedtree2_1, Nodes2),
+    {ok, Result2} = seedtree_write(Fd2, Seedtree2_2, TargetTreeHeight2),
+    ?debugVal(Result2),
+    {ok, ResultPos2} = write_parent(Fd2, Result2),
+    ?debugVal(ResultPos2),
+    {ok, Lookup2} = vtree:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
+    ?assertEqual(76, length(Lookup2)),
+    LeafDepths2 = vtreestats:leaf_depths(Fd2, ResultPos2),
+    ?assertEqual([3], LeafDepths2),
+
+
+    % Test 1.3: input tree produces splits (recursively) (seedtree height=2)
+    % It would create a root node with 5 nodes
+    TargetTreeNodeNum3 = 196,
+    TargetTreeHeight3 = log_n_ceil(4, TargetTreeNodeNum3),
+    ?debugVal(TargetTreeHeight3),
+    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
+        12, TargetTreeNodeNum3, 4),
+    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 2),
+    ?debugVal(Seedtree3_1),
+    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
+    {ok, Result3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
+    ?debugVal(Result3),
+    {ok, ResultPos3} = write_parent(Fd3, Result3),
+    ?debugVal(ResultPos3),
+    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
+    ?assertEqual(208, length(Lookup3)),
+    LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
+    ?assertEqual([4], LeafDepths3),
+
+    % Test 1.4: input tree produces splits (recursively) (seedtree height=3)
+    TargetTreeNodeNum4 = 900,
+    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
+    ?debugVal(TargetTreeHeight4),
+    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
+        14, TargetTreeNodeNum4, 4),
+    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 3),
+    ?debugVal(Seedtree4_1),
+    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
+    {ok, Result4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+    ?debugVal(Result4),
+    {ok, ResultPos4} = write_parent(Fd4, Result4),
+    ?debugVal(ResultPos4),
+    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
+    ?assertEqual(914, length(Lookup4)),
+    LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4),
+    ?assertEqual([5], LeafDepths4),
+
+    % Test 1.5: adding new data with height=4 (seedtree height=1)
+    TargetTreeNodeNum5 = 800,
+    TargetTreeHeight5 = log_n_ceil(4, TargetTreeNodeNum5),
+    ?debugVal(TargetTreeHeight5),
+    {Nodes5, Fd5, RootPos5} = create_random_nodes_and_packed_tree(
+        251, TargetTreeNodeNum5, 4),
+    Seedtree5_1 = seedtree_init(Fd5, RootPos5, 1),
+    ?debugVal(Seedtree5_1),
+    Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
+    {ok, Result5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
+    ?debugVal(Result5),
+    {ok, ResultPos5} = write_parent(Fd5, Result5),
+    ?debugVal(ResultPos5),
+    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
+    ?assertEqual(1051, length(Lookup5)),
+    LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
+    ?assertEqual([5], LeafDepths5).
+
+seedtree_write_case2_test() ->
+    % Test "Case 2: input R-tree is not shorter than the level of the
+    % target node" (chapter 6.2)
+    % Test 2.1: input tree is too high (1 level)
+    TargetTreeNodeNum = 25,
+    % NOTE vmx: wonder why this tree is not really dense
+    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
+            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
+    ?debugVal(TargetTreeHeight),
+    ?debugVal(RootPos),
+    Nodes1 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,80)),
+
+    Seedtree1 = seedtree_init(Fd, RootPos, 1),
+    ?debugVal(Seedtree1),
+    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
+    {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    ?debugVal(Result1),
+    {ok, ResultPos1} = write_parent(Fd, Result1),
+    ?debugVal(ResultPos1),
+    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    ?assertEqual(105, length(Lookup1)),
+    LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
+    ?assertEqual([4], LeafDepths1),
+
+    % Test 2.2: input tree is too high (2 levels)
+    Nodes2 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,300)),
+
+    Seedtree2_2 = seedtree_insert_list(Seedtree1, Nodes2),
+    {ok, Result2} = seedtree_write(Fd, Seedtree2_2, TargetTreeHeight),
+    ?debugVal(Result2),
+    {ok, ResultPos2} = write_parent(Fd, Result2),
+    ?debugVal(ResultPos2),
+    {ok, Lookup2} = vtree:lookup(Fd, ResultPos2, {0,0,1001,1001}),
+    ?assertEqual(325, length(Lookup2)),
+    LeafDepths2 = vtreestats:leaf_depths(Fd, ResultPos2),
+    ?assertEqual([5], LeafDepths2),
+
+    % Test 2.3: input tree is too high (1 level) and procudes split
+    % (seedtree height=1)
+    TargetTreeNodeNum3 = 64,
+    TargetTreeHeight3 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum3),
+    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
+        50, TargetTreeNodeNum3, ?MAX_FILLED),
+
+    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 1),
+    ?debugVal(Seedtree3_1),
+    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
+    {ok, Result3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
+    ?debugVal(Result3),
+    {ok, ResultPos3} = write_parent(Fd3, Result3),
+    ?debugVal(ResultPos3),
+    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
+    ?assertEqual(114, length(Lookup3)),
+    LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
+    ?assertEqual([3], LeafDepths3),
+
+    % Test 2.4: input tree is too high (1 level) and produces multiple
+    % splits (recusively) (seedtree height=2)
+    % XXX vmx: not really sure if there's more than one split
+    TargetTreeNodeNum4 = 196,
+    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
+    ?debugVal(TargetTreeHeight4),
+    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
+        50, TargetTreeNodeNum4, 4),
+    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 2),
+    ?debugVal(Seedtree4_1),
+    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
+    {ok, Result4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+    ?debugVal(Result4),
+    {ok, ResultPos4} = write_parent(Fd4, Result4),
+    ?debugVal(ResultPos4),
+    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
+    ?assertEqual(246, length(Lookup4)),
+    LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4),
+    ?assertEqual([4], LeafDepths4),
+
+    % Test 2.5: input tree is too high (2 levels) and produces multiple
+    % splits (recusively) (seedtree height=2)
+    % XXX vmx: not really sure if there's more than one split
+    TargetTreeNodeNum5 = 196,
+    TargetTreeHeight5 = log_n_ceil(4, TargetTreeNodeNum5),
+    ?debugVal(TargetTreeHeight5),
+    {Nodes5, Fd5, RootPos5} = create_random_nodes_and_packed_tree(
+        100, TargetTreeNodeNum5, 4),
+    Seedtree5_1 = seedtree_init(Fd5, RootPos5, 2),
+    ?debugVal(Seedtree5_1),
+    Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
+    {ok, Result5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
+    ?debugVal(Result5),
+    {ok, ResultPos5} = write_parent(Fd5, Result5),
+    ?debugVal(ResultPos5),
+    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
+    ?assertEqual(296, length(Lookup5)),
+    LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
+    ?assertEqual([4], LeafDepths5).
+
+seedtree_write_case3_test() ->
+    % Test "Case 3: input R-tree is shorter than the level of the child level of the target node" (chapter 6.3)
+    % Test 3.1: input tree is too small (1 level)
+    TargetTreeNodeNum = 25,
+    % NOTE vmx: wonder why this tree is not really dense
+    {ok, {Fd, {RootPos, TargetTreeHeight}}} = vtree_test:build_random_tree(
+            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
+    ?debugVal(TargetTreeHeight),
+    ?debugVal(RootPos),
+    Nodes1 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,12)),
+
+    Seedtree1 = seedtree_init(Fd, RootPos, 1),
+    ?debugVal(Seedtree1),
+    Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
+    {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    ?debugVal(Result1),
+    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
+    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    ?assertEqual(37, length(Lookup1)),
+    LeafDepths = vtreestats:leaf_depths(Fd, ResultPos1),
+    ?assertEqual([3], LeafDepths),
+
+    % Test 3.2: input tree is too small (2 levels)
+    TargetTreeNodeNum2 = 80,
+    % NOTE vmx: wonder why this tree is not really dense
+    {ok, {Fd2, {RootPos2, TargetTreeHeight2}}} = vtree_test:build_random_tree(
+            "/tmp/seedtree_write.bin", TargetTreeNodeNum2),
+    ?debugVal(TargetTreeHeight2),
+    ?debugVal(RootPos2),
+
+    Nodes2 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,12)),
+
+    Seedtree2_1 = seedtree_init(Fd2, RootPos2, 1),
+    ?debugVal(Seedtree2_1),
+    Seedtree2_2 = seedtree_insert_list(Seedtree2_1, Nodes2),
+    {ok, Result2} = seedtree_write(Fd2, Seedtree2_2, TargetTreeHeight2),
+    ?debugVal(Result2),
+    {ok, ResultPos2} = write_parent(Fd2, Result2),
+    ?debugVal(ResultPos2),
+    {ok, Lookup2_1} = vtree:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
+    ?assertEqual(92, length(Lookup2_1)),
+    LeafDepths2 = vtreestats:leaf_depths(Fd2, ResultPos2),
+    ?assertEqual([5], LeafDepths2),
+
+    % Test 3.3: input tree is too small (1 level) and procudes split
+    % (seedtree height=1)
+    TargetTreeNodeNum3 = 64,
+    TargetTreeHeight3 = log_n_ceil(?MAX_FILLED, TargetTreeNodeNum3),
+    {Nodes3, Fd3, RootPos3} = create_random_nodes_and_packed_tree(
+        4, TargetTreeNodeNum3, ?MAX_FILLED),
+
+    Seedtree3_1 = seedtree_init(Fd3, RootPos3, 1),
+    ?debugVal(Seedtree3_1),
+    Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
+    {ok, Result3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
+    ?debugVal(Result3),
+    % Several parents => create new root node
+    {ok, ResultPos3} = write_parent(Fd3, Result3),
+    ?debugVal(RootPos3),
+    ?debugVal(ResultPos3),
+    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
+    ?assertEqual(68, length(Lookup3)),
+    LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
+    ?assertEqual([3], LeafDepths3),
+
+
+    % Test 3.4: input tree is too small (1 level) and produces multiple
+    % splits (recusively) (seedtree height=2)
+    TargetTreeNodeNum4 = 196,
+    TargetTreeHeight4 = log_n_ceil(4, TargetTreeNodeNum4),
+    ?debugVal(TargetTreeHeight4),
+    {Nodes4, Fd4, RootPos4} = create_random_nodes_and_packed_tree(
+        4, TargetTreeNodeNum4, 4),
+    Seedtree4_1 = seedtree_init(Fd4, RootPos4, 2),
+    ?debugVal(Seedtree4_1),
+    Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
+    {ok, Result4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+    ?debugVal(RootPos4),
+    ?debugVal(Result4),
+    {ok, ResultPos4} = write_parent(Fd4, Result4),
+    ?debugVal(ResultPos4),
+    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
+    ?assertEqual(200, length(Lookup4)),
+    LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4),
+    ?assertEqual([4], LeafDepths4),
+
+
+    % Test 3.5: input tree is too small (2 levels) and produces multiple
+    % splits (recusively) (seedtree height=2)
+    TargetTreeNodeNum5 = 768,
+    TargetTreeHeight5 = log_n_ceil(4, TargetTreeNodeNum5),
+    ?debugVal(TargetTreeHeight5),
+    {Nodes5, Fd5, RootPos5} = create_random_nodes_and_packed_tree(
+        4, TargetTreeNodeNum5, 4),
+    Seedtree5_1 = seedtree_init(Fd5, RootPos5, 2),
+    ?debugVal(Seedtree5_1),
+    Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
+    {ok, Result5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
+    ?debugVal(Result5),
+    {ok, ResultPos5} = couch_file:append_term(Fd5, hd(Result5)),
+    ?debugVal(ResultPos5),
+    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
+    ?assertEqual(772, length(Lookup5)),
+    LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
+    ?assertEqual([4], LeafDepths5).
