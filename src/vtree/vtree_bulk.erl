@@ -25,8 +25,8 @@
 -define(LOG_DEBUG(Msg), io:format(user, "DEBUG: ~p~n", [Msg])).
 
 % Nodes maximum filling grade (TODO vmx: shouldn't be hard-coded)
--define(MAX_FILLED, 40).
-%-define(MAX_FILLED, 4).
+%-define(MAX_FILLED, 40).
+-define(MAX_FILLED, 4).
 
 % {ok, Fd} = couch_file:open("/tmp/seedtree_write.bin").
 % {ok, Fd} = couch_file:open("/tmp/omt.bin").
@@ -53,6 +53,8 @@
 
 -type seedtree_root() :: tuple().
 -type seedtree_node() :: tuple().
+
+-type mbr() :: {number(), number(), number(), number()}.
 
 % @doc Bulk load a tree
 bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) when TargetTreeHeight==0 ->
@@ -85,41 +87,155 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
     Outliers = Seedtree2#seedtree_root.outliers,
     OutliersNum = length(Outliers),
 
-    % XXX vmx: GO ON HERE if insertion of subtrees with the normal
-    % split algorithms is possible. Till then Seedtree3 is not used.
     Seedtree3 = if
+    % If there is a huge number of outliers, insert them as whole new subtree
+    % afterwards
     OutliersNum > 1000 ->
-        {Omt, OmtHeight} = vtree_bulk:omt_load(Nodes, ?MAX_FILLED),
-        {ok, MbrAndPosList} = vtree_bulk:omt_write_tree(Fd, Omt),
-
-        % XXX vmx: Depeding on the height of the tree that gets
-        %     inserted, insert one tree into the other. Use a new function
-        %     called force_insert for it.
-        %force_insert(Fd, TargetTree - OmtHeight, MbrAndPosList),
-        %     Afterwards, run the bulk load algorithm again. The seedtree
-        %     also needs to be recreated
-        % NOTE vmx: wait, a new idea. You could insert the normal nodes
-        %     First, and the outliers afterwards.
-
         Seedtree2#seedtree_root{outliers=[]};
     true ->
         Seedtree2
     end,
 
-    {ok, Result} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    {ok, Result} = seedtree_write(Fd, Seedtree3, TargetTreeHeight),
     % NOTE vmx: I assume that the height can't change more than 1 level
     %     at a time, not really sure though
-    {NewPos, NewHeight} = case length(Result) of
+    {NewPos, NewHeight, NewMbr} = case length(Result) of
     % single node as root
     1 ->
         {ok, ResultPos} = couch_file:append_term(Fd, hd(Result)),
-        {ResultPos, TargetTreeHeight};
+        {ResultPos, TargetTreeHeight, element(1, Result)};
     % multiple nodes
     _ ->
         {ok, ResultPos} = write_parent(Fd, Result),
-        {ResultPos, TargetTreeHeight+1}
+        {ResultPos, TargetTreeHeight+1, vtree:calc_nodes_mbr(Result)}
     end,
-    {ok, NewPos, NewHeight}.
+
+
+    % Insert outliers as whole subtree
+    {NewPos2, NewHeight2} = if
+        OutliersNum > 1000 -> insert_outliers(
+                Fd, NewPos, NewMbr, NewHeight, Nodes);
+        true -> {NewPos, NewHeight}
+    end,
+    {ok, NewPos2, NewHeight2}.
+
+
+% @doc If there is a huge number of outliers, we bulk load them into a new
+% tree and insert that tree directly to the original target tree.
+insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
+    {Omt, OmtHeight} = vtree_bulk:omt_load(Nodes, ?MAX_FILLED),
+    {ok, MbrAndPosList} = vtree_bulk:omt_write_tree(Fd, Omt),
+    ?debugVal(TargetHeight),
+    ?debugVal(OmtHeight),
+    ?debugVal(MbrAndPosList),
+    ?debugVal(TargetPos),
+
+    {Mbrs, PosList} = lists:unzip(MbrAndPosList),
+    MergedMbr = vtree:calc_mbr([TargetMbr|Mbrs]),
+
+    % OmtHeight - 1 because this node might contain several children
+    case TargetHeight - (OmtHeight - 1) of
+    % Both, the new bulk loaded tree and targt tree have the same height
+    % => create new common root
+    Diff when Diff == 0 ->
+?debugMsg("same height"),
+        if
+        length(MbrAndPosList) + 1 =< ?MAX_FILLED ->
+?debugMsg("foo"),
+            ?debugVal(MbrAndPosList),
+            %Mbrs = [Mbr || {Mbr, Pos} <- MbrAndPosList],
+            %NewRootNodes = [{Mbr, #node{type=inner},Pos} ||
+            %        {Mbr, Pos} <- [{TargetMbr, TargetPos}|MbrAndPosList]],
+            %MergedMbr = vtree:calc_nodes_mbr([TargetMbr|MbrAndPosList]),
+            %MergedMbr = vtree:calc_nodes_mbr(NewRootNodes),
+            %?debugVal(NewRootNodes),
+            %NewRootNodesPos = write_nodes(Fd, NewRootNodes),
+            %?debugVal(NewRootNodesPos),
+            NewRootNode = {MergedMbr, #node{type=leaf}, [TargetPos|PosList]},
+            {ok, NewOmtPos} = couch_file:append_term(Fd, NewRootNode),
+            {NewOmtPos, TargetHeight+1};
+        % split the node and create new root node
+        true ->
+?debugMsg("bar"),
+            % NOTE vmx: These are not a normal nodes. The last element in the
+            %     tuple is not the position of the children, but the position
+            %     of the node itself.
+            % XXX vmx: is type=inner always right?
+            NewChildren = [{Mbr, #node{type=inner}, Pos} || {Mbr, Pos} <-
+                    [{TargetMbr, TargetPos}|MbrAndPosList]],
+            NodeToSplit = {MergedMbr, #node{type=inner}, NewChildren},
+            {SplittedMbr, {Node1Mbr, _, _}=Node1, {Node2Mbr, _, _}=Node2} =
+                    vtree:split_node(NodeToSplit),
+            {ok, NewOmtPos} = write_parent(Fd, [Node1|[Node2]]),
+            {NewOmtPos, TargetHeight+1}
+        end;
+    % insert new tree into target tree
+    Diff when Diff > 0 ->
+?debugMsg("target tree higher"),
+        {ok, _, SubPos} = insert_subtree(Fd, TargetPos, MbrAndPosList, Diff),
+        {SubPos, TargetHeight};
+    % insert target tree into new tree
+    Diff when Diff < 0 ->
+?debugMsg("target tree smaller"),
+        case length(MbrAndPosList) of
+        1 ->
+            {OmtMbr, OmtPos} = hd(MbrAndPosList),
+            OmtRootNode = {OmtMbr, #node{type=inner}, OmtPos},
+            {ok, NewOmtPos} = couch_file:append_term(Fd, OmtRootNode),
+            {ok, _, SubPos} = insert_subtree(
+                    Fd, NewOmtPos, [{TargetPos, TargetMbr}], Diff),
+            {SubPos, TargetHeight};
+        _ ->
+            OmtRootNodes = [{Mbr, #node{type=inner}, Pos} ||
+                    {Mbr, Pos} <- MbrAndPosList],
+            {ok, NewOmtPos} = write_parent(Fd, OmtRootNodes),
+            % Diff+1 as we created a new root node
+            {ok, _, SubPos} = insert_subtree(
+                    Fd, NewOmtPos, [{TargetPos, TargetMbr}], Diff+1),
+            {SubPos, TargetHeight+1}
+        end
+    end.
+
+
+insert_outliers_test_foo() ->
+    %insert_outliers(Fd, RootPos, TargetTreeHeight, Nodes).
+
+    % Test 1: insert nodes that result in a tree with same height. Outliers
+    % build tree with several nodes at the root level. Rootnodes from newly
+    % created tree and rootnodes from target tree fit into one node, there's
+    % no need for a split of the root node.
+    TargetTreeNodeNum = 25,
+    % NOTE vmx: wonder why this tree is not really dense
+    {ok, {Fd, {TargetPos, TargetHeight}}} = vtree_test:build_random_tree(
+            "/tmp/seedtree_write.bin", TargetTreeNodeNum),
+    {ok, {TargetMbr, _, _}} = couch_file:pread_term(Fd, TargetPos),
+    ?debugVal(TargetHeight),
+    ?debugVal(TargetPos),
+    ?debugVal(TargetMbr),
+    Nodes1 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,300)),
+
+    {ResultPos1, ResultHeight1} = insert_outliers(
+            Fd, TargetPos, TargetMbr, TargetHeight, Nodes1),
+    ?debugVal(ResultPos1),
+    ?debugVal(ResultHeight1),
+
+    ?assertEqual(5, ResultHeight1),
+    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    %?assertEqual(325, length(Lookup1)),
+    LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
+    ?assertEqual([4], LeafDepths1),
+
+    % Test 2: insert nodes that result in a tree with same height. Outliers
+    % build tree with only one node at the root level.
+
+
+    ok.
+
 
 
 % @doc Lookup a bounding box in the tree. Return the path to the node. Every
@@ -520,6 +636,8 @@ seedtree_write(Fd, Seedtree, TargetHeight) ->
 
     RootNodes = if
     length(Level) == 1 ->
+?debugMsg("Level"),
+?debugVal(Level),
     %    hd(Level);
         %Level;
         %[{Mbr, _, Pos}] = Level,
@@ -678,6 +796,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
 %        ?debugVal(OmtTree),
 
         NewChildren = seedtree_write_insert(Fd, Orig, OmtTree),
+        ?debugVal(NewChildren),
         MbrAndPos = seedtree_write_finish(NewChildren);
     % insert tree is too small => expand seedtree
     HeightDiff > 0 ->
@@ -870,6 +989,15 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
 % Returns a tuple with the MBR and the position of the root node in the file
 -spec seedtree_write_insert(Fd::file:io_device(), Orig::list(),
         OmtTree::omt_node()) -> [{tuple(), integer()}].
+% Leaf node. We won't do the repacking dance, as we are on the lowest
+% level already. Thus we just insert the new nodes
+seedtree_write_insert(Fd, Orig, OmtTree) when is_tuple(hd(Orig)) ->
+    ?debugVal(OmtTree),
+    NewNodes = Orig ++ OmtTree,
+    ParentMbr = vtree:calc_nodes_mbr(NewNodes),
+?debugVal(NewNodes),
+    [{ParentMbr, NewNodes}];
+% Inner node, do some repacking.
 seedtree_write_insert(Fd, Orig, OmtTree) ->
     % write the OmtTree to to disk.
     {ok, OmtMbrAndPos} = omt_write_tree(Fd, OmtTree),
@@ -882,7 +1010,6 @@ seedtree_write_insert(Fd, Orig, OmtTree) ->
     % We do some repacking for better perfomance. First get the children
     % of the target node where the new nodes will be inserted in
     TargetChildren = load_nodes(Fd, Orig),
-%    ?debugVal(TargetChildren),
 
     % Transform the target nodes from normal ones to tuples where the
     % meta information is replaced with the position of the node in
@@ -928,7 +1055,6 @@ seedtree_write_insert(Fd, Orig, OmtTree) ->
     end,
     %PosToRepack2 = lists:append(PosToRepack),
     %NodesToRepack = load_nodes(Fd, PosToRepack2),
-%    ?debugVal(NodesToRepack),
 
     % Transform the nodes to repack from normal ones to tuples (consisting
     % of the MBR and the position where the node in the file (or the nodes
@@ -1028,8 +1154,16 @@ seedtree_write_finish(NewChildren) ->
     % the children positions in file it encloses
     NewChildrenMbrAndPos = lists:reverse(lists:foldl(fun(Nodes, Acc) ->
         {Mbrs, Poss} = lists:unzip(Nodes),
+        % Poss might be actual nodes, if it is a leaf node. Then they
+        % are already wrapped in a list.
+?debugVal(Poss),
+        Poss2 = if
+            is_list(hd(Poss)) -> hd(Poss);
+            true -> Poss
+        end,
+?debugVal(Poss2),
         Mbr = vtree:calc_mbr(Mbrs),
-        [{Mbr, Poss}|Acc]
+        [{Mbr, Poss2}|Acc]
     end, [], NewChildren3)),
 %    ?debugVal(NewChildrenMbrAndPos),
 
@@ -1069,33 +1203,131 @@ write_nodes(Fd, [H|T], Acc) ->
 
 % @doc Write a list of of nodes to disk with corresponding parent node. Return
 %     the postion of the parent node in the file.
--spec write_parent(Fd::file:io_device(), Nodes::[{tuple(), integer()}]) ->
-        {ok, integer()}.
+-spec write_parent(Fd::file:io_device(),
+        Nodes::[{tuple(), tuple(), integer()}]) -> {ok, integer()}.
 write_parent(Fd, Nodes) ->
     ParentMbr = vtree:calc_nodes_mbr(Nodes),
     ChildrenPos = write_nodes(Fd, Nodes),
     {ok, ParentPos} = couch_file:append_term(
          Fd, {ParentMbr, #node{type=inner}, ChildrenPos}),
     {ok, ParentPos}.
-%% @doc Write a list of MBR-and-childrenposition tuples to disk and returns
-%%     the position in the file.
-%-spec write_mbr_and_pos_list(Fd::file:io_device(),
-%        MbrAndPosList::[{tuple(), integer()}]) -> {ok, integer()}.
-%write_mbr_and_pos_list(Fd, MbrAndPosList) ->
-%    write_mbr_and_pos_list(Fd, MbrAndPosList, #node{type=inner}).
-%-spec write_mbr_and_pos_list(Fd::file:io_device(),
-%        MbrAndPosList::[{tuple(), integer()}], Meta::tuple()) ->
-%        {ok, integer()}.
-%write_mbr_and_pos_list(Fd, MbrAndPosList, Meta) ->
-%    Nodes = [{Mbr, Meta, Pos} || {Mbr, Pos} <- MbrAndPosList],
-%    ParentMbr = vtree:calc_nodes_mbr(Nodes),
-%    ChildrenPos = write_nodes(Fd, Nodes),
-%    {ok, ParentPos} = couch_file:append_term(
-%         Fd, {ParentMbr, #node{type=inner}, ChildrenPos}),
-%    {ok, ParentPos}.
 
 
+% @doc Create a new root node for a list of tuples containing MBR and postion
+% in the file. Returns the new enclosing MBR and position in the file.
+-spec write_root(Fd::file:io_device(),
+        MbrAndPos::[{mbr(), integer()}]) -> {ok, integer()}.
+write_root(Fd, MbrAndPos) ->
+    {Mbrs, PosList} = lists:unzip(MbrAndPos),
+    ParentMbr = vtree:calc_mbr(Mbrs),
+    {ok, ParentPos} = couch_file:append_term(
+         Fd, {ParentMbr, #node{type=inner}, PosList}),
+    {ParentMbr, ParentPos}.
 
+
+% @doc inserts a subtree into an vtree at a specific level. Returns the
+% MBR and position in the file of the new root node.
+-spec insert_subtree(Fd::file:io_device(), RootPos::integer(),
+        Subtree::{mbr(), integer()}, Level::integer()) ->
+        {ok, mbr(), integer()}.
+insert_subtree(Fd, RootPos, Subtree, Level) ->
+    insert_subtree(Fd, RootPos, Subtree, Level, 0).
+
+-spec insert_subtree(Fd::file:io_device(), RootPos::integer(),
+        Subtree::{mbr(), integer()}, Level::integer(), Depth::integer()) ->
+        {ok, integer()}.
+insert_subtree(Fd, RootPos, Subtree, Level, Depth) when Depth==Level ->
+    {SubtreeMbr, SubtreePos} = Subtree,
+    {ok, Parent} = couch_file:pread_term(Fd, RootPos),
+    {ParentMbr, ParentMeta, EntriesPos} = Parent,
+    MergedMbr = vtree:merge_mbr(SubtreeMbr, ParentMbr),
+
+    ChildrenPos = [SubtreePos|EntriesPos],
+    if
+    length(ChildrenPos) =< ?MAX_FILLED ->
+        NewNode = {MergedMbr, ParentMeta, ChildrenPos},
+        {ok, Pos} = couch_file:append_term(Fd, NewNode),
+        {ok, MergedMbr, Pos};
+    true ->
+        %io:format("We need to split (leaf node)~n~p~n", [LeafNode]),
+        Children = load_nodes(Fd, ChildrenPos),
+        {SplittedMbr, {Node1Mbr, _, _}=Node1, {Node2Mbr, _, _}=Node2}
+                = vtree:split_node(MergedMbr, #node{type=inner}, Children),
+        {ok, Pos1} = couch_file:append_term(Fd, Node1),
+        {ok, Pos2} = couch_file:append_term(Fd, Node2),
+        {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2}}
+    end;
+insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
+    {SubtreeMbr, SubtreePos} = Subtree,
+    ?debugVal(RootPos),
+    {ok, Parent} = couch_file:pread_term(Fd, RootPos),
+    {ParentMbr, _ParentMeta, EntriesPos} = Parent,
+    {{_LeastMbr, LeastPos}, LeastRest} = least_expansion(
+            Fd, SubtreeMbr, EntriesPos),
+    case insert_subtree(Fd, LeastPos, Subtree, Level, Depth+1) of
+    {ok, NewMbr, NewPos} ->
+        MergedMbr = vtree:merge_mbr(ParentMbr, NewMbr),
+        LeastRestPos = [Pos || {Mbr, Pos} <- LeastRest],
+        NewNode = {MergedMbr, #node{type=inner}, [NewPos|LeastRestPos]},
+        {ok, Pos} = couch_file:append_term(Fd, NewNode),
+        {ok, NewMbr, Pos};
+    {splitted, ChildMbr, {Child1Mbr, ChildPos1}, {Child2Mbr, ChildPos2}} ->
+        MergedMbr = vtree:merge_mbr(ParentMbr, ChildMbr),
+        LeastRestPos = [Pos || {Mbr, Pos} <- LeastRest],
+        if
+        % Both nodes of the split fit in the current inner node
+        length(EntriesPos)+2 =< ?MAX_FILLED ->
+            ChildrenPos = LeastRestPos ++ ChildPos1 ++ ChildPos2,
+            NewNode = {MergedMbr, #node{type=inner}, ChildrenPos},
+            {ok, Pos} = couch_file:append_term(Fd, NewNode),
+            {ok, MergedMbr, Pos};
+        % We need to split the inner node
+        true ->
+            Child1 = {Child1Mbr, #node{type=inner}, ChildPos1},
+            Child2 = {Child2Mbr, #node{type=inner}, ChildPos2},
+            Children = load_nodes(Fd, LeastRest) ++ Child1 ++ Child2,
+            {SplittedMbr, {Node1Mbr, _, _}=Node1, {Node2Mbr, _, _}=Node2}
+                    = vtree:split_node(MergedMbr, #node{type=inner}, Children),
+            {ok, Pos1} = couch_file:append_term(Fd, Node1),
+            {ok, Pos2} = couch_file:append_term(Fd, Node2),
+            {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2}}
+        end
+    end.
+
+
+% XXX vmx: needs tests
+% @doc Find the node that needs least expension for the given MBR and returns
+% the MBR and positio of the node together with the original children MBRs and
+% positions in the file.
+-spec least_expansion(Fd::file:io_device(), NewMbr::mbr,
+        PosList::[integer()]) -> {{mbr, integer()}, [{mbr, integer()}]}.
+least_expansion(Fd, NewMbr, PosList) ->
+    Nodes = load_nodes(Fd, PosList),
+    ?debugVal(Nodes),
+    NodesAndPos = lists:zip(Nodes, PosList),
+    MbrAndPos = [{Mbr, Pos} || {{Mbr, _, _}, Pos} <- NodesAndPos],
+    ?debugVal(MbrAndPos),
+
+    % Find node that matches best (least expansion of MBR)
+    {_, _, Nth} = lists:foldl(fun({Mbr, Pos}, {MinExp, Nth2, Cnt}) ->
+        MergedMbr = vtree:merge_mbr(NewMbr, Mbr),
+        % if there is a element which need less expansion, put the info
+        % into the accumulator
+        case vtree:area(MergedMbr) - vtree:area(Mbr) of
+        Exp when Exp < MinExp orelse (MinExp==-1) ->
+            {Exp, Cnt, Cnt+1};
+        _ ->
+            {MinExp, Nth2, Cnt+1}
+        end
+    end, {-1, 0, 0}, MbrAndPos),
+    ?debugVal(Nth),
+
+    % Remove the child where the node will be inserted
+    {C1, C2} = lists:split(Nth-1, MbrAndPos),
+    %C3 = tl(C2),
+    %MbrAndPosRest = C1 ++ C3,
+    %?debugVal(MbrAndPosRest),
+    {hd(C2), C1 ++ tl(C2)}.
 
 %insert_onebyone(Fd, RootPos, Nodes) ->
 %    NewRootPos = lists:foldl(fun(
@@ -1104,6 +1336,7 @@ write_parent(Fd, Nodes) ->
 %                Fd, CurPos, DocId, {Mbr, Meta, Value}),
 %        CurPos2
 %    end, RootPos, Nodes). 
+
 
 
 %%%%% Helpers %%%%%
@@ -1221,6 +1454,7 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
 
 %%%%% Tests %%%%%
 
+%-ifdef(runnall).
 
 % XXX vmx: tests with function (check_list/6 ) are missing
 chunk_list_test() ->
@@ -1624,7 +1858,6 @@ seedtree_init_test() ->
          [], 3},
         SeedTree2).
 
-
 seedtree_write_single_test() ->
     % insert single new node
     TargetTreeNodeNum = 7,
@@ -1646,6 +1879,7 @@ seedtree_write_single_test() ->
     {ok, Result1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
     ?debugVal(Result1),
     {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
+    ?debugVal(ResultPos1),
     {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     ?assertEqual(8, length(Lookup1)),
     LeafDepths = vtreestats:leaf_depths(Fd, ResultPos1),
@@ -1976,3 +2210,37 @@ seedtree_write_case3_test() ->
     ?assertEqual(772, length(Lookup5)),
     LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
     ?assertEqual([4], LeafDepths5).
+
+
+insert_subtree_test() ->
+    {ok, {Fd, {RootPos, TreeHeight}}} = vtree_test:build_random_tree(
+            "/tmp/randtree.bin", 20),
+    ?debugVal(RootPos),
+    ?debugVal(TreeHeight),
+
+    Nodes1 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"subtree">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,5)),
+
+
+    {Omt1, SubtreeHeight1} = omt_load(Nodes1, ?MAX_FILLED),
+    ?debugVal(SubtreeHeight1),
+    {ok, MbrAndPosList1} = omt_write_tree(Fd, Omt1),
+
+    Result1 = lists:map(fun(MbrAndPos) ->
+        {ok, NewMbr, NewPos} = insert_subtree(Fd, RootPos, MbrAndPos, 2),
+        ?debugVal(NewPos),
+
+        {ok, Lookup} = vtree:lookup(Fd, NewPos, {0,0,1001,1001}),
+        %?assertEqual(76, length(Lookup)),
+        LeafDepths = vtreestats:leaf_depths(Fd, NewPos),
+        %?assertEqual([3], LeafDepths)
+        {length(Lookup), LeafDepths}
+    end, MbrAndPosList1),
+
+    ?assertEqual([{23, [3]}, {22, [3]}], Result1).
+
+%-endif.
