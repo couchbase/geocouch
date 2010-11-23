@@ -35,6 +35,7 @@ start() ->
     test_calc_overlap(),
     test_insert(),
     test_delete(),
+    test_split_node(),
 
     etap:end_tests().
 
@@ -678,6 +679,25 @@ test_delete() ->
             "Node can't be found (tree height=2)"),
     ok.
 
+
+test_split_node() ->
+    etap:plan(3),
+
+    NodeToSplit1 =  {{52,45,969,960},{node,leaf}, [
+        {{52,320,597,856},{node,leaf},{<<"Node7">>,<<"Node7">>}},
+        {{270,179,584,331},{node,leaf},{<<"Node9">>,<<"Node9">>}},
+        {{441,502,580,960},{node,leaf},{<<"Node13">>,<<"Node13">>}},
+        {{462,520,543,911},{node,leaf},{<<"Node15">>,<<"Node15">>}},
+        {{493,45,969,938},{node,leaf},{<<"Node17">>,<<"Node17">>}}]},
+
+    {SplittedMbr1, Node1a, Node1b} = vtree:split_node(NodeToSplit1),
+    etap:is(SplittedMbr1, vtree:calc_nodes_mbr(element(3, NodeToSplit1)),
+        "Split node with one item too much (MBR is right)"),
+    etap:is(length(element(3, Node1a)), 3,
+        "Split node with one item too much (correct number of children (a))"),
+    etap:is(length(element(3, Node1b)), 2,
+        "Split node with one item too much (correct number of children (b))"),
+    ok.
 
 -spec build_random_tree(Filename::string(), Num::integer()) ->
         {ok, {file:io_device(), {integer(), integer()}}} | {error, string()}.

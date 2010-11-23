@@ -16,7 +16,7 @@
          area/1, merge_mbr/2, find_area_min_nth/1, partition_node/1,
          calc_nodes_mbr/1, calc_mbr/1, best_split/1, minimal_overlap/2,
          calc_overlap/2, minimal_coverage/2, delete/4, add_remove/5,
-         split_flipped_bbox/2, count_lookup/3]).
+         split_flipped_bbox/2, count_lookup/3, split_node/1]).
 
 -export([get_node/2]).
 -export([foldl_stop/3]).
@@ -30,10 +30,10 @@
 % Design question: Should not fully filled nodes have only as many members as nodes, or be filled up with nils to their maximum number of nodes? - Current implementation is the first one (dynamic number of members).
 
 % Nodes maximum/minimum filling grade (TODO vmx: shouldn't be hard-coded)
--define(MAX_FILLED, 40).
--define(MIN_FILLED, 20).
-%-define(MAX_FILLED, 4).
-%-define(MIN_FILLED, 2).
+%-define(MAX_FILLED, 40).
+%-define(MIN_FILLED, 20).
+-define(MAX_FILLED, 4).
+-define(MIN_FILLED, 2).
 
 
 % NOTE vmx: At the moment "leaf" is used for the nodes that
