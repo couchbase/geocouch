@@ -34,7 +34,7 @@ start() ->
     test_minimal_coverage(),
     test_calc_overlap(),
     test_insert(),
-    %test_delete(),
+    test_delete(),
     test_split_node(),
 
     etap:end_tests().
@@ -604,11 +604,11 @@ test_delete() ->
     {Mbr3, _, _} = Node3,
     Mbr4_5 = {-5,-32,19,19},
 
-    {ok, Mbr1, 0} = vtree:insert(Fd, nil, <<"Node1">>, Node1),
-    {ok, Mbr1_2, Pos2} = vtree:insert(Fd, 0, <<"Node2">>, Node2),
-    {ok, Mbr1_2_3, Pos3} = vtree:insert(Fd, Pos2, <<"Node3">>, Node3),
-    {ok, Mbr1_2_3_4, Pos4} = vtree:insert(Fd, Pos3, <<"Node4">>, Node4),
-    {ok, Mbr1_2_3_4_5, Pos5} = vtree:insert(Fd, Pos4, <<"Node5">>, Node5),
+    {ok, Mbr1, 0, 1} = vtree:insert(Fd, nil, <<"Node1">>, Node1),
+    {ok, Mbr1_2, Pos2, 1} = vtree:insert(Fd, 0, <<"Node2">>, Node2),
+    {ok, Mbr1_2_3, Pos3, 1} = vtree:insert(Fd, Pos2, <<"Node3">>, Node3),
+    {ok, Mbr1_2_3_4, Pos4, 1} = vtree:insert(Fd, Pos3, <<"Node4">>, Node4),
+    {ok, Mbr1_2_3_4_5, Pos5, 2} = vtree:insert(Fd, Pos4, <<"Node5">>, Node5),
     Tree3 = {Mbr3, #node{type=leaf}, [Node3od]},
     Tree2_3 = {Mbr2_3, #node{type=leaf}, [Node2od, Node3od]},
     Tree4_5 = {Mbr4_5, #node{type=leaf}, [Node4od, Node5od]},
