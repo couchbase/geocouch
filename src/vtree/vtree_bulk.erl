@@ -125,7 +125,7 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
 % the position of the root node in file and the height of the tree.
 -spec insert_outliers(Fd::file:io_device(), TargetPos::integer(),
         TargetMbr::mbr(), TargetHeight::integer(),
-        Nodes::[{mbr(), tuple(), list()}] -> {integer(), integer()}.
+        Nodes::[{mbr(), tuple(), list()}]) -> {integer(), integer()}.
 insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
     {Omt, OmtHeight} = vtree_bulk:omt_load(Nodes, ?MAX_FILLED),
     {ok, MbrAndPosList} = vtree_bulk:omt_write_tree(Fd, Omt),
