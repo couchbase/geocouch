@@ -107,7 +107,7 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
     % multiple nodes
     _ ->
         {ok, ResultPos} = write_parent(Fd, Result),
-        {ResultPos, TargetTreeHeight+1, vtree:calc_nodes_mbr(Result)}
+        {ResultPos, TargetTreeHeight+2, vtree:calc_nodes_mbr(Result)}
     end,
 
     % Insert outliers as whole subtree
@@ -116,6 +116,7 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
                 Fd, NewPos, NewMbr, NewHeight, Nodes);
         true -> {NewPos, NewHeight}
     end,
+    ?debugVal(NewPos2),
     {ok, NewPos2, NewHeight2}.
 
 bulk_load_test() ->
@@ -152,15 +153,71 @@ bulk_load_test() ->
         [Node|Acc]
     end, [], lists:seq(1,20)),
 
-    {ok, Pos2, Height2} = bulk_load(Fd, Pos1, Height1, Nodes1),
+    {ok, Pos2, Height2} = bulk_load(Fd, Pos1, Height1, Nodes2),
     ?debugVal(Pos2),
-    ?assertEqual(2, Height2),
+    ?assertEqual(4, Height2),
     {ok, Lookup2} = vtree:lookup(Fd, Pos2, {0,0,1001,1001}),
-    ?assertEqual(14, length(Lookup2)),
+    ?assertEqual(27, length(Lookup2)),
     LeafDepths2 = vtreestats:leaf_depths(Fd, Pos2),
-    ?assertEqual([1], LeafDepths2),
+    ?assertEqual([3], LeafDepths2),
 
+    % Load some more nodes to find a bug where the tree gets unbalanced
+    
+    % This combination lead to a problem. Keep this test to prevent regression
+%    BulkSize3 = [20, 100, 18],
+%    Results3 = lists:foldl(fun(Size, Acc2) ->
+%        {RootPos, RootHeight, _} = hd(Acc2),
+%        Nodes = lists:foldl(fun(I, Acc) ->
+%            {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+%                vtree_test:random_node({I,27+I*329,45}),
+%            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
+%           [Node|Acc]
+%        end, [], lists:seq(1, Size)),
+%
+%        {ok, Pos, Height} = bulk_load(Fd, RootPos, RootHeight, Nodes),
+%        ?debugVal(Pos),
+%        %?assertEqual(2, Height3),
+%        {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
+%        ?debugVal(length(Lookup)),
+%        %?assertEqual(14, length(Lookup2)),
+%        LeafDepths = vtreestats:leaf_depths(Fd, Pos),
+%        %?assertEqual([1], LeafDepths2),
+%        [{Pos, Height, LeafDepths}|Acc2]
+%    end, [{Pos2, Height2, [0]}], BulkSize3),
+%    ?debugVal(Results3),
 
+    % unbalanced tree
+    %BulkSize4 = [20, 17, 8, 64, 100],
+    BulkSize4 = [100, 10, 100, 20],
+    % ::error:function_clause
+    % NOTE vmx: This error exists, because inner and leaf nodes are mixed at
+    %     the same level. I guess that's due to another bug. Will try to fix
+    %     other bugs first
+    %BulkSize4 = [100, 20, 100, 10, 10],
+    % undefined
+    % NOTE vmx: Same here, there's a problems with inner and leaf nodes at
+    %     the same level.
+    %BulkSize4 = [100, 100, 10, 10],
+    Results4 = lists:foldl(fun(Size, Acc2) ->
+        {RootPos, RootHeight, _} = hd(Acc2),
+        Nodes = lists:foldl(fun(I, Acc) ->
+            {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+                vtree_test:random_node({I,27+I*329,45}),
+            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
+           [Node|Acc]
+        end, [], lists:seq(1, Size)),
+
+        {ok, Pos, Height} = bulk_load(Fd, RootPos, RootHeight, Nodes),
+        ?debugVal(Pos),
+        %?assertEqual(2, Height3),
+        {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
+        ?debugVal(length(Lookup)),
+        %?assertEqual(14, length(Lookup2)),
+        LeafDepths = vtreestats:leaf_depths(Fd, Pos),
+        %?assertEqual([1], LeafDepths2),
+        [{Pos, Height, LeafDepths}|Acc2]
+    end, [{Pos2, Height2, [0]}], BulkSize4),
+    ?debugVal(Results4),
     ok.
 
 % @doc If there is a huge number of outliers, we bulk load them into a new
@@ -650,8 +707,8 @@ seedtree_write(Fd, Seedtree, TargetHeight) ->
     % NOTE vmx: not sure why this can't be done in the {level_done, _} case
     length(Level) > ?MAX_FILLED ->
 %        ?debugMsg("overflow"),
-        {Level2, _} = omt_load(Level, ?MAX_FILLED),
-        
+        {Level2, _Level2Height} = omt_load(Level, ?MAX_FILLED),
+
         Parents = lists:foldl(fun(Level3, LevelAcc) ->
             ParentMbr = vtree:calc_nodes_mbr(Level3),
             ChildrenPos = write_nodes(Fd, Level3),
@@ -861,6 +918,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         ?debugVal(length(OmtTrees)),
         % Insert the OMT trees one by one
         MbrAndPos2 = seedtree_write_insert(Fd, Orig, OmtTrees),
+?debugMsg("Foooooooo"),
         {NewMbrs, NewPos} = lists:unzip(MbrAndPos2),
 %        ?debugVal({NewMbrs, NewPos}),
 
@@ -908,6 +966,7 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
 %        ?debugMsg("Level done (fits in)"),
 %        ?debugVal(Level),
 %        ?debugVal(Acc),
+?debugMsg("Baaaaar"),
         %{Mbrs, Meta, Children} = lists:unzip3(lists:reverse(Level)),
         % XXX vmx: why is it a 3-tuple and not a 2-tuple? because
         %     of no_siblings? Are nodes not written yet?
@@ -931,16 +990,29 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
     {level_done, Level} when length(Level) > ?MAX_FILLED ->
 %        ?debugMsg("Level done (doesn't fit in)"),
 %        ?debugVal(Level),
+?debugMsg("Baaaaar"),
 
-        {Level2, _} = omt_load(Level, ?MAX_FILLED),
-        
-        Parents = lists:foldl(fun(Level3, LevelAcc) ->
-            ParentMbr = vtree:calc_nodes_mbr(Level3),
-            ChildrenPos = write_nodes(Fd, Level3),
+        {Level2, Level2Height} = omt_load(Level, ?MAX_FILLED),
+?debugVal(Level2Height),
+        Level3 = if
+        Level2Height > 2 ->
+            % Lets's try to flatten the list in case it is too deep
+            lists:foldl(fun(_I, ToAppend) ->
+                lists:append(ToAppend)
+            end, Level2, lists:seq(3, Level2Height));
+%            Level2;
+        true ->
+            Level2
+        end,
+
+        Parents = lists:foldl(fun(Level4, LevelAcc) ->
+            ParentMbr = vtree:calc_nodes_mbr(Level4),
+            ChildrenPos = write_nodes(Fd, Level4),
             % XXX vmx: Not sure if type=inner is always right
             Parent = {ParentMbr, #node{type=inner}, ChildrenPos},
             [Parent|LevelAcc]
-        end, Acc, Level2),
+        end, Acc, Level3),
+?debugMsg("Baaaaar"),
 %        ?debugVal(Parents),
         %{ok, [Parents|Acc]}
         {ok, Parents}
@@ -992,7 +1064,7 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
 % Leaf node. We won't do the repacking dance, as we are on the lowest
 % level already. Thus we just insert the new nodes
 seedtree_write_insert(Fd, Orig, OmtTree) when is_tuple(hd(Orig)) ->
-    ?debugVal(OmtTree),
+    %?debugVal(OmtTree),
     NewNodes = Orig ++ OmtTree,
     ParentMbr = vtree:calc_nodes_mbr(NewNodes),
     [{ParentMbr, NewNodes}];
@@ -1005,18 +1077,17 @@ seedtree_write_insert(Fd, Orig, OmtTree) ->
     % Get the enclosing MBR of the OMT nodes
     {OmtMbrs, _OmtPos} = lists:unzip(OmtMbrAndPos),
     OmtMbr = vtree:calc_mbr(OmtMbrs),
-
     % We do some repacking for better perfomance. First get the children
     % of the target node where the new nodes will be inserted in
     TargetChildren = load_nodes(Fd, Orig),
-
+?debugVal(TargetChildren),
     % Transform the target nodes from normal ones to tuples where the
     % meta information is replaced with the position of the node in
     % the file.
     TargetMbrAndPos = lists:zipwith(fun({Mbr, _, Children}, Pos) ->
         {Mbr, Pos, Children}
     end, TargetChildren, Orig),
-%    ?debugVal(TargetMbrAndPos),
+    ?debugVal(TargetMbrAndPos),
 
     % Get all nodes that are within or intersect with the input tree
     % root node
@@ -1029,40 +1100,49 @@ seedtree_write_insert(Fd, Orig, OmtTree) ->
     % Get the children of those nodes, that intersect the input MBR,
     % so that they can be repacked for better query performance
     PosToRepack = [Children || {_Mbr, _Pos, Children} <- NotDisjoint],
-%    ?debugVal(PosToRepack),
+    %?debugVal(PosToRepack),
 
     % And reduce the disjoint nodes to MBR and position in file only
     DisjointMbrAndPos = [{Mbr, Pos} || {Mbr, Pos, _Children} <- Disjoint],
-
+?debugMsg("still works"),
     % Get the actual nodes that should be repacked
     {NodesToRepack, OmtMbrAndPos2} = case lists:append(PosToRepack) of
     PosToRepack2 when is_tuple(hd(PosToRepack2)) ->
+?debugMsg("foo"),
         % Reached leaf nodes
-
         % OMT tree nodes are on the same level as those nodes =>
         % OMT tree nodes are leaf nodes => load those nodes
-        %PosToRepack2
-        [{_, OmtLeafsPos}] = OmtMbrAndPos,
-        {ok, {_, _, OmtLeafs}} = couch_file:pread_term(Fd, OmtLeafsPos),
-        %?debugVal(OmtLeafs),
-        OmtLeafsMbrAndLeaf = [{Mbr, Leaf} || {Mbr, _, _}=Leaf <- OmtLeafs],
+%        [{_, OmtLeafsPos}] = OmtMbrAndPos,
+%        {ok, {_, _, OmtLeafs}} = couch_file:pread_term(Fd, OmtLeafsPos),
+        OmtLeafsList = lists:map(fun({_, OmtLeafsPos}) ->
+            {ok, {_, _, OmtLeafs}} = couch_file:pread_term(Fd, OmtLeafsPos),
+            OmtLeafs
+        end, OmtMbrAndPos),
+        %?debugVal(OmtLeafsList),
+%        OmtLeafsMbrAndLeaf = [{Mbr, Leaf} || {Mbr, _, _}=Leaf <- OmtLeafs],
+        %OmtLeafsMbrAndLeaf = [{Mbr, Leaf} || {Mbr, _, _}=Leaf <- hd(OmtLeafsList)],
+        OmtLeafsMbrAndLeaf = [{Mbr, Leaf} || {Mbr, _, _}=Leaf <-
+                lists:append(OmtLeafsList)],
         %?debugVal(OmtLeafsMbrAndLeaf),
         {PosToRepack2, OmtLeafsMbrAndLeaf};
      PosToRepack2 ->
+?debugVal(PosToRepack2),
         %load_nodes(Fd, PosToRepack2)
         {load_nodes(Fd, PosToRepack2), OmtMbrAndPos}
     end,
+?debugMsg("still works"),
     %PosToRepack2 = lists:append(PosToRepack),
     %NodesToRepack = load_nodes(Fd, PosToRepack2),
-
     % Transform the nodes to repack from normal ones to tuples (consisting
     % of the MBR and the position where the node in the file (or the nodes
     % themselves if they are leaf nodes)
+%?debugVal(NodesToRepack),
+%?debugVal(PosToRepack2),
     ToRepackMbrAndPos = lists:zipwith(fun({Mbr, _, _}, Pos) ->
         {Mbr, Pos}
     end, NodesToRepack, PosToRepack2),
+?debugMsg("still works"),
 %    ?debugVal(ToRepackMbrAndPos),
-
     % XXX BUG vmx: here's the problem. NewNodesHeight gets 3!
     % XXX vmx: might not be the problem. But perhaps that NewNodes2 > ?MAX_FILLED
     % NOTE vmx: I don't think here's where the bug is. Perhaps the height was
@@ -1095,6 +1175,8 @@ seedtree_write_insert(Fd, Orig, OmtTree) ->
     % Therefore collect those nodes and see if the split is needed when
     % all nodes can be considered.
     NewNodes2 = case NewNodesHeight of
+    1 ->
+        [NewNodes];
     2 ->
         NewNodes;
     %3 -> 
@@ -1130,6 +1212,8 @@ seedtree_write_insert(Fd, Orig, OmtTree) ->
 %    ?debugVal(NewChildren),
     NewChildren.
 
+
+
 % @doc Creates new parent nodes out of a list of tuples containing MBRs and
 %     positions (splits as needed). Returns MBR and position in file of the
 %     new parent node(s)
@@ -1161,7 +1245,7 @@ seedtree_write_finish(NewChildren) ->
     false ->
         [NewChildren]
     end,
-    ?debugVal(NewChildren3),
+    %?debugVal(NewChildren3),
 
     
 
@@ -1496,6 +1580,7 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
 
 
 %%%%% Tests %%%%%
+
 
 -ifdef(runnall).
 
@@ -2136,7 +2221,26 @@ seedtree_write_case2_test() ->
     {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     ?assertEqual(296, length(Lookup5)),
     LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
-    ?assertEqual([4], LeafDepths5).
+    ?assertEqual([4], LeafDepths5),
+
+    % Test 2.6: input tree is too high (2 levels). Insert a OMT tree that
+    % leads to massive overflow
+    TargetTreeNodeNum6 = 20,
+    TargetTreeHeight6 = log_n_ceil(4, TargetTreeNodeNum6),
+    ?debugVal(TargetTreeHeight6),
+    {Nodes6, Fd6, RootPos6} = create_random_nodes_and_packed_tree(
+        200, TargetTreeNodeNum6, 4),
+    Seedtree6_1 = seedtree_init(Fd6, RootPos6, 2),
+    ?debugVal(Seedtree6_1),
+    Seedtree6_2 = seedtree_insert_list(Seedtree6_1, Nodes6),
+    {ok, Result6} = seedtree_write(Fd6, Seedtree6_2, TargetTreeHeight6),
+    ?debugVal(Result6),
+    {ok, ResultPos6} = write_parent(Fd6, Result6),
+    ?debugVal(ResultPos6),
+    {ok, Lookup6} = vtree:lookup(Fd6, ResultPos6, {0,0,1001,1001}),
+    ?assertEqual(220, length(Lookup6)),
+    LeafDepths6 = vtreestats:leaf_depths(Fd6, ResultPos6),
+    ?assertEqual([4], LeafDepths6).
 
 seedtree_write_case3_test() ->
     % Test "Case 3: input R-tree is shorter than the level of the child level of the target node" (chapter 6.3)
@@ -2428,5 +2532,38 @@ insert_outliers_test() ->
     ?assertEqual(41, length(Lookup6)),
     LeafDepths6 = vtreestats:leaf_depths(Fd, ResultPos6),
     ?assertEqual([3], LeafDepths6).
+
+seedtree_write_insert_test() ->
+    Filename = "/tmp/swi.bin",
+    Fd = case couch_file:open(Filename, [create, overwrite]) of
+    {ok, Fd2} ->
+        Fd2;
+    {error, _Reason} ->
+        io:format("ERROR: Couldn't open file (~s) for tree storage~n",
+                  [Filename])
+    end,
+
+    Nodes1 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,4)),
+    Nodes2 = lists:foldl(fun(I, Acc) ->
+        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            vtree_test:random_node({I,27+I*329,45}),
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"OMT">>], NodeData}},
+        [Node|Acc]
+    end, [], lists:seq(1,7)),
+
+    % This test will lead to an OMT tree with several nodes. There was a bug
+    % that couldn't handle it.
+    {OmtTree1, OmtHeight1} = omt_load(Nodes2, ?MAX_FILLED),
+    Mbr1 = vtree:calc_nodes_mbr(Nodes1),
+    {ok, Pos1} = couch_file:append_term(Fd, {Mbr1, #node{type=leaf}, Nodes1}),
+    Result1 = seedtree_write_insert(Fd, [Pos1], OmtTree1),
+    ?debugVal(Result1),
+    ?assertEqual(3, length(Result1)),
+    ok.
 
 -endif.
