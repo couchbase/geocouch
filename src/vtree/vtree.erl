@@ -323,7 +323,7 @@ insert(Fd, RootPos, NewNodeId,
             {ok, Pos1} = couch_file:append_term(Fd, Node1),
             {ok, Pos2} = couch_file:append_term(Fd, Node2),
             {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2},
-             CallDepth+1}
+             CallDepth}
         end;
     % If the nodes are inner nodes, they only contain pointers to their child
     % nodes. We only need their MBRs, position, but not their children's
@@ -402,7 +402,7 @@ insert(Fd, RootPos, NewNodeId,
             NewRoot = {NewRootMbr, #node{type=inner},
                            [SplittedNode1, SplittedNode2]},
             {ok, NewRootPos} = couch_file:append_term(Fd, NewRoot),
-            {ok, NewRootMbr, NewRootPos, TreeHeight2};
+            {ok, NewRootMbr, NewRootPos, TreeHeight2+1};
         _ ->
             Inserted
     end.
