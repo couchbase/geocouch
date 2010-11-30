@@ -25,8 +25,8 @@
 %-define(LOG_DEBUG(Msg), io:format(user, "DEBUG: ~p~n", [Msg])).
 
 % Nodes maximum filling grade (TODO vmx: shouldn't be hard-coded)
-%-define(MAX_FILLED, 40).
--define(MAX_FILLED, 4).
+-define(MAX_FILLED, 40).
+%-define(MAX_FILLED, 4).
 
 % {ok, Fd} = couch_file:open("/tmp/seedtree_write.bin").
 % {ok, Fd} = couch_file:open("/tmp/omt.bin").
@@ -76,6 +76,9 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) when TargetTreeHeight==0 ->
     end,
     {ok, NewPos, TreeHeight};
 bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
+?debugVal(RootPos),
+?debugVal(length(Nodes)),
+?debugVal(TargetTreeHeight),
     % XXX vmx: the last parameter defines the seedtree height
     SeedtreeHeight = floor(TargetTreeHeight/2),
     Seedtree = seedtree_init(Fd, RootPos, SeedtreeHeight),
@@ -90,15 +93,19 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
     Seedtree3 = if
     % If there is a huge number of outliers, insert them as whole new subtree
     % afterwards
-    OutliersNum > 1000 ->
+    OutliersNum > 100 ->
         Seedtree2#seedtree_root{outliers=[]};
     true ->
+io:format(user, "SOME OUTERLIERS!~n", []),
         Seedtree2
     end,
+?debugVal(OutliersNum),
 
     %{ok, Result, NewHeight} = seedtree_write(Fd, Seedtree3, TargetTreeHeight),
     %{ok, Result20, NewHeight20} = seedtree_write(Fd, Seedtree3, TargetTreeHeight),
     {ok, Result, NewHeight} = seedtree_write(Fd, Seedtree3, TargetTreeHeight),
+?debugVal(Result),
+?debugVal(NewHeight),
 
     % NOTE vmx: I assume that the height can't change more than 1 level
     %     at a time, not really sure though
@@ -116,14 +123,26 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
         {ResultPos, NewHeight+1, vtree:calc_nodes_mbr(Result)}
     end,
 
+?debugVal(NewPos),
+
     % Insert outliers as whole subtree
     {NewPos2, NewHeight3} = if
-        OutliersNum > 1000 -> insert_outliers(
-                Fd, NewPos, NewMbr, NewHeight2, Nodes);
-        true -> {NewPos, NewHeight2}
+    OutliersNum > 100 ->
+        io:format(user, "MANY OUTERLIERS!~n", []),
+        {Np, _} = insert_outliers(
+                %Fd, NewPos, NewMbr, NewHeight2, Nodes);
+                Fd, NewPos, NewMbr, NewHeight2, Outliers),
+        % XXX vmx: GO ON HERE. THIS is the bug. insert_outliers returns the
+        % wrong height
+        Foo = hd(vtreestats:leaf_depths(Fd, Np))+1,
+        {Np, Foo};
+    true ->
+        {NewPos, NewHeight2}
     end,
     ?debugVal(NewPos2),
     {ok, NewPos2, NewHeight3}.
+%    ?debugVal(NewPos),
+%    {ok, NewPos, NewHeight2}.
 
 bulk_load_test() ->
     Filename = "/tmp/bulk.bin",
@@ -161,79 +180,79 @@ bulk_load_test() ->
 
     {ok, Pos2, Height2} = bulk_load(Fd, Pos1, Height1, Nodes2),
     ?debugVal(Pos2),
-    ?assertEqual(4, Height2),
+    ?assertEqual(3, Height2),
     {ok, Lookup2} = vtree:lookup(Fd, Pos2, {0,0,1001,1001}),
     ?assertEqual(27, length(Lookup2)),
     LeafDepths2 = vtreestats:leaf_depths(Fd, Pos2),
-    ?assertEqual([3], LeafDepths2),
+    ?assertEqual([2], LeafDepths2),
 
     % Load some more nodes to find a bug where the tree gets unbalanced
     
     % This combination lead to a problem. Keep this test to prevent regression
-%    BulkSize3 = [20, 100, 18],
-%    Results3 = lists:foldl(fun(Size, Acc2) ->
-%        {RootPos, RootHeight, _} = hd(Acc2),
+    BulkSize3 = [20, 100, 18],
+    Results3 = lists:foldl(fun(Size, Acc2) ->
+        {RootPos, RootHeight, _} = hd(Acc2),
+        Nodes = lists:foldl(fun(I, Acc) ->
+           {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+                vtree_test:random_node({I,27+I*329,45}),
+            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
+          [Node|Acc]
+        end, [], lists:seq(1, Size)),
+
+        {ok, Pos, Height} = bulk_load(Fd, RootPos, RootHeight, Nodes),
+        ?debugVal(Pos),
+        %?assertEqual(2, Height3),
+        {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
+        ?debugVal(length(Lookup)),
+        %?assertEqual(14, length(Lookup2)),
+        LeafDepths = vtreestats:leaf_depths(Fd, Pos),
+        %?assertEqual([1], LeafDepths2),
+        [{Pos, Height, LeafDepths}|Acc2]
+    end, [{Pos2, Height2, [0]}], BulkSize3),
+    ?debugVal(Results3),
+
+%    % unbalanced tree
+%    BulkSize4 = [20, 17, 8, 64, 100],
+%    %BulkSize4 = [100, 10, 100, 20],
+%    %BulkSize4 = [80, 10, 100, 20],
+%    %BulkSize4 = [80, 10, 100],
+%    %BulkSize4 = [50, 10, 50],
+%    %BulkSize4 = [50, 10],
+%    % NOTE vmx: The problem for the unbalanced tree occurs earler. The height
+%    %     calculation of the final tree is  wrong
+%    %BulkSize4 = [50],
+%    % ::error:function_clause
+%    % NOTE vmx: This error exists, because inner and leaf nodes are mixed at
+%    %     the same level. I guess that's due to another bug. Will try to fix
+%    %     other bugs first
+%    %BulkSize4 = [100, 20, 100, 10, 10],
+%    % undefined
+%    % NOTE vmx: Same here, there's a problems with inner and leaf nodes at
+%    %     the same level.
+%    %BulkSize4 = [100, 100, 10, 10],
+%    Results4 = lists:foldl(fun(Size, Acc2) ->
+%        {RootPos, RootHeight, _, _} = hd(Acc2),
 %        Nodes = lists:foldl(fun(I, Acc) ->
 %            {NodeId, {NodeMbr, NodeMeta, NodeData}} =
 %                vtree_test:random_node({I,27+I*329,45}),
 %            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
 %           [Node|Acc]
 %        end, [], lists:seq(1, Size)),
-%
 %        {ok, Pos, Height} = bulk_load(Fd, RootPos, RootHeight, Nodes),
-%        ?debugVal(Pos),
+%        %?debugVal(Pos),
 %        %?assertEqual(2, Height3),
 %        {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
-%        ?debugVal(length(Lookup)),
+%        %?debugVal(length(Lookup)),
 %        %?assertEqual(14, length(Lookup2)),
 %        LeafDepths = vtreestats:leaf_depths(Fd, Pos),
 %        %?assertEqual([1], LeafDepths2),
-%        [{Pos, Height, LeafDepths}|Acc2]
-%    end, [{Pos2, Height2, [0]}], BulkSize3),
-%    ?debugVal(Results3),
-
-    % unbalanced tree
-    BulkSize4 = [20, 17, 8, 64, 100],
-    %BulkSize4 = [100, 10, 100, 20],
-    %BulkSize4 = [80, 10, 100, 20],
-    %BulkSize4 = [80, 10, 100],
-    %BulkSize4 = [50, 10, 50],
-    %BulkSize4 = [50, 10],
-    % NOTE vmx: The problem for the unbalanced tree occurs earler. The height
-    %     calculation of the final tree is  wrong
-    %BulkSize4 = [50],
-    % ::error:function_clause
-    % NOTE vmx: This error exists, because inner and leaf nodes are mixed at
-    %     the same level. I guess that's due to another bug. Will try to fix
-    %     other bugs first
-    %BulkSize4 = [100, 20, 100, 10, 10],
-    % undefined
-    % NOTE vmx: Same here, there's a problems with inner and leaf nodes at
-    %     the same level.
-    %BulkSize4 = [100, 100, 10, 10],
-    Results4 = lists:foldl(fun(Size, Acc2) ->
-        {RootPos, RootHeight, _, _} = hd(Acc2),
-        Nodes = lists:foldl(fun(I, Acc) ->
-            {NodeId, {NodeMbr, NodeMeta, NodeData}} =
-                vtree_test:random_node({I,27+I*329,45}),
-            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
-           [Node|Acc]
-        end, [], lists:seq(1, Size)),
-        {ok, Pos, Height} = bulk_load(Fd, RootPos, RootHeight, Nodes),
-        %?debugVal(Pos),
-        %?assertEqual(2, Height3),
-        {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
-        %?debugVal(length(Lookup)),
-        %?assertEqual(14, length(Lookup2)),
-        LeafDepths = vtreestats:leaf_depths(Fd, Pos),
-        %?assertEqual([1], LeafDepths2),
-        [{Pos, Height, LeafDepths, length(Lookup)}|Acc2]
-    end, [{Pos2, Height2, [0], 0}], BulkSize4),
-    Results4_2 = [{H, Ld, Num} || {_, H, Ld, Num} <-
-            tl(lists:reverse(Results4))],
-
-    ?assertEqual([{4,[3],47},{4,[3],64},{4,[3],72},{5,[4],136},{6,[5],236}],
-            Results4_2),
+%        [{Pos, Height, LeafDepths, length(Lookup)}|Acc2]
+%    end, [{Pos2, Height2, [0], 0}], BulkSize4),
+%    Results4_2 = [{H, Ld, Num} || {_, H, Ld, Num} <-
+%            tl(lists:reverse(Results4))],
+%
+%    ?assertEqual([{4,[3],47},{4,[3],64},{4,[3],72},{5,[4],136},{6,[5],236}],
+%            Results4_2),
     ok.
 
 % @doc If there is a huge number of outliers, we bulk load them into a new
@@ -243,6 +262,7 @@ bulk_load_test() ->
         TargetMbr::mbr(), TargetHeight::integer(),
         Nodes::[{mbr(), tuple(), list()}]) -> {integer(), integer()}.
 insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
+?debugVal(TargetPos),
     {Omt, OmtHeight} = vtree_bulk:omt_load(Nodes, ?MAX_FILLED),
     {ok, MbrAndPosList} = vtree_bulk:omt_write_tree(Fd, Omt),
 %    ?debugVal(TargetHeight),
@@ -258,7 +278,7 @@ insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
     % Both, the new bulk loaded tree and targt tree have the same height
     % => create new common root
     Diff when Diff == 0 ->
-    %?debugMsg("same height"),
+    ?debugMsg("same height"),
         if
         length(MbrAndPosList) + 1 =< ?MAX_FILLED ->
             %Mbrs = [Mbr || {Mbr, Pos} <- MbrAndPosList],
@@ -289,12 +309,12 @@ insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
         end;
     % insert new tree into target tree
     Diff when Diff > 0 ->
-    %?debugMsg("target tree higher"),
+    ?debugMsg("target tree higher"),
         {ok, _, SubPos} = insert_subtree(Fd, TargetPos, MbrAndPosList, Diff-1),
         {SubPos, TargetHeight};
     % insert target tree into new tree
     Diff when Diff < 0 ->
-    %?debugMsg("target tree smaller"),
+    ?debugMsg("target tree smaller"),
         % NOTE vmx: I don't think this case can ever happen
         %case length(MbrAndPosList) of
         %1 ->
@@ -883,7 +903,8 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
 %        {[<<"Node60899">>,<<"Bulk1">>],<<"Value60899">>}}]}}
 % But sometimes this case is Height==3 (which is wrong)
 
-    %?debugVal(InsertHeight),
+    ?debugVal(ParentPos),
+    ?debugVal(InsertHeight),
     %?debugVal(OmtHeight),
 
     % XXX vmx: GO ON HERE. If root node in barely filled (less than
@@ -983,7 +1004,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         MbrAndPos2 = seedtree_write_insert(Fd, Orig, OmtTrees,
                 (OmtHeight + HeightDiff)),
         {NewMbrs, NewPos} = lists:unzip(MbrAndPos2),
-%        ?debugVal({NewMbrs, NewPos}),
+        ?debugVal({NewMbrs, NewPos}),
 
         % NOTE vmx: seedtree_write_finish/1 might still go crazy with
         %     huge node overflows
@@ -1142,12 +1163,13 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) when is_tuple(hd(Orig)) ->
     [{ParentMbr, NewNodes}];
 % Inner node, do some repacking.
 seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
-    %?debugVal(Orig),
-    %?debugVal(OmtHeight),
+    ?debugVal(Orig),
+    ?debugVal(OmtHeight),
+    ?debugVal(OmtTree),
     % write the OmtTree to to disk.
     {ok, OmtMbrAndPos} = omt_write_tree(Fd, OmtTree),
     %?debugVal(length(OmtMbrAndPos)),
-    %?debugVal(OmtMbrAndPos),
+    ?debugVal(OmtMbrAndPos),
 
     % Get the enclosing MBR of the OMT nodes
     {OmtMbrs, _OmtPos} = lists:unzip(OmtMbrAndPos),
