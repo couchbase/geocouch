@@ -259,8 +259,10 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
         Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight}
     end, Group#spatial_group.indexes, IndexKeyValuesToAdd),
     Group2 = Group#spatial_group{indexes=Indexes2, current_seq=NewSeq, id_btree=IdBtree2},
-    ?LOG_INFO("Position of the spatial index root node: ~p",
-            [Indexes2#spatial.treepos]),
+    lists:foreach(fun(Index) ->
+        ?LOG_INFO("Position of the spatial index (~p) root node: ~p",
+                [Index#spatial.id_num, Index#spatial.treepos])
+    end, Indexes2),
     {ok, Group2}.
 
 
