@@ -363,39 +363,6 @@ omt_write_tree(Fd, [H|T], Depth, Acc) ->
     {level_done, Acc3}.
 
 
--spec omt_write_tree2(Fd::file:io_device(), Tree::list()) -> {ok, integer()}.
-omt_write_tree2(Fd, Tree) ->
-    {level_done, [{_Mbr, Pos}]} = omt_write_tree2(Fd, [Tree], []),
-    {ok, Pos}.
-% no more siblings
--spec omt_write_tree2(Fd::file:io_device(), Tree::list(), Acc::list()) ->
-        {ok, integer()}.
-omt_write_tree2(_Fd, [], Acc) ->
-    {no_siblings, Acc};
-% leaf node
-omt_write_tree2(_Fd, [H|_T]=Leafs, _Acc) when is_tuple(H) ->
-    {leaf_nodes, Leafs};
-omt_write_tree2(Fd, [H|T], Acc) ->
-    {_, Acc2} = case omt_write_tree2(Fd, H, []) of
-    {no_siblings, Siblings} ->
-        {ok, Siblings};
-    {leaf_nodes, Leafs} ->
-        Mbr = vtree:calc_nodes_mbr(Leafs),
-        {ok, Pos} = couch_file:append_term(Fd,
-                            {Mbr, #node{type=leaf}, Leafs}),
-        {ok, [{Mbr, Pos}|Acc]};
-    {level_done, Level} ->
-        % NOTE vmx: reversing Level is probably not neccessary
-        {Mbrs, Children} = lists:unzip(lists:reverse(Level)),
-        Mbr = vtree:calc_mbr(Mbrs),
-        {ok, Pos} = couch_file:append_term(Fd,
-                            {Mbr, #node{type=inner}, Children}),
-        {ok, [{Mbr, Pos}|Acc]}
-    end,
-    {_, Acc3} = omt_write_tree2(Fd, T, Acc2),
-    {level_done, Acc3}.
-
-
 % @doc Sort nodes by a certain dimension (which is the first element of the
 %     node tuple)
 -spec omt_sort_nodes(Nodes::[omt_node()], Dimension::integer()) -> [omt_node()].
