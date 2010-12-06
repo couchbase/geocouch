@@ -752,6 +752,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
     NewChildrenPos2 = if
     % Input tree can be inserted as-is into the target tree
     HeightDiff == 0 ->
+    %?debugMsg("insert as-is"),
         {OmtTree, OmtHeight} = omt_load(New, ?MAX_FILLED),
         %?debugVal(OmtHeight),
         %?debugVal(OmtTree),
@@ -770,6 +771,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         MbrAndPos = seedtree_write_finish(NewChildren);
     % insert tree is too small => expand seedtree
     HeightDiff > 0 ->
+    %?debugMsg("insert is too small"),
         %?debugVal(ParentPos),
         % Create new seedtree
         % NOTE vmx: HeightDiff+1 makes sense as we like to load the level
@@ -785,8 +787,10 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         %[{Mbr, Pos2}];
         % XXX vmx: TODO make seedtree_write to return the MBR as well
         %{ok, MbrAndPosList} = seedtree_write(Fd, Seedtree2, InsertHeight+1),
-        {ok, NodesList, _NewHeight} = seedtree_write(Fd, Seedtree2,
-                InsertHeight+1),
+        %{ok, NodesList, NewHeight} = seedtree_write(Fd, Seedtree2,
+        %        InsertHeight+1),
+        {ok, NodesList, NewHeight} = seedtree_write(Fd, Seedtree2,
+                InsertHeight+HeightDiff),
         MbrAndPosList = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList],
         %?debugVal(MbrAndPosList),
 
@@ -818,6 +822,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         MbrAndPosList;
     % insert tree is too high => use its children
     HeightDiff < 0 ->
+    %?debugMsg("insert is too high"),
         {OmtTree, OmtHeight} = omt_load(New, ?MAX_FILLED),
         %?debugVal(OmtHeight),
         %?debugVal(OmtTree),
@@ -843,6 +848,14 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
     % XXX vmx: The idea will be to propage changes up, but only one level
     %    and not up to the root (as changes might also come from other
     %    siblings).
+
+    %% XXX vmx: I temporarily write this node to disk just for debugging
+    %% purpose, this should still be there in the final code.
+    %{DebugMbr, DebugPosList} = hd(NewChildrenPos2),
+    %{ok, DebugPos} = couch_file:append_term(
+    %        Fd, {DebugMbr, #node{type=inner}, DebugPosList}),
+    %?debugVal(DebugPos),
+
     {new_leaf, NewChildrenPos2};
 seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
     %?debugVal(H),
@@ -1069,8 +1082,6 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
     % Transform the nodes to repack from normal ones to tuples (consisting
     % of the MBR and the position where the node in the file (or the nodes
     % themselves if they are leaf nodes)
-%?debugVal(NodesToRepack),
-%?debugVal(PosToRepack2),
     ToRepackMbrAndPos = lists:zipwith(fun({Mbr, _, _}, Pos) ->
         {Mbr, Pos}
     end, NodesToRepack, PosToRepack2),
@@ -1128,18 +1139,25 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
     % And prepend them to the disjoint nodes
     %NewNodesMbrAndPos = lists:foldl(fun(Nodes, Acc) ->
     NewChildren = lists:foldl(fun(Nodes, Acc) ->
-        %?debugVal(Nodes),
-        {Mbrs, Pos} = lists:unzip(Nodes),
-        %?debugVal(Pos),
-        ParentMbr = vtree:calc_mbr(Mbrs),
-        Meta = case is_tuple(hd(Pos)) of
-            true -> #node{type=leaf};
-            false -> #node{type=inner}
-        end,
-        %?debugVal(Meta),
-%                Fd, {ParentMbr, #node{type=inner}, Pos}),
-        {ok, ParentPos} = couch_file:append_term(Fd, {ParentMbr, Meta, Pos}),
-        [{ParentMbr, ParentPos}|Acc]
+        case length(Nodes) of
+        % If it has a single root node, use that one...
+        1 ->
+            Nodes;
+        % ...else create a new single root node
+        _ ->
+            %?debugVal(Nodes),
+            {Mbrs, Pos} = lists:unzip(Nodes),
+            %?debugVal(Pos),
+            ParentMbr = vtree:calc_mbr(Mbrs),
+            Meta = case is_tuple(hd(Pos)) of
+                true -> #node{type=leaf};
+                false -> #node{type=inner}
+            end,
+            %?debugVal(Meta),
+%                    Fd, {ParentMbr, #node{type=inner}, Pos}),
+            {ok, ParentPos} = couch_file:append_term(Fd, {ParentMbr, Meta, Pos}),
+            [{ParentMbr, ParentPos}|Acc]
+        end
     end, DisjointMbrAndPos, NewNodes2),
 %    ?debugVal(NewChildren),
     NewChildren.
