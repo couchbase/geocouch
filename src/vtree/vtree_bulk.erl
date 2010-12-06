@@ -834,7 +834,8 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         %?debugVal(length(OmtTrees)),
         % Insert the OMT trees one by one
         %MbrAndPos2 = seedtree_write_insert(Fd, Orig, OmtTrees, OmtHeight),
-        % (OmtHeight + HeightDiff) as OMT tree was flattened
+        % (OmtHeight + HeightDiff) as OMT tree was flattened (HeighTDiff is
+        % negative)
         MbrAndPos2 = seedtree_write_insert(Fd, Orig, OmtTrees,
                 (OmtHeight + HeightDiff)),
         {NewMbrs, NewPos} = lists:unzip(MbrAndPos2),
@@ -1142,7 +1143,7 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
         case length(Nodes) of
         % If it has a single root node, use that one...
         1 ->
-            Nodes;
+            [hd(Nodes)|Acc];
         % ...else create a new single root node
         _ ->
             %?debugVal(Nodes),
