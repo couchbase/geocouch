@@ -25,8 +25,8 @@
 %-define(LOG_DEBUG(Msg), io:format(user, "DEBUG: ~p~n", [Msg])).
 
 % Nodes maximum filling grade (TODO vmx: shouldn't be hard-coded)
--define(MAX_FILLED, 40).
-%-define(MAX_FILLED, 4).
+%-define(MAX_FILLED, 40).
+-define(MAX_FILLED, 4).
 
 % {ok, Fd} = couch_file:open("/tmp/seedtree_write.bin").
 % {ok, Fd} = couch_file:open("/tmp/omt.bin").
@@ -91,7 +91,8 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
         Seedtree2
     end,
 
-    {ok, Result, NewHeight} = seedtree_write(Fd, Seedtree3, TargetTreeHeight),
+    {ok, Result, NewHeight} = seedtree_write(
+            Fd, Seedtree3, TargetTreeHeight - Seedtree3#seedtree_root.height),
 
     % NOTE vmx: I assume that the height can't change more than 1 level
     %     at a time, not really sure though
@@ -196,49 +197,6 @@ insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
                     Fd, NewOmtPos, [{TargetMbr, TargetPos}], abs(Diff)),
             {SubPos, OmtHeight+Inc}
         %end
-    end.
-
-
-% @doc Lookup a bounding box in the tree. Return the path to the node. Every
-%     list element is the child node position, e.g. [1,2,0] means:
-%     2nd child at depth 0, 3rd child at depth 1 and 1st child at depth 2
--spec lookup_path(Fd::file:io_device(), RootPos::integer(),
-        Bbox::[number()], MaxDepth::integer()) -> [integer()].
-lookup_path(Fd, RootPos, Bbox, MaxDepth) ->
-    lookup_path(Fd, RootPos, Bbox, MaxDepth, 0).
-
--spec lookup_path(Fd::file:io_device(), RootPos::integer(),
-        Bbox::[number()], MaxDepth::integer(), Depth::integer()) ->
-        [integer()].
-lookup_path(Fd, RootPos, Bbox, MaxDepth, Depth) ->
-    {ok, Parent} = couch_file:pread_term(Fd, RootPos),
-    {ParentMbr, _ParentMeta, EntriesPos} = Parent,
-    case vtree:within(Bbox, ParentMbr) of
-    true when Depth == MaxDepth ->
-        ok;
-    true when Depth < MaxDepth ->
-        {Go, Val} = vtree:foldl_stop(fun(EntryPos, Acc) ->
-            case lookup_path(Fd, EntryPos, Bbox, MaxDepth, Depth+1) of
-            % No matching node so far, go on...
-            -1 ->
-                {ok, Acc+1};
-            % ...you read the maximum depth -> start returning the path to
-            % this node...
-            ok ->
-                {stop, [Acc+1]};
-            % ...keep on returning the upwards path to the matching node.
-            PrevVal ->
-                {stop, [Acc+1|PrevVal]}
-            end
-        end, -1, EntriesPos),
-        case Go of
-            % a matching entry (child node) was found
-            stop -> Val;
-            % stopped automatically without finding a matching entry
-            ok -> -1
-        end;
-    false ->
-        -1
     end.
 
 -type omt_node() :: tuple().
@@ -495,7 +453,8 @@ seedtree_init(Fd, RootPos, MaxDepth, Depth) ->
 
 % @doc Write an new vtree. TargetHeight is the height of the vtree
 %     the new nodes should be inserted in.
-seedtree_write(Fd, Seedtree, TargetHeight) ->
+%seedtree_write(Fd, Seedtree, TargetHeight) ->
+seedtree_write(Fd, Seedtree, InsertHeight) ->
     Tree = Seedtree#seedtree_root.tree,
 %?debugVal(length(Seedtree#seedtree_root.outliers)),
 %?debugVal(Seedtree#seedtree_root.outliers),
@@ -503,7 +462,10 @@ seedtree_write(Fd, Seedtree, TargetHeight) ->
     % InsertHeight is the height the input tree needs to have so that it
     % can be inserted into the target tree
     %InsertHeight = TargetHeight - Seedtree#seedtree_root.height + 1,
-    InsertHeight = TargetHeight - Seedtree#seedtree_root.height,
+    % NOTE vmx (2010-12-07): seedtree/3 is now called with InsertHeight as
+    % third parameter
+    %InsertHeight = TargetHeight - Seedtree#seedtree_root.height,
+    TargetHeight = InsertHeight + Seedtree#seedtree_root.height,
 %    ?debugVal(TargetHeight),
 %    ?debugVal(InsertHeight),
     %seedtree_write(Fd, [Tree], InsertHeight, []).
@@ -752,7 +714,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
     NewChildrenPos2 = if
     % Input tree can be inserted as-is into the target tree
     HeightDiff == 0 ->
-    %?debugMsg("insert as-is"),
+    %?debugMsg("insert as is"),
         {OmtTree, OmtHeight} = omt_load(New, ?MAX_FILLED),
         %?debugVal(OmtHeight),
         %?debugVal(OmtTree),
@@ -789,8 +751,14 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         %{ok, MbrAndPosList} = seedtree_write(Fd, Seedtree2, InsertHeight+1),
         %{ok, NodesList, NewHeight} = seedtree_write(Fd, Seedtree2,
         %        InsertHeight+1),
+        %{ok, NodesList, NewHeight} = seedtree_write(Fd, Seedtree2,
+        %        InsertHeight+HeightDiff),
+        % XXX vmx (2010-12-07): seedtree_write/3 needs the target height, and
+        % not the insert height as last parameter. No idea where we should get
+        % the value of the target height from.
+        % NOTE vmx (2010-12-07): changed seedtree_write/3 to use insert height.
         {ok, NodesList, NewHeight} = seedtree_write(Fd, Seedtree2,
-                InsertHeight+HeightDiff),
+                InsertHeight-HeightDiff),
         MbrAndPosList = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList],
         %?debugVal(MbrAndPosList),
 
@@ -1007,6 +975,17 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) when is_tuple(hd(Orig)) ->
 seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
     %?debugVal(Orig),
     %?debugVal(OmtHeight),
+
+% NOTE vmx (2010-12-07): this was only for debugging
+%    OrigLeafDepths = hd(vtreestats:leaf_depths(Fd, hd(Orig))),
+%    ?debugVal(OrigLeafDepths),
+%    case (OrigLeafDepths+1 /= OmtHeight) and (OrigLeafDepths > 0) of
+%    true ->
+%        io:format(user, "WARNING! Seedtree leaf nodes to match up with OMT tree!~n", []);
+%    false ->
+%        ok
+%    end,
+
     %?debugVal(OmtTree),
     % write the OmtTree to to disk.
     {ok, OmtMbrAndPos} = omt_write_tree(Fd, OmtTree),
@@ -1140,12 +1119,13 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
     % And prepend them to the disjoint nodes
     %NewNodesMbrAndPos = lists:foldl(fun(Nodes, Acc) ->
     NewChildren = lists:foldl(fun(Nodes, Acc) ->
-        case length(Nodes) of
-        % If it has a single root node, use that one...
-        1 ->
-            [hd(Nodes)|Acc];
-        % ...else create a new single root node
-        _ ->
+%        case length(Nodes) of
+%        % If it has a single root node, use that one...
+%        1 ->
+%?debugVal(Nodes),
+%            [hd(Nodes)|Acc];
+%        % ...else create a new single root node
+%        _ ->
             %?debugVal(Nodes),
             {Mbrs, Pos} = lists:unzip(Nodes),
             %?debugVal(Pos),
@@ -1154,11 +1134,9 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
                 true -> #node{type=leaf};
                 false -> #node{type=inner}
             end,
-            %?debugVal(Meta),
-%                    Fd, {ParentMbr, #node{type=inner}, Pos}),
             {ok, ParentPos} = couch_file:append_term(Fd, {ParentMbr, Meta, Pos}),
             [{ParentMbr, ParentPos}|Acc]
-        end
+%        end
     end, DisjointMbrAndPos, NewNodes2),
 %    ?debugVal(NewChildren),
     NewChildren.
@@ -1537,7 +1515,7 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
 %%%%% Tests %%%%%
 
 
--ifdef(runnall).
+%-ifdef(runnall).
 
 % XXX vmx: tests with function (check_list/6 ) are missing
 chunk_list_test() ->
@@ -1556,34 +1534,6 @@ chunk_list_test() ->
     ?assertEqual([[1,2,3,4,5]], Chunked6),
     Chunked7 = chunk_list(List1, 1),
     ?assertEqual([[1],[2],[3],[4],[5]], Chunked7).
-
-
-lookup_path_test() ->
-    {ok, {Fd, {RootPos, _}}} = vtree_test:build_random_tree(
-            "/tmp/randtree.bin", 20),
-    ?debugVal(RootPos),
-    % Not inside 1st level
-    EntryPath1 = lookup_path(Fd, RootPos, {1,3,2,4}, 2),
-    ?assertEqual(-1, EntryPath1),
-
-    % Inside 1st level but not inside 2nd level
-    EntryPath2 = lookup_path(Fd, RootPos, {19,120,950,510}, 2),
-    ?assertEqual(-1, EntryPath2),
-
-    % Found in 2nd level
-    EntryPath3 = lookup_path(Fd, RootPos, {542,356,698,513}, 2),
-    ?assertEqual([0,0], EntryPath3),
-    % Found in 3rd level (would also match [1,0,1], but we take the first
-    % matching child)
-    EntryPath4 = lookup_path(Fd, RootPos, {458,700,487,865}, 3),
-    ?assertEqual([0,1,0], EntryPath4),
-
-    EntryPath5 = lookup_path(Fd, RootPos, {542,656,598,813}, 3),
-    ?assertEqual([0,1,0], EntryPath5),
-    EntryPath6 = lookup_path(Fd, RootPos, {42,456,698,512}, 3),
-    ?assertEqual([0,0,2], EntryPath6),
-    EntryPath7 = lookup_path(Fd, RootPos, {342,456,959,513}, 3),
-    ?assertEqual([0,1,1], EntryPath7).
 
 
 bulk_load_test() ->
@@ -1628,10 +1578,11 @@ bulk_load_test() ->
     LeafDepths2 = vtreestats:leaf_depths(Fd, Pos2),
     ?assertEqual([3], LeafDepths2),
 
+
     % Load some more nodes to find a bug where the tree gets unbalanced
     BulkSize3 = [20, 100, 18],
     Results3 = lists:foldl(fun(Size, Acc2) ->
-        {RootPos, RootHeight, _} = hd(Acc2),
+        {RootPos, RootHeight, _, _} = hd(Acc2),
         Nodes = lists:foldl(fun(I, Acc) ->
            {NodeId, {NodeMbr, NodeMeta, NodeData}} =
                 vtree_test:random_node({I,27+I*329,45}),
@@ -1647,9 +1598,12 @@ bulk_load_test() ->
         %?assertEqual(14, length(Lookup2)),
         LeafDepths = vtreestats:leaf_depths(Fd, Pos),
         %?assertEqual([1], LeafDepths2),
-        [{Pos, Height, LeafDepths}|Acc2]
-    end, [{Pos2, Height2, [0]}], BulkSize3),
+        [{Pos, Height, LeafDepths, length(Lookup)}|Acc2]
+    end, [{Pos2, Height2, [0], 0}], BulkSize3),
     ?debugVal(Results3),
+    Results3_2 = [{H, Ld, Num} || {_, H, Ld, Num} <-
+            tl(lists:reverse(Results3))],
+    ?assertEqual([{4,[3],47},{6,[5],147},{6,[5],165}],Results3_2),
 
     BulkSize4 = [20, 17, 8, 64, 100],
     Results4 = lists:foldl(fun(Size, Acc2) ->
@@ -1660,19 +1614,16 @@ bulk_load_test() ->
             Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
            [Node|Acc]
         end, [], lists:seq(1, Size)),
-       {ok, Pos, Height} = bulk_load(Fd, RootPos, RootHeight, Nodes),
+        {ok, Pos, Height} = bulk_load(Fd, RootPos, RootHeight, Nodes),
         %?debugVal(Pos),
-        %?assertEqual(2, Height3),
-       {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
+        %?debugVal(Height),
+        {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
         %?debugVal(length(Lookup)),
-        %?assertEqual(14, length(Lookup2)),
         LeafDepths = vtreestats:leaf_depths(Fd, Pos),
-        %?assertEqual([1], LeafDepths2),
        [{Pos, Height, LeafDepths, length(Lookup)}|Acc2]
     end, [{Pos2, Height2, [0], 0}], BulkSize4),
     Results4_2 = [{H, Ld, Num} || {_, H, Ld, Num} <-
             tl(lists:reverse(Results4))],
-
     ?assertEqual([{4,[3],47},{4,[3],64},{4,[3],72},{5,[4],136},{6,[5],236}],
             Results4_2),
     ok.
@@ -1883,6 +1834,7 @@ seedtree_insert_test() ->
     {NodeId, {NodeMbr, NodeMeta, NodeData}} = vtree_test:random_node(),
     Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
     SeedTree2 = seedtree_insert(SeedTree, Node),
+
     SeedTree2Tree = SeedTree2#seedtree_root.tree,
     ?assertEqual({{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
@@ -1894,6 +1846,7 @@ seedtree_insert_test() ->
             {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
             {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
         SeedTree2Tree),
+
     NodeNotInTree3 = {{2,3,4,5}, NodeMeta, {<<"notintree">>, datafoo}},
     SeedTree3 = seedtree_insert(SeedTree, NodeNotInTree3),
     Outliers3 = SeedTree3#seedtree_root.outliers,
@@ -1916,6 +1869,8 @@ seedtree_insert_test() ->
     ),
     Node6 = {{342,456,959,513}, NodeMeta, {<<"intree01">>, datafoo3}},
     SeedTree6 = seedtree_insert(SeedTree, Node6),
+    {_, _, SeedTree6TreeLeaf} = SeedTree6#seedtree_root.tree,
+
     SeedTree6Tree = SeedTree6#seedtree_root.tree,
     ?assertEqual({{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
@@ -2036,7 +1991,8 @@ seedtree_write_single_test() ->
     ?debugVal(Seedtree1),
     Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
     %?debugVal(Seedtree2),
-    {ok, Result1, Height1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    {ok, Result1, Height1} = seedtree_write(
+            Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     ?debugVal(Result1),
     ?assertEqual(2, Height1),
     {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
@@ -2068,7 +2024,8 @@ seedtree_write_case1_test() ->
     Seedtree1 = seedtree_init(Fd, RootPos, 1),
     ?debugVal(Seedtree1),
     Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
-    {ok, Result1, Height1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    {ok, Result1, Height1} = seedtree_write(
+            Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     ?debugVal(Result1),
     ?assertEqual(4, Height1),
     {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
@@ -2086,7 +2043,9 @@ seedtree_write_case1_test() ->
     Seedtree2_1 = seedtree_init(Fd2, RootPos2, 1),
     ?debugVal(Seedtree2_1),
     Seedtree2_2 = seedtree_insert_list(Seedtree2_1, Nodes2),
-    {ok, Result2, Height2} = seedtree_write(Fd2, Seedtree2_2, TargetTreeHeight2),
+    {ok, Result2, Height2} = seedtree_write(
+            Fd2, Seedtree2_2,
+            TargetTreeHeight2 - Seedtree2_2#seedtree_root.height),
     ?debugVal(Result2),
     ?assertEqual(3, Height2),
     {ok, ResultPos2} = write_parent(Fd2, Result2),
@@ -2107,7 +2066,9 @@ seedtree_write_case1_test() ->
     Seedtree3_1 = seedtree_init(Fd3, RootPos3, 2),
     ?debugVal(Seedtree3_1),
     Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
-    {ok, Result3, Height3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
+    {ok, Result3, Height3} = seedtree_write(
+            Fd3, Seedtree3_2,
+            TargetTreeHeight3 - Seedtree3_2#seedtree_root.height),
     ?debugVal(Result3),
     ?assertEqual(4, Height3),
     {ok, ResultPos3} = write_parent(Fd3, Result3),
@@ -2126,7 +2087,9 @@ seedtree_write_case1_test() ->
     Seedtree4_1 = seedtree_init(Fd4, RootPos4, 3),
     ?debugVal(Seedtree4_1),
     Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
-    {ok, Result4, Height4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+    {ok, Result4, Height4} = seedtree_write(
+            Fd4, Seedtree4_2,
+            TargetTreeHeight4 - Seedtree4_2#seedtree_root.height),
     ?debugVal(Result4),
     ?assertEqual(5, Height4),
     {ok, ResultPos4} = write_parent(Fd4, Result4),
@@ -2145,7 +2108,9 @@ seedtree_write_case1_test() ->
     Seedtree5_1 = seedtree_init(Fd5, RootPos5, 1),
     ?debugVal(Seedtree5_1),
     Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
-    {ok, Result5, Height5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
+    {ok, Result5, Height5} = seedtree_write(
+            Fd5, Seedtree5_2,
+            TargetTreeHeight5 - Seedtree5_2#seedtree_root.height),
     ?debugVal(Result5),
     ?assertEqual(5, Height5),
     {ok, ResultPos5} = write_parent(Fd5, Result5),
@@ -2154,6 +2119,7 @@ seedtree_write_case1_test() ->
     ?assertEqual(1051, length(Lookup5)),
     LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
     ?assertEqual([5], LeafDepths5).
+
 
 seedtree_write_case2_test() ->
     % Test "Case 2: input R-tree is not shorter than the level of the
@@ -2175,7 +2141,8 @@ seedtree_write_case2_test() ->
     Seedtree1 = seedtree_init(Fd, RootPos, 1),
     ?debugVal(Seedtree1),
     Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
-    {ok, Result1, Height1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    {ok, Result1, Height1} = seedtree_write(
+            Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     ?debugVal(Result1),
     ?assertEqual(4, Height1),
     {ok, ResultPos1} = write_parent(Fd, Result1),
@@ -2194,7 +2161,9 @@ seedtree_write_case2_test() ->
     end, [], lists:seq(1,300)),
 
     Seedtree2_2 = seedtree_insert_list(Seedtree1, Nodes2),
-    {ok, Result2, Height2} = seedtree_write(Fd, Seedtree2_2, TargetTreeHeight),
+    {ok, Result2, Height2} = seedtree_write(
+            Fd, Seedtree2_2,
+            TargetTreeHeight - Seedtree2_2#seedtree_root.height),
     ?debugVal(Result2),
     ?assertEqual(5, Height2),
     {ok, ResultPos2} = write_parent(Fd, Result2),
@@ -2214,7 +2183,9 @@ seedtree_write_case2_test() ->
     Seedtree3_1 = seedtree_init(Fd3, RootPos3, 1),
     ?debugVal(Seedtree3_1),
     Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
-    {ok, Result3, Height3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
+    {ok, Result3, Height3} = seedtree_write(
+            Fd3, Seedtree3_2,
+            TargetTreeHeight3 - Seedtree3_2#seedtree_root.height),
     ?debugVal(Result3),
     ?assertEqual(3, Height3),
     {ok, ResultPos3} = write_parent(Fd3, Result3),
@@ -2235,7 +2206,9 @@ seedtree_write_case2_test() ->
     Seedtree4_1 = seedtree_init(Fd4, RootPos4, 2),
     ?debugVal(Seedtree4_1),
     Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
-    {ok, Result4, Height4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+    {ok, Result4, Height4} = seedtree_write(
+            Fd4, Seedtree4_2,
+            TargetTreeHeight4 - Seedtree4_2#seedtree_root.height),
     ?debugVal(Result4),
     ?assertEqual(4, Height4),
     {ok, ResultPos4} = write_parent(Fd4, Result4),
@@ -2256,7 +2229,9 @@ seedtree_write_case2_test() ->
     Seedtree5_1 = seedtree_init(Fd5, RootPos5, 2),
     ?debugVal(Seedtree5_1),
     Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
-    {ok, Result5, Height5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
+    {ok, Result5, Height5} = seedtree_write(
+            Fd5, Seedtree5_2,
+            TargetTreeHeight5 - Seedtree5_2#seedtree_root.height),
     ?debugVal(Result5),
     ?assertEqual(4, Height5),
     {ok, ResultPos5} = write_parent(Fd5, Result5),
@@ -2276,7 +2251,9 @@ seedtree_write_case2_test() ->
     Seedtree6_1 = seedtree_init(Fd6, RootPos6, 2),
     ?debugVal(Seedtree6_1),
     Seedtree6_2 = seedtree_insert_list(Seedtree6_1, Nodes6),
-    {ok, Result6, Height6} = seedtree_write(Fd6, Seedtree6_2, TargetTreeHeight6),
+    {ok, Result6, Height6} = seedtree_write(
+            Fd6, Seedtree6_2,
+            TargetTreeHeight6 - Seedtree6_2#seedtree_root.height),
     ?debugVal(Result6),
     ?assertEqual(4, Height6),
     {ok, ResultPos6} = write_parent(Fd6, Result6),
@@ -2306,7 +2283,8 @@ seedtree_write_case3_test() ->
     Seedtree1 = seedtree_init(Fd, RootPos, 1),
     ?debugVal(Seedtree1),
     Seedtree2 = seedtree_insert_list(Seedtree1, Nodes1),
-    {ok, Result1, Height1} = seedtree_write(Fd, Seedtree2, TargetTreeHeight),
+    {ok, Result1, Height1} = seedtree_write(
+            Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     ?debugVal(Result1),
     ?assertEqual(4, Height1),
     {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
@@ -2333,7 +2311,9 @@ seedtree_write_case3_test() ->
     Seedtree2_1 = seedtree_init(Fd2, RootPos2, 1),
     ?debugVal(Seedtree2_1),
     Seedtree2_2 = seedtree_insert_list(Seedtree2_1, Nodes2),
-    {ok, Result2, Height2} = seedtree_write(Fd2, Seedtree2_2, TargetTreeHeight2),
+    {ok, Result2, Height2} = seedtree_write(
+            Fd2, Seedtree2_2,
+            TargetTreeHeight2 - Seedtree2_2#seedtree_root.height),
     ?debugVal(Result2),
     ?assertEqual(5, Height2),
     {ok, ResultPos2} = write_parent(Fd2, Result2),
@@ -2353,7 +2333,9 @@ seedtree_write_case3_test() ->
     Seedtree3_1 = seedtree_init(Fd3, RootPos3, 1),
     ?debugVal(Seedtree3_1),
     Seedtree3_2 = seedtree_insert_list(Seedtree3_1, Nodes3),
-    {ok, Result3, Height3} = seedtree_write(Fd3, Seedtree3_2, TargetTreeHeight3),
+    {ok, Result3, Height3} = seedtree_write(
+            Fd3, Seedtree3_2,
+            TargetTreeHeight3 - Seedtree3_2#seedtree_root.height),
     ?debugVal(Result3),
     ?assertEqual(3, Height3),
     % Several parents => create new root node
@@ -2376,7 +2358,9 @@ seedtree_write_case3_test() ->
     Seedtree4_1 = seedtree_init(Fd4, RootPos4, 2),
     ?debugVal(Seedtree4_1),
     Seedtree4_2 = seedtree_insert_list(Seedtree4_1, Nodes4),
-    {ok, Result4, Height4} = seedtree_write(Fd4, Seedtree4_2, TargetTreeHeight4),
+    {ok, Result4, Height4} = seedtree_write(
+            Fd4, Seedtree4_2,
+            TargetTreeHeight4 - Seedtree4_2#seedtree_root.height),
     ?debugVal(RootPos4),
     ?debugVal(Result4),
     ?assertEqual(4, Height4),
@@ -2398,7 +2382,9 @@ seedtree_write_case3_test() ->
     Seedtree5_1 = seedtree_init(Fd5, RootPos5, 2),
     ?debugVal(Seedtree5_1),
     Seedtree5_2 = seedtree_insert_list(Seedtree5_1, Nodes5),
-    {ok, Result5, Height5} = seedtree_write(Fd5, Seedtree5_2, TargetTreeHeight5),
+    {ok, Result5, Height5} = seedtree_write(
+            Fd5, Seedtree5_2,
+            TargetTreeHeight5 - Seedtree5_2#seedtree_root.height),
     ?debugVal(Result5),
     ?assertEqual(5, Height5),
     {ok, ResultPos5} = couch_file:append_term(Fd5, hd(Result5)),
@@ -2631,4 +2617,4 @@ seedtree_write_insert_test() ->
     ?debugVal(Result2),
     ?assertEqual(1, length(Result2)).
 
--endif.
+%-endif.
