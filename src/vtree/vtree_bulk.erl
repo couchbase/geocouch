@@ -25,8 +25,8 @@
 %-define(LOG_DEBUG(Msg), io:format(user, "DEBUG: ~p~n", [Msg])).
 
 % Nodes maximum filling grade (TODO vmx: shouldn't be hard-coded)
-%-define(MAX_FILLED, 40).
--define(MAX_FILLED, 4).
+-define(MAX_FILLED, 40).
+%-define(MAX_FILLED, 4).
 
 % {ok, Fd} = couch_file:open("/tmp/seedtree_write.bin").
 % {ok, Fd} = couch_file:open("/tmp/omt.bin").
@@ -1556,7 +1556,7 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
 %%%%% Tests %%%%%
 
 
-%-ifdef(runnall).
+-ifdef(runnall).
 
 bulk_load_test() ->
     Filename = "/tmp/bulk.bin",
@@ -2669,4 +2669,4 @@ seedtree_write_insert_test() ->
     ?debugVal(Result2),
     ?assertEqual(8, length(Result2)).
 
-%-endif.
+-endif.
