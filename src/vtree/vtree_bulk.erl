@@ -94,9 +94,6 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
     {ok, Result, NewHeight, _HeightDiff} = seedtree_write(
             Fd, Seedtree3, TargetTreeHeight - Seedtree3#seedtree_root.height),
 
-    % NOTE vmx: I assume that the height can't change more than 1 level
-    %     at a time, not really sure though
-    % XXX vmx (2010-12-09): now we know the heihgt difference
     {NewPos, NewHeight2, NewMbr} = case length(Result) of
     % single node as root
     1 ->
@@ -142,7 +139,7 @@ insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
     % Both, the new bulk loaded tree and targt tree have the same height
     % => create new common root
     Diff when Diff == 0 ->
-    %?debugMsg("same height"),
+    ?debugMsg("same height"),
         if
         length(MbrAndPosList) + 1 =< ?MAX_FILLED ->
             %Mbrs = [Mbr || {Mbr, Pos} <- MbrAndPosList],
@@ -173,12 +170,12 @@ insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
         end;
     % insert new tree into target tree
     Diff when Diff > 0 ->
-    %?debugMsg("target tree higher"),
+    ?debugMsg("target tree higher"),
         {ok, _, SubPos, Inc} = insert_subtree(Fd, TargetPos, MbrAndPosList, Diff-1),
         {SubPos, TargetHeight+Inc};
     % insert target tree into new tree
     Diff when Diff < 0 ->
-    %?debugMsg("target tree smaller"),
+    ?debugMsg("target tree smaller"),
         % NOTE vmx: I don't think this case can ever happen
         %case length(MbrAndPosList) of
         %1 ->
@@ -1325,21 +1322,35 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) when Depth==Level ->
     length(ChildrenPos) =< ?MAX_FILLED ->
         NewNode = {MergedMbr, ParentMeta, ChildrenPos},
         {ok, Pos} = couch_file:append_term(Fd, NewNode),
+?debugVal(Pos),
         {ok, MergedMbr, Pos, 0};
     true ->
+?debugVal(length(ChildrenPos)),
         %io:format("We need to split (leaf node)~n~p~n", [LeafNode]),
         Children = load_nodes(Fd, ChildrenPos),
-        % NOTE vmx: for vtree:split/1 the nodes need to have a special format
-        %     a tuple with their MBR, Meta and *their* position in the file
-        %     (as opposed to the position of their children)
+
+        % Transform the the nodes, so that we don't need to write them again.
+        % They are now a tuple with their MBR, Meta and *their* position
+        % in the file (as opposed to the position of their children)
         Children2 = [{Mbr, Meta, Pos} || {{Mbr, Meta, _}, Pos} <-
                 lists:zip(Children, ChildrenPos)],
-        {SplittedMbr, {Node1Mbr, _, _}=Node1, {Node2Mbr, _, _}=Node2}
-                = vtree:split_node({MergedMbr, #node{type=inner}, Children2}),
-%                = vtree:split_node({MergedMbr, #node{type=inner}, ChildrenPos}),
+
+        % The maximum number of nodes can be 2*MAX_FILLED, therefore we can't
+        % use the Ang/Tan split algorithm, but use the OMT algorithm to split
+        % the nodes into two partitions.
+        {[Part1, Part2], _OmtHeight} = omt_load(Children2, ?MAX_FILLED),
+
+        Mbr1 = vtree:calc_nodes_mbr(Part1),
+        Mbr2 = vtree:calc_nodes_mbr(Part2),
+        % Get the original position in file of the nodes
+        Part1Pos = [Pos || {_Mbr, _Meta, Pos} <- Part1],
+        Part2Pos = [Pos || {_Mbr, _Meta, Pos} <- Part2],
+        Node1 =  {Mbr1, #node{type=inner}, Part1Pos},
+        Node2 =  {Mbr2, #node{type=inner}, Part2Pos},
         {ok, Pos1} = couch_file:append_term(Fd, Node1),
         {ok, Pos2} = couch_file:append_term(Fd, Node2),
-        {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2}, 0}
+
+        {splitted, MergedMbr, {Mbr1, Pos1}, {Mbr2, Pos2}, 0}
     end;
 insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
     %{SubtreeMbr, SubtreePos} = Subtree,
@@ -1354,9 +1365,11 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
     LeastRestPos = [Pos || {Mbr, Pos} <- LeastRest],
     case insert_subtree(Fd, LeastPos, Subtree, Level, Depth+1) of
     {ok, NewMbr, NewPos, Inc} ->
+?debugVal(length([NewPos|LeastRestPos])),
         MergedMbr = vtree:merge_mbr(ParentMbr, NewMbr),
         NewNode = {MergedMbr, #node{type=inner}, [NewPos|LeastRestPos]},
         {ok, Pos} = couch_file:append_term(Fd, NewNode),
+?debugVal(Pos),
         {ok, NewMbr, Pos, Inc};
     {splitted, ChildMbr, {Child1Mbr, ChildPos1}, {Child2Mbr, ChildPos2}, Inc} ->
         MergedMbr = vtree:merge_mbr(ParentMbr, ChildMbr),
@@ -1368,6 +1381,7 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
             ChildrenPos = [ChildPos1, ChildPos2] ++ LeastRestPos,
             NewNode = {MergedMbr, #node{type=inner}, ChildrenPos},
             {ok, Pos} = couch_file:append_term(Fd, NewNode),
+?debugVal(Pos),
             {ok, MergedMbr, Pos, Inc};
         % We need to split the inner node
         true ->
@@ -1380,11 +1394,13 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
             Children = [{Mbr, Meta, Pos} || {{Mbr, Meta, _}, Pos} <-
                     lists:zip(load_nodes(Fd, LeastRestPos), LeastRestPos)],
             Children2 = [Child1, Child2] ++ Children,
-
+?debugVal(length(Children2)),
             {SplittedMbr, {Node1Mbr, _, _}=Node1, {Node2Mbr, _, _}=Node2}
                     = vtree:split_node({MergedMbr, #node{type=inner}, Children2}),
             {ok, Pos1} = couch_file:append_term(Fd, Node1),
             {ok, Pos2} = couch_file:append_term(Fd, Node2),
+?debugVal(Pos1),
+?debugVal(Pos2),
             {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2}, Inc}
         end
     end.
