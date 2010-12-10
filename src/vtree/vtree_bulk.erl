@@ -94,6 +94,12 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
     {ok, Result, NewHeight, _HeightDiff} = seedtree_write(
             Fd, Seedtree3, TargetTreeHeight - Seedtree3#seedtree_root.height),
 ?debugVal(Result),
+
+    case length(Result) > ?MAX_FILLED of
+        true -> ?debugMsg("WARNING! More nodes than allowed");
+        false -> ?debugMsg("everything's OK")
+    end,
+
     % NOTE vmx: I assume that the height can't change more than 1 level
     %     at a time, not really sure though
     % XXX vmx (2010-12-09): now we know the heihgt difference
@@ -175,6 +181,7 @@ insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
     Diff when Diff > 0 ->
     ?debugMsg("target tree higher"),
         {ok, _, SubPos, Inc} = insert_subtree(Fd, TargetPos, MbrAndPosList, Diff-1),
+?debugVal(SubPos),
         {SubPos, TargetHeight+Inc};
     % insert target tree into new tree
     Diff when Diff < 0 ->
@@ -1608,10 +1615,12 @@ insert_subtree(Fd, RootPos, Subtree, Level) ->
     %insert_subtree(Fd, RootPos, Subtree, Level, 0),
     case insert_subtree(Fd, RootPos, Subtree, Level, 0) of
     {splitted, NodeMbr, {Node1Mbr, NodePos1}, {Node2Mbr, NodePos2}, Inc} ->
+?debugMsg("splitted"),
         Parent = {NodeMbr, #node{type=inner}, [NodePos1, NodePos2]},
         {ok, Pos} = couch_file:append_term(Fd, Parent),
         {ok, NodeMbr, Pos, Inc+1};
     {ok, NewMbr, NewPos, Inc} ->
+?debugMsg("as is"),
         {ok, NewMbr, NewPos, Inc}
     end.
 
@@ -1633,6 +1642,7 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) when Depth==Level ->
     %ChildrenPos = [SubtreePos|EntriesPos],
     ChildrenPos = SubtreePosList ++ EntriesPos,
     %ChildrenPos = [RootPos|SubtreePosList],
+?debugVal(length(ChildrenPos)),
     if
     length(ChildrenPos) =< ?MAX_FILLED ->
         NewNode = {MergedMbr, ParentMeta, ChildrenPos},
@@ -1664,9 +1674,11 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
     {{_LeastMbr, LeastPos}, LeastRest} = least_expansion(
             Fd, SubtreeMbr, EntriesPos),
     LeastRestPos = [Pos || {Mbr, Pos} <- LeastRest],
+?debugVal(length(LeastRestPos)),
     case insert_subtree(Fd, LeastPos, Subtree, Level, Depth+1) of
     {ok, NewMbr, NewPos, Inc} ->
         MergedMbr = vtree:merge_mbr(ParentMbr, NewMbr),
+?debugVal(length([NewPos|LeastRestPos])),
         NewNode = {MergedMbr, #node{type=inner}, [NewPos|LeastRestPos]},
         {ok, Pos} = couch_file:append_term(Fd, NewNode),
         {ok, NewMbr, Pos, Inc};
@@ -1675,7 +1687,8 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
         LeastRestPos = [Pos || {Mbr, Pos} <- LeastRest],
         if
         % Both nodes of the split fit in the current inner node
-        length(EntriesPos)+2 =< ?MAX_FILLED ->
+        %length(EntriesPos)+2 =< ?MAX_FILLED ->
+        length(LeastRestPos)+2 =< ?MAX_FILLED ->
             ChildrenPos = [ChildPos1, ChildPos2] ++ LeastRestPos,
             NewNode = {MergedMbr, #node{type=inner}, ChildrenPos},
             {ok, Pos} = couch_file:append_term(Fd, NewNode),
