@@ -28,10 +28,31 @@
 -define(MAX_FILLED, 40).
 %-define(MAX_FILLED, 4).
 
+% The seedtree is kept in memory, therefore it makes sense to restrict the
+% maximum height of it.
+-define(MAX_SEEDTREE_HEIGHT, 3).
+
+
 % {ok, Fd} = couch_file:open("/tmp/seedtree_write.bin").
 % {ok, Fd} = couch_file:open("/tmp/omt.bin").
 % {ok, Fd} = couch_file:open("/tmp/random_packed_tree.bin").
 % couch_file:pread_term(Fd, 2498).
+
+% Code is from Euit (https://github.com/erlang/otp/blob/dev/lib/eunit/include/eunit.hrl)
+% like debugMsg, but with timestamp
+-define(myDebugMsg(S),
+	(begin
+	     .io:fwrite(user, <<"[~s] ~s:~w: ~s\n">>, [httpd_util:rfc1123_date(), ?FILE, ?LINE, S]),
+	     ok
+	 end)).
+-define(myDebugHere, (?myDebugMsg("<-"))).
+-define(myDebugFmt(S, As), (?myDebugMsg(.io_lib:format((S), (As))))).
+-define(myDebugVal(E),
+	((fun (__V) ->
+		  %?myDebugFmt(<<"~s = ~P">>, [(??E), __V, 15]),
+                  ?myDebugFmt(<<"~s = ~p">>, [(??E), __V]),
+		  __V
+	  end)(E))).
 
 
 % same as in vtree
@@ -56,11 +77,12 @@
 
 -type mbr() :: {number(), number(), number(), number()}.
 
+
 % @doc Bulk load a tree
 bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) when TargetTreeHeight==0 ->
     % Tree is empty => bulk load it
-    {Omt, TreeHeight} = vtree_bulk:omt_load(Nodes, ?MAX_FILLED),
-    {ok, MbrAndPosList} = vtree_bulk:omt_write_tree(Fd, Omt),
+    {Omt, TreeHeight} = omt_load(Nodes, ?MAX_FILLED),
+    {ok, MbrAndPosList} = omt_write_tree(Fd, Omt),
 
     {_Mbrs, PosList} = lists:unzip(MbrAndPosList),
     NewNodes = load_nodes(Fd, PosList),
@@ -72,7 +94,11 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) when TargetTreeHeight==0 ->
     end,
     {ok, NewPos, TreeHeight};
 bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
+    % XXX vmx (2010-12-13): WARNING -1 is really bad and for debugging purpose
+    % only
+    % NOTE vmx (2010-12-13): Let's see if the memoty bug also occurs with + 1
     SeedtreeHeight = floor(TargetTreeHeight/2),
+?myDebugVal(SeedtreeHeight),
     Seedtree = seedtree_init(Fd, RootPos, SeedtreeHeight),
     Seedtree2 = seedtree_insert_list(Seedtree, Nodes),
 
@@ -108,6 +134,7 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
     % Insert outliers as whole subtree
     {NewPos2, NewHeight3} = if
     OutliersNum > 100 ->
+?myDebugVal(OutliersNum),
         insert_outliers(Fd, NewPos, NewMbr, NewHeight2, Outliers);
     true ->
         {NewPos, NewHeight2}
@@ -124,8 +151,8 @@ bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
         TargetMbr::mbr(), TargetHeight::integer(),
         Nodes::[{mbr(), tuple(), list()}]) -> {integer(), integer()}.
 insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
-    {Omt, OmtHeight} = vtree_bulk:omt_load(Nodes, ?MAX_FILLED),
-    {ok, MbrAndPosList} = vtree_bulk:omt_write_tree(Fd, Omt),
+    {Omt, OmtHeight} = omt_load(Nodes, ?MAX_FILLED),
+    {ok, MbrAndPosList} = omt_write_tree(Fd, Omt),
 %    ?debugVal(TargetHeight),
 %    ?debugVal(OmtHeight),
 %    ?debugVal(MbrAndPosList),
@@ -134,6 +161,7 @@ insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
     {Mbrs, PosList} = lists:unzip(MbrAndPosList),
     MergedMbr = vtree:calc_mbr([TargetMbr|Mbrs]),
 
+?myDebugVal(TargetHeight - (OmtHeight - 1)),
     % OmtHeight - 1 because this node might contain several children
     case TargetHeight - (OmtHeight - 1) of
     % Both, the new bulk loaded tree and targt tree have the same height
@@ -399,7 +427,8 @@ seedtree_init(Fd, RootPos, MaxDepth) ->
         MaxDepth::integer(), Depth::integer()) -> seedtree_node().
 % It's "Depth+1" as the root already contains several nodes (it's the nature
 % of a R-Tree).
-seedtree_init(Fd, RootPos, MaxDepth, Depth) when Depth+1 == MaxDepth ->
+seedtree_init(Fd, RootPos, MaxDepth, Depth) when
+        (Depth+1 == MaxDepth) or (Depth+1 == ?MAX_SEEDTREE_HEIGHT) ->
     %?debugVal(RootPos),
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
@@ -408,15 +437,18 @@ seedtree_init(Fd, RootPos, MaxDepth, Depth) ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
     case is_tuple(hd(EntriesPos)) of
-    % we reached tree level => return
+    % we reached leaf level => return
     true ->
+?myDebugMsg("seedtree_init: leafs reached"),
         % create seedtree leaf
         {ParentMbr, ParentMeta, #seedtree_leaf{orig=EntriesPos, pos=RootPos}};
     false ->
+?myDebugMsg("seedtree_init: inner node"),
         Children = lists:foldl(fun(EntryPos, Acc) ->
             Child = seedtree_init(Fd, EntryPos, MaxDepth, Depth+1),
             [Child|Acc]
         end, [], EntriesPos),
+?myDebugVal(length(Children)),
         {ParentMbr, ParentMeta, lists:reverse(Children)}
     end.
 
@@ -464,11 +496,12 @@ seedtree_write(Fd, Seedtree, InsertHeight) ->
     % third parameter
     %InsertHeight = TargetHeight - Seedtree#seedtree_root.height,
     TargetHeight = InsertHeight + Seedtree#seedtree_root.height,
-%    ?debugVal(TargetHeight),
-%    ?debugVal(InsertHeight),
+    ?myDebugVal(TargetHeight),
+    ?myDebugVal(InsertHeight),
     %seedtree_write(Fd, [Tree], InsertHeight, []).
     %{level_done, [{_Mbr, Pos}]} = seedtree_write(Fd, [Tree], InsertHeight, []),
     {level_done, Level} = seedtree_write(Fd, [Tree], InsertHeight, []),
+?myDebugMsg("seedtree_write post (within seedtree_write)"),
 %    ?debugMsg("almost done."),
 %    ?debugVal(Level),
 %    ?debugVal(length(Level)),
@@ -604,7 +637,7 @@ seedtree_write(Fd, Seedtree, InsertHeight) ->
 %        ?debugMsg("No outliers"),
         {RootNodes, 0};
     Outliers ->
-        %?debugMsg("Outliers!!"),
+        ?myDebugMsg("Outliers!!"),
 %        ?debugVal(TargetHeight),
         % insert outliers by creating a temporary root node
         {ok, TmpRootPos} = write_parent(Fd, RootNodes),
@@ -634,7 +667,6 @@ seedtree_write(Fd, Seedtree, InsertHeight) ->
         ChildrenNodes = load_nodes(Fd, RootNodes2Pos),
         {ChildrenNodes, LevelDiff}
     end,
-
 %    {MbrAndPos, TreeHeight} = lists:foldl(fun(
 %            {Mbr, Meta, {DocId, Value}}=Foo, {{_, CurPos}, _}) ->
 %        {ok, NewMbr, CurPos2, TreeHeight} = vtree:insert(
@@ -700,7 +732,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
     %     Root node.
     % NOTE vmx: For now I will just create a new root node in any case
     % NOTE vmx: OLD INFO, i don't do this atm
-    
+
 
     % It's (Height + 1), as the OMT trees root node always needs to be a
     % sinlgle position in file (but the omt_load returns a root node with
@@ -708,7 +740,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
     %HeightDiff = InsertHeight - (OmtHeight + 1),
     %HeightDiff = InsertHeight - OmtHeight,
     HeightDiff = InsertHeight - (OmtHeight - 1),
-    %?debugVal(HeightDiff),
+    ?myDebugVal(HeightDiff),
     NewChildrenPos2 = if
     % Input tree can be inserted as-is into the target tree
     HeightDiff == 0 ->
@@ -723,24 +755,52 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
 %        ChildrenPos = write_nodes(Fd, OmtRootNodes),
 %        {ok, OmtRootPos} = couch_file:append_term(
 %                Fd, {OmtMbr, #node{type=inner}, ChildrenPos}),
-
+?myDebugMsg("seedtree_write_insert: pre"),
         NewChildren = seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight),
 %        NewChildren = seedtree_write_insert(Fd, Orig, [{OmtMbr, OmtRootPos}], OmtHeight),
         %NewChildren = seedtree_write_insert(Fd, Orig, [OmtTree], OmtHeight),
         %?debugVal(NewChildren),
+?myDebugMsg("seedtree_write_finish: pre"),
         MbrAndPos = seedtree_write_finish(NewChildren);
     % insert tree is too small => expand seedtree
     HeightDiff > 0 ->
     %?debugMsg("insert is too small"),
+        case HeightDiff == 3 of
+        true ->
+            ?myDebugMsg("WARNING: this is where the bug is");
+        false ->
+            ok
+        end,
+        case (HeightDiff+1) >= ?MAX_SEEDTREE_HEIGHT of
+        true ->
+            ?myDebugMsg("WARNING: seedtree might eat all your memory");
+        false ->
+            ok
+        end,
         %?debugVal(ParentPos),
         % Create new seedtree
         % NOTE vmx: HeightDiff+1 makes sense as we like to load the level
         % of the children, not sure why we need +2 here)
         %Seedtree = seedtree_init(Fd, ParentPos, HeightDiff+2),
+?myDebugMsg("seedtree_init pre"),
         Seedtree = seedtree_init(Fd, ParentPos, HeightDiff+1),
 %        ?debugVal(Seedtree),
+        ?myDebugVal(ParentPos),
+        ?myDebugVal(length(New)),
+?myDebugMsg("seedtree_insert_list pre"),
         Seedtree2 = seedtree_insert_list(Seedtree, New),
+
+        case Seedtree2#seedtree_root.height < (HeightDiff+1) of
+        true ->
+            ?myDebugVal(Seedtree2#seedtree_root.height),
+            ?myDebugVal(HeightDiff+1),
+            ?myDebugMsg("INFO: seedtree was trucated");
+        false ->
+            ok
+        end,
+
 %        ?debugVal(Seedtree2),
+?myDebugVal(Seedtree2#seedtree_root.height),
         %?debugVal(length(Seedtree2#seedtree_root.outliers)),
         %{ok, Pos} = seedtree_write(Fd, Seedtree2, InsertHeight+1),
         %{ok, {Mbr, _, Pos2}} = couch_file:pread_term(Fd, Pos),
@@ -757,8 +817,17 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         % NOTE vmx (2010-12-07): changed seedtree_write/3 to use insert height.
         %{ok, NodesList, NewHeight} = seedtree_write(Fd, Seedtree2,
         %        InsertHeight-HeightDiff),
+        %{ok, NodesList, NewHeight, NewHeightDiff} = seedtree_write(
+        %        Fd, Seedtree2, InsertHeight-HeightDiff),
+        % NOTE vmx (20101217): instead of using (InsertHeight-HeightDiff) as
+        %     height, we use (InsertHeight-Seedtree2#seedtree_root.height-1)
+        %     as the seedtree might not have been created to the full height
+        %     (which can happen due to reaching the leafs or
+        %     MAX_SEEDTREE_HEIGHT earlier)
+?myDebugVal(InsertHeight-HeightDiff),
+?myDebugVal(InsertHeight-Seedtree2#seedtree_root.height+1),
         {ok, NodesList, NewHeight, NewHeightDiff} = seedtree_write(
-                Fd, Seedtree2, InsertHeight-HeightDiff),
+                Fd, Seedtree2, InsertHeight-Seedtree2#seedtree_root.height+1),
 
         % There was a node overflow. Though we are currently somewhere within
         % the tree, so we need to return a node that has the original height.
@@ -799,7 +868,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         %true ->
         %     MbrAndPosList
         %end,
-            
+
 
         %MbrAndPos = lists:map(fun(Pos) ->
         %    {ok, {Mbr, _, Pos2}} = couch_file:pread_term(Fd, Pos),
@@ -1113,15 +1182,15 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
     % First get the position of children of the not disjoint nodes
     NdChildrenPos = lists:append(
             [Children || {_Mbr, _Pos, Children} <- NotDisjoint]),
-    %?debugVal(NdChildrenPos),
+    %?myDebugVal(NdChildrenPos),
 
     % Get the position of the children of the nodes that will be inserted
     % as well.
     OmtChildren = load_nodes(Fd, OmtPosList),
     OmtChildrenPos = lists:append(
             [Children || {_Mbr, _Pos, Children} <- OmtChildren]),
-    %?debugVal(OmtChildren),
-    %?debugVal(OmtChildrenPos),
+    ?myDebugVal(length(OmtChildren)),
+    %?myDebugVal(OmtChildrenPos),
 
     NewChildrenPos = NdChildrenPos ++ OmtChildrenPos,
     % Transform the new children's position to a tuple containing their MBR
@@ -1138,21 +1207,37 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
             {Mbr, Pos}
         end, NewChildrenChildren, NewChildrenPos)
     end,
-
+?myDebugVal(length(NewChildrenMbrAndPos)),
     % Create nodes that are packed to the maximum. This might return a several
     % levels deep OMT tree if there is a huge number of nodes.
     {NewNodesOmt, NewNodesHeight} = omt_load(
             NewChildrenMbrAndPos, ?MAX_FILLED),
-
+?myDebugVal(NewNodesHeight),
     % As the previous result might contain several levels, flatten it:
-    NewNodes = lists:foldl(fun(_I, Acc) ->
-        lists:append(Acc)
-    end, NewNodesOmt, lists:seq(3, NewNodesHeight)),
+    %NewNodes = case NewNodesHeight > 2 of
+    %true ->
+    %    lists:foldl(fun(_I, Acc) ->
+    %        lists:append(Acc)
+    %    end, NewNodesOmt, lists:seq(3, NewNodesHeight));
+    %false ->
+    %    NewNodesOmt
+    %end,
+    NewNodes = case NewNodesHeight of
+    1 ->
+        [NewNodesOmt];
+    2 ->
+        NewNodesOmt;
+    _ ->
+        lists:foldl(fun(_I, Acc) ->
+            lists:append(Acc)
+        end, NewNodesOmt, lists:seq(3, NewNodesHeight))
+    end,
     %?debugVal(NewNodesHeight),
-    %?debugVal(NewNodes),
+    ?myDebugVal(NewNodes),
 
     % Write those new nodes
     NewChildren = lists:map(fun(Nodes) ->
+?myDebugVal(Nodes),
         {Mbrs, Pos} = lists:unzip(Nodes),
         %?debugVal(Pos),
         ParentMbr = vtree:calc_mbr(Mbrs),
@@ -1161,7 +1246,7 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
             false -> #node{type=inner}
         end,
         {ok, ParentPos} = couch_file:append_term(Fd, {ParentMbr, Meta, Pos}),
-        {ParentMbr, ParentPos}    
+        {ParentMbr, ParentPos}
     end, NewNodes),
 
 
@@ -1185,7 +1270,7 @@ seedtree_write_finish(NewChildren) ->
     % (like Ang/Tan) could be used. But we might also just use the OMT
     % algorithm.
     %NewNodes4 = case length(NewNodes3) > ?MAX_FILLED of
-    %NewChildren = Disjoint ++ NewNodes3, 
+    %NewChildren = Disjoint ++ NewNodes3,
 
     % XXX WARNING vmx: it is implicitly expected that NewChildren3 doesn't
     %     contain a depply nested list, though this could happen if
@@ -1556,7 +1641,7 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
 %%%%% Tests %%%%%
 
 
--ifdef(runnall).
+%-ifdef(runnall).
 
 bulk_load_test() ->
     Filename = "/tmp/bulk.bin",
@@ -2669,4 +2754,4 @@ seedtree_write_insert_test() ->
     ?debugVal(Result2),
     ?assertEqual(8, length(Result2)).
 
--endif.
+%-endif.
