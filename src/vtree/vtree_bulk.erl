@@ -331,7 +331,9 @@ seedtree_insert_children([H|T], Node) ->
         MaxDepth::integer()) -> seedtree_root().
 seedtree_init(Fd, RootPos, MaxDepth) ->
     Tree = seedtree_init(Fd, RootPos, MaxDepth, 0),
-    #seedtree_root{tree=Tree, height=MaxDepth}.
+    %#seedtree_root{tree=Tree, height=MaxDepth}.
+    Height = erlang:min(MaxDepth, ?MAX_SEEDTREE_HEIGHT),
+    #seedtree_root{tree=Tree, height=Height}.
 -spec seedtree_init(Fd::file:io_device(), RootPos::integer(),
         MaxDepth::integer(), Depth::integer()) -> seedtree_node().
 % It's "Depth+1" as the root already contains several nodes (it's the nature
@@ -440,7 +442,6 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         % HeightDiff+1 as we like to load the level of the children
         Seedtree = seedtree_init(Fd, ParentPos, HeightDiff+1),
         Seedtree2 = seedtree_insert_list(Seedtree, New),
-
         {ok, NodesList, NewHeight, NewHeightDiff} = seedtree_write(
                 Fd, Seedtree2, InsertHeight-Seedtree2#seedtree_root.height+1),
         % NOTE vmx (2011-01-04) This makes one test fail. I have to admit I
@@ -450,17 +451,17 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         % There was a node overflow. Though we are currently somewhere within
         % the tree, so we need to return a node that has the original height.
         % Therefore recreate the overflowed node.
-        %NodesList2 = case NewHeightDiff > 0 of
-        %false ->
-        %    NodesList;
-        %true ->
-        %    lists:foldl(fun(_I, Acc) ->
-        %        PosList = lists:append([Pos || {_, _, Pos} <- Acc]),
-        %        load_nodes(Fd, PosList)
-        %    end, NodesList, lists:seq(1, NewHeightDiff))
-        %end,
-        %MbrAndPos = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList2];
-        MbrAndPos = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList];
+        NodesList2 = case NewHeightDiff > 0 of
+        false ->
+            NodesList;
+        true ->
+            lists:foldl(fun(_I, Acc) ->
+                PosList = lists:append([Pos || {_, _, Pos} <- Acc]),
+                load_nodes(Fd, PosList)
+            end, NodesList, lists:seq(1, NewHeightDiff))
+        end,
+        MbrAndPos = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList2];
+        %MbrAndPos = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList];
     % insert tree is too high => use its children
     HeightDiff < 0 ->
     %?debugMsg("insert is too high"),
