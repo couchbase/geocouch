@@ -23,8 +23,8 @@
 %    (type=inner/type=leaf)
 
 % Nodes maximum filling grade (TODO vmx: shouldn't be hard-coded)
-%-define(MAX_FILLED, 40).
--define(MAX_FILLED, 4).
+-define(MAX_FILLED, 40).
+%-define(MAX_FILLED, 4).
 
 % The seedtree is kept in memory, therefore it makes sense to restrict the
 % maximum height of it.
