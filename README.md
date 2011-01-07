@@ -6,21 +6,62 @@ See README for the original CouchDB information.
 Prerequisites
 -------------
 
-Clone the GeoCouch branch:
+A working installation of CouchDB with corresponding source
+code. GeoCouch works best with the latest stable releases of CouchDB.
 
-    # default branch is already geocouch
-    git clone http://github.com/vmx/couchdb.git
-    cd couchdb
 
-Compile it:
+Installation
+------------
 
-    ./bootstrap
-    ./configure
-    make dev
+### Get GeoCouch:
 
-Run it:
+    git clone https://github.com/couchone/geocouch.git
+    cd geocouch
 
-    ./utils/run
+### Compilation
+
+Note: Always replace `<vanilla-couch>` with the path to your CouchDB
+source and `<geocouch>` with the location of the GeoCouch source.
+
+Set the `COUCH_SRC` environment to the directory that contains the
+CouchDB core source (`<vanilla-couch>/src/couchdb/`).
+
+    export COUCH_SRC=<vanilla-couch>/src/couchdb
+
+Run "make" in your <geocouch> directory
+
+    make
+
+Copy the configuration file for GeoCouch from
+`<geocouch>/etc/couchdb/local.d/` to
+`<vanilla-couch>/etc/couchdb/local.d/`
+
+    cp <geocouch>/etc/couchdb/local.d/geocouch.ini <vanilla-couch>/etc/couchdb/local.d/
+
+### Futon tests
+
+To make sure your installation is working also copy the Futon tests
+over (from `<geocouch>/share/www/script/test` to
+`<vanilla-couch>/share/www/script/test`):
+
+    cp <geocouch>/share/www/script/test/* <vanilla-couch>/share/www/script/test/
+
+Add the test to `<vanilla-couch>/share/www/script/test/couch_tests.js`
+
+    loadTest("list_spatial.js");
+    loadTest("spatial.js");
+
+### Run CouchDB with GeoCouch
+
+The compiled beam files from GeoCouch need to be in Erlang's path,
+which can be set with the `ERL_FLAGS` environment variable:
+
+    export ERL_FLAGS="-pa <geocouch>/build"
+
+If you run a dev instance with CouchDB's `./utils/run` you can also
+define it on startup:
+
+    ERL_FLAGS="-pa <geocouch>/build" <vanilla-couch>/utils/run
 
 
 Using GeoCouch
@@ -159,33 +200,3 @@ the query will return, not the geometry themselves.
     curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=0,0,180,90'
 
     {"count":1}
-
-
-
-
-New stuff
-=========
-
-Get it running
---------------
-
-Note: always replace <vanilla-couch> with the path to your CouchDB
-source and <geocouch> with the location of the GeoCouch source.
-
- - Set the COUCH_SRC environment to the directory that contains the
-   CouchDB core source (<vanilla-couch>/src/couchdb/)
- - run "make" in your <geocouch> directory
- - "make dev" your vanilla couch.
- - copy the configuration file for GeoCouch from
-   <geocouch>/etc/couchdb/local.d/ to <vanilla-couch>/etc/couchdb/local.d/
- - copy Futon tests over (from <geocouch>/share/www/script/test to
-   <vanilla-couch>/share/www/script/test)
- - add them to <vanilla-couch>/share/www/script/test/couch_tests.js
-
-    loadTest("list_spatial.js");
-    loadTest("spatial.js");
-
- - Now run your CouchDB with GeoCouch in the Erlang path:
-
-    ERL_FLAGS="-pa <geocouch>/build" <vanilla-couch>/utils/run
-
