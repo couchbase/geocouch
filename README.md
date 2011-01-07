@@ -1,7 +1,7 @@
 Welcome to the world of GeoCouch
 ================================
 
-See README for the original CouchDB information.
+GeoCouch is a spatial extension for Apache CouchDB.
 
 Prerequisites
 -------------
