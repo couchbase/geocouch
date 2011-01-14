@@ -256,9 +256,13 @@ open_db_group(DbName, DDocId) ->
 
 
 design_doc_to_spatial_group(#doc{id=Id,body={Fields}}) ->
-    Language = proplists:get_value(<<"language">>, Fields, <<"javascript">>),
-    {DesignOptions} = proplists:get_value(<<"options">>, Fields, {[]}),
-    {RawIndexes} = proplists:get_value(<<"spatial">>, Fields, {[]}),
+    Language = couch_util:get_value(<<"language">>, Fields, <<"javascript">>),
+    {DesignOptions} = couch_util:get_value(<<"options">>, Fields, {[]}),
+    {RawIndexes} = couch_util:get_value(<<"spatial">>, Fields, {[]}),
+    % RawViews is only needed to get the "lib" property
+    {RawViews} = couch_util:get_value(<<"views">>, Fields, {[]}),
+    Lib = couch_util:get_value(<<"lib">>, RawViews, {[]}),
+
     % add the views to a dictionary object, with the map source as the key
     DictBySrc =
     lists:foldl(fun({Name, IndexSrc}, DictBySrcAcc) ->
@@ -275,16 +279,26 @@ design_doc_to_spatial_group(#doc{id=Id,body={Fields}}) ->
         fun({_Src, Index}, N) ->
             {Index#spatial{id_num=N},N+1}
         end, 0, lists:sort(dict:to_list(DictBySrc))),
-    set_index_sig(#spatial_group{name=Id, indexes=Indexes, def_lang=Language,
-                                 design_options=DesignOptions}).
+    set_index_sig(#spatial_group{name=Id, lib=Lib, indexes=Indexes,
+        def_lang=Language, design_options=DesignOptions}).
 
 set_index_sig(#spatial_group{
             indexes=Indexes,
+            lib={[]},
             def_lang=Language,
             design_options=DesignOptions}=G) ->
-    G#spatial_group{sig=erlang:md5(term_to_binary({Indexes, Language,
-                                                   DesignOptions}))}.
-
+    IndexInfo = [I#spatial{update_seq=0, purge_seq=0} || I <- Indexes],
+    G#spatial_group{sig=couch_util:md5(term_to_binary(
+        {IndexInfo, Language, DesignOptions}))};
+set_index_sig(#spatial_group{
+            indexes=Indexes,
+            lib=Lib,
+            def_lang=Language,
+            design_options=DesignOptions}=G) ->
+    IndexInfo = [I#spatial{update_seq=0, purge_seq=0} || I <- Indexes],
+    G#spatial_group{sig=couch_util:md5(term_to_binary(
+        {IndexInfo, Language, DesignOptions,
+        geocouch_duplicates:sort_lib(Lib)}))}.
 
 
 prepare_group({RootDir, DbName, #spatial_group{sig=Sig}=Group}, ForceReset)->
@@ -315,11 +329,16 @@ prepare_group({RootDir, DbName, #spatial_group{sig=Sig}=Group}, ForceReset)->
 
 get_index_header_data(#spatial_group{current_seq=Seq, purge_seq=PurgeSeq,
             id_btree=IdBtree,indexes=Indexes}) ->
-    IndexStates = [TreePos || #spatial{treepos=TreePos} <- Indexes],
-    #spatial_index_header{seq=Seq,
-            purge_seq=PurgeSeq,
-            id_btree_state=couch_btree:get_state(IdBtree),
-            index_states=IndexStates}.
+    IndexStates = [
+        {I#spatial.treepos, I#spatial.update_seq, I#spatial.purge_seq} ||
+        I <- Indexes
+    ],
+    #spatial_index_header{
+        seq=Seq,
+        purge_seq=PurgeSeq,
+        id_btree_state=couch_btree:get_state(IdBtree),
+        index_states=IndexStates
+    }.
 
 delete_index_file(RootDir, DbName, GroupSig) ->
     file:delete(index_file_name(RootDir, DbName, GroupSig)).
@@ -351,16 +370,17 @@ reset_file(Db, Fd, DbName, #spatial_group{sig=Sig,name=Name} = Group) ->
 init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group, nil) ->
     init_group(Db, Fd, Group,
         #spatial_index_header{seq=0, purge_seq=couch_db:get_purge_seq(Db),
-            id_btree_state=nil, index_states=[nil || _ <- Indexes]});
+            id_btree_state=nil, index_states=[{nil, 0, 0} || _ <- Indexes]});
 init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group,
            IndexHeader) ->
     #spatial_index_header{seq=Seq, purge_seq=PurgeSeq,
             id_btree_state=IdBtreeState, index_states=IndexStates} = IndexHeader,
     {ok, IdBtree} = couch_btree:open(IdBtreeState, Fd),
     Indexes2 = lists:zipwith(
-        fun(IndexTreePos, Index) ->
+        fun({IndexTreePos, USeq, PSeq}, Index) ->
             %{ok, Btree} = couch_btree:open(BtreeState, Fd),
-            Index#spatial{treepos=IndexTreePos}
+            Index#spatial{
+                treepos=IndexTreePos, update_seq=USeq, purge_seq=PSeq}
         end,
         IndexStates, Indexes),
     Group#spatial_group{db=Db, fd=Fd, current_seq=Seq, purge_seq=PurgeSeq,

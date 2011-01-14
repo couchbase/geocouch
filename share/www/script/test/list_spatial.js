@@ -140,8 +140,13 @@ couchTests.list_spatial = function(debug) {
         var row = getRow();
         send(fooBarBam); // intentional error
         return "tail";
+      }),
+      listWithCommonJs: stringFun(function() {
+        var lib = require('somelib');
+        return lib.type;
       })
-    }
+    },
+    somelib: "exports.type = 'point';"
   };
   var indexOnlyDesignDoc = {
     _id:"_design/indexes",
@@ -193,7 +198,7 @@ couchTests.list_spatial = function(debug) {
   // standard get
   xhr = CouchDB.request("GET", url_pre + "basicBasic/basicIndex" + url_bbox);
   T(xhr.status == 200, "standard get should be 200");
-  T(/head0123456789tail/.test(xhr.responseText));
+  T(/head9876543210tail/.test(xhr.responseText));
 
   // test that etags are available
   etag = xhr.getResponseHeader("etag");
@@ -209,7 +214,8 @@ couchTests.list_spatial = function(debug) {
   TEquals(11, resp.head.update_seq);
 
   T(resp.rows.length == 10);
-  TEquals(resp.rows[0], {"id":"0","key":[-10,15,-10,15],"value":"0"});
+  TEquals({"id":"9","key":[-10,33,-10,33],"value":"9"}, resp.rows[0]);
+
 
   TEquals(resp.req.info.db_name, "test_suite_db");
   TEquals(resp.req.method, "GET");
@@ -242,7 +248,7 @@ couchTests.list_spatial = function(debug) {
   //too many Get Rows
   xhr = CouchDB.request("GET", url_pre + "tooManyGetRows/basicIndex" + url_bbox);
   T(xhr.status == 200, "tooManyGetRows");
-  T(/9after row: null/.test(xhr.responseText));
+  T(/after row: null/.test(xhr.responseText));
 
   // test that etags are available
   xhr = CouchDB.request("GET", url_pre + "basicBasic/basicIndex" + url_bbox);
@@ -304,13 +310,18 @@ couchTests.list_spatial = function(debug) {
   T(xhr.responseText.match(/XML/));
   T(xhr.responseText.match(/entry/));
 
+  // test with CommonJS module
+  xhr = CouchDB.request("GET", url_pre + "listWithCommonJs/basicIndex" + url_bbox);
+  T(xhr.status == 200, "standard get should be 200");
+  T(/point/.test(xhr.responseText));
+
   // Test we can run lists and views from separate docs.
   T(db.save(indexOnlyDesignDoc).ok);
   var url = url_pre + "simpleForm/indexes/basicIndex" + url_bbox;
   xhr = CouchDB.request("GET", url);
   T(xhr.status == 200, "multiple design docs.");
   T((/Key: -10,29,-10,29/.test(xhr.responseText)));
-  T(/FirstKey: -10,15,-10,15/.test(xhr.responseText));
+  T(/FirstKey: -10,33,-10,33/.test(xhr.responseText));
   T(/LastKey: -21,26,-21,26/.test(xhr.responseText));
 
   var erlViewTest = function() {
@@ -321,8 +332,8 @@ couchTests.list_spatial = function(debug) {
     T(xhr.status == 200, "multiple languages in design docs.");
     var list = JSON.parse(xhr.responseText);
     T(list.length == 11);
-    TEquals([-10, 27, -10, 27], list[6]);
-    TEquals([-10, 17, -10, 17], list[1]);
+    TEquals([-10, 21, -10, 21], list[6]);
+    TEquals([-10, 31, -10, 31], list[1]);
     TEquals([-21, 26, -21, 26], list[10]);
   };
 

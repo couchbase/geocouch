@@ -17,7 +17,7 @@
 % those functions.
 
 -include("couch_db.hrl").
--export([get_os_process/1, start_list_resp/6, send_non_empty_chunk/2]).
+-export([start_doc_map/3, start_list_resp/6, send_non_empty_chunk/2, sort_lib/1]).
 
 % Needed for get_os_process/1
 -record(proc, {
@@ -29,7 +29,21 @@
     stop_fun
 }).
 
+
 % From couch_query_servers.erl
+start_doc_map(Lang, Functions, Lib) ->
+    Proc = get_os_process(Lang),
+    case Lib of
+    {[]} -> ok;
+    Lib ->
+        true = couch_query_servers:proc_prompt(Proc, [<<"add_lib">>, Lib])
+    end,
+    lists:foreach(fun(FunctionSource) ->
+        true = couch_query_servers:proc_prompt(
+            Proc, [<<"add_fun">>, FunctionSource])
+    end, Functions),
+    {ok, Proc}.
+% Needed for start_doc_map/3
 get_os_process(Lang) ->
     case gen_server:call(couch_query_servers, {get_proc, Lang}) of
     {ok, Proc, {QueryConfig}} ->
@@ -101,3 +115,14 @@ send_non_empty_chunk(Resp, Chunk) ->
         [] -> ok;
         _ -> couch_httpd:send_chunk(Resp, Chunk)
     end.
+
+% From couch_view_group
+sort_lib({Lib}) ->
+    sort_lib(Lib, []).
+sort_lib([], LAcc) ->
+    lists:keysort(1, LAcc);
+sort_lib([{LName, {LObj}}|Rest], LAcc) ->
+    LSorted = sort_lib(LObj, []), % descend into nested object
+    sort_lib(Rest, [{LName, LSorted}|LAcc]);
+sort_lib([{LName, LCode}|Rest], LAcc) ->
+    sort_lib(Rest, [{LName, LCode}|LAcc]).

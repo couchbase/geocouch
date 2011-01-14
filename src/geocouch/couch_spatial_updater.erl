@@ -25,11 +25,10 @@ update(Owner, Group) ->
     #spatial_group{
         db = #db{name=DbName} = Db,
         name = GroupName,
-        current_seq = Seq,
-        purge_seq = PurgeSeq
+        current_seq = Seq
+        %purge_seq = PurgeSeq
     } = Group,
     couch_task_status:add_task(<<"Spatial Group Indexer">>, <<DbName/binary," ",GroupName/binary>>, <<"Starting index update">>),
-
     % XXX vmx: what are purges? when do they happen?
     %DbPurgeSeq = couch_db:get_purge_seq(Db),
     %Group2 =
@@ -116,33 +115,20 @@ view_insert_doc_query_results(#doc{id=DocId}=Doc, [ResultKVs|RestResults], [{Vie
     view_insert_doc_query_results(Doc, RestResults, RestViewKVs, NewViewKVsAcc, NewViewIdKeysAcc).
 
 
-
-
-
 % Pendant to couch_view_updater:view_compute/2
 spatial_compute(Group, []) ->
     {Group, []};
-spatial_compute(#spatial_group{def_lang=DefLang, query_server=QueryServerIn}=Group, Docs) ->
+spatial_compute(#spatial_group{def_lang=DefLang, lib=Lib, query_server=QueryServerIn}=Group, Docs) ->
     {ok, QueryServer} =
     case QueryServerIn of
     nil -> % spatial funs not started
         Functions = [Index#spatial.def || Index <- Group#spatial_group.indexes],
-        start_spatial(DefLang, Functions);
+        geocouch_duplicates:start_doc_map(DefLang, Functions, Lib);
     _ ->
         {ok, QueryServerIn}
     end,
     {ok, Results} = spatial_docs(QueryServer, Docs),
     {Group#spatial_group{query_server=QueryServer}, Results}.
-
-    
-
-% Pendant to couch_query_servers:start_doc_map/2
-start_spatial(Lang, Functions) ->
-    Proc = geocouch_duplicates:get_os_process(Lang),
-    lists:foreach(fun(FunctionSource) ->
-        true = couch_query_servers:proc_prompt(Proc, [<<"add_fun">>, FunctionSource])
-    end, Functions),
-    {ok, Proc}.
 
 % Pendant to couch_query_servers:map_docs/2
 spatial_docs(Proc, Docs) ->
@@ -184,7 +170,6 @@ spatial_docs(Proc, Docs) ->
 % This is from an old revision (796805) of couch_view_updater
 process_doc(Db, Owner, DocInfo, {Docs, Group, IndexKVs, DocIdIndexIdKeys}) ->
     #spatial_group{ design_options = DesignOptions } = Group,
-
     #doc_info{id=DocId, revs=[#rev_info{deleted=Deleted}|_]} = DocInfo,
     LocalSeq = proplists:get_value(<<"local_seq">>,
         DesignOptions, false),
@@ -256,7 +241,13 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
         {ok, IndexTreePos, IndexTreeHeight} = vtree:add_remove(
                 Fd, Index#spatial.treepos, Index#spatial.treeheight,
                 AddKeyValues, KeysToRemove),
-        Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight}
+        case IndexTreePos =/= Index#spatial.treepos of
+        true ->
+             Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight,
+                 update_seq=NewSeq};
+        _ ->
+             Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight}
+        end
     end, Group#spatial_group.indexes, IndexKeyValuesToAdd),
     Group2 = Group#spatial_group{indexes=Indexes2, current_seq=NewSeq, id_btree=IdBtree2},
     lists:foreach(fun(Index) ->

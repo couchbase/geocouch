@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--record(spatial_group, {       
+-record(spatial_group, {
     sig=nil,
     db=nil,
     fd=nil,
@@ -18,6 +18,7 @@
     def_lang,
     design_options=[],
     indexes,
+    lib,
     id_btree=nil, % the back-index
     current_seq=0,
     purge_seq=0,
@@ -30,14 +31,13 @@
 -record(spatial, {
     root_dir=nil,
     seq=0,
-    % XXX delete fds, it's not needed any longer
-    fds=[],
     treepos=nil,
     treeheight=0, % height of the tree
-    btree=nil,
-    id_num = 0, % comes from couch_spatial_group requirements
-    def = nil, % The function in the query/view server
-    index_names = []
+    def=nil, % The function in the query/view server
+    index_names=[],
+    id_num=0, % comes from couch_spatial_group requirements
+    update_seq=0, % comes from couch_spatial_group requirements
+    purge_seq=0 % comes from couch_spatial_group requirements
 }).
 
 -record(spatial_index_header, {

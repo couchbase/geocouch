@@ -48,8 +48,9 @@ over (from `<geocouch>/share/www/script/test` to
 
 Add the test to `<vanilla-couch>/share/www/script/test/couch_tests.js`
 
-    loadTest("list_spatial.js");
     loadTest("spatial.js");
+    loadTest("list_spatial.js");
+    loadTest("etags_spatial.js");
 
 ### Run CouchDB with GeoCouch
 

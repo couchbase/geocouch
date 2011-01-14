@@ -14,7 +14,7 @@
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
 
--export([handle_spatial_req/3, spatial_group_etag/2, spatial_group_etag/3,
+-export([handle_spatial_req/3, spatial_etag/3, spatial_etag/4,
          load_index/3]).
 
 -import(couch_httpd,
@@ -25,7 +25,6 @@ handle_spatial_req(#httpd{method='GET',
         path_parts=[_, _, DName, _, SpatialName]}=Req, Db, DDoc) ->
     ?LOG_DEBUG("Spatial query (~p): ~n~p", [DName, DDoc#doc.id]),
     #spatial_query_args{
-        bbox = Bbox,
         stale = Stale
     } = QueryArgs = parse_spatial_params(Req),
     {ok, Index, Group} = couch_spatial:get_spatial_index(
@@ -47,7 +46,7 @@ load_index(Req, Db, {DesignId, SpatialName}) ->
 
 %output_spatial_index(Req, Index, Group, Db,
 %                     QueryArgs#spatial_query_args{count=true}) ->
-output_spatial_index(Req, Index, Group, Db, QueryArgs) when
+output_spatial_index(Req, Index, Group, _Db, QueryArgs) when
         QueryArgs#spatial_query_args.count == true ->
     Count = vtree:count_lookup(Group#spatial_group.fd,
                                Index#spatial.treepos,
@@ -56,7 +55,7 @@ output_spatial_index(Req, Index, Group, Db, QueryArgs) when
 
 % counterpart in couch_httpd_view is output_map_view/6
 output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
-    CurrentEtag = spatial_group_etag(Group, Db),
+    CurrentEtag = spatial_etag(Db, Group, Index),
     HelperFuns = #spatial_fold_helper_funs{
         start_response = fun json_spatial_start_resp/3,
         send_row = fun send_json_spatial_row/3
@@ -76,7 +75,7 @@ output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
     end).
 
 % counterpart in couch_httpd_view is make_view_fold/7
-make_spatial_fold_funs(Req, QueryArgs, Etag, Db, UpdateSeq, HelperFuns) ->
+make_spatial_fold_funs(Req, _QueryArgs, Etag, _Db, UpdateSeq, HelperFuns) ->
     #spatial_fold_helper_funs{
         start_response = StartRespFun,
         send_row = SendRowFun
@@ -124,11 +123,12 @@ send_json_spatial_row(Resp, {Bbox, DocId, Value}, RowFront) ->
     {ok, ",\r\n"}.
 
 
-% counterpart in couch_httpd_view is view_group_etag/2 resp. /3
-spatial_group_etag(Group, Db) ->
-    spatial_group_etag(Group, Db, nil).
-spatial_group_etag(#spatial_group{sig=Sig, current_seq=CurrentSeq}, _Db, Extra) ->
-    couch_httpd:make_etag({Sig, CurrentSeq, Extra}).
+% counterpart in couch_httpd_view is view_group_etag/3 resp. /4
+spatial_etag(Db, Group, Index) ->
+    spatial_etag(Db, Group, Index, nil).
+spatial_etag(_Db, #spatial_group{sig=Sig},
+        #spatial{update_seq=UpdateSeq, purge_seq=PurgeSeq}, Extra) ->
+    couch_httpd:make_etag({Sig, UpdateSeq, PurgeSeq, Extra}).
 
 parse_spatial_params(Req) ->
     QueryList = couch_httpd:qs(Req),

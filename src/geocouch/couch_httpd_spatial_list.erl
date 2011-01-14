@@ -42,15 +42,15 @@ handle_spatial_list(Req, Db, DDoc, LName, {SpatialDesignName, SpatialName}) ->
     SpatialDesignId = <<"_design/", SpatialDesignName/binary>>,
     {ok, Index, Group, QueryArgs} = couch_httpd_spatial:load_index(
             Req, Db, {SpatialDesignId, SpatialName}),
-    Etag = list_etag(Req, Db, Group, couch_httpd:doc_etag(DDoc)),
+    Etag = list_etag(Req, Db, Group, Index, couch_httpd:doc_etag(DDoc)),
     couch_httpd:etag_respond(Req, Etag, fun() ->
         output_list(Req, Db, DDoc, LName, Index, QueryArgs, Etag, Group)
     end).
 
-list_etag(#httpd{user_ctx=UserCtx}=Req, Db, Group, More) ->
+list_etag(#httpd{user_ctx=UserCtx}=Req, Db, Group, Index, More) ->
     Accept = couch_httpd:header_value(Req, "Accept"),
-    couch_httpd_spatial:spatial_group_etag(
-        Group, Db, {More, Accept, UserCtx#user_ctx.roles}).
+    couch_httpd_spatial:spatial_etag(
+        Db, Group, Index, {More, Accept, UserCtx#user_ctx.roles}).
 
 output_list(_, _, _, _, _, #spatial_query_args{bbox=nil}, _, _) ->
     throw({spatial_query_error, <<"Bounding box not specified.">>});
