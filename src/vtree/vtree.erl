@@ -97,32 +97,30 @@ count_lookup(Fd, Pos, Bbox) ->
 count_total(Fd, nil) ->
     0;
 count_total(Fd, RootPos) ->
-    fold(Fd, RootPos, fun(Nodes, Acc) ->
-        length(Nodes) + Acc
+    fold(Fd, RootPos, fun(Node, Acc) ->
+        Acc + 1
     end, 0).
 
-% @doc Folds through all leaf nodes. Fun takes the child nodes ad first
-% argument, the accumulator as second.
+% @doc Folds through all leaf nodes. Fun takes a leaf child node (that
+% contains the catual data) as first argument, the accumulator as second.
 -spec fold(Fd::file:io_device(), RootPos::integer(), Fun::fun(),
         InitAcc::any()) -> any().
 fold(Fd, RootPos, Fun, InitAcc) ->
     foldl(Fd, RootPos, Fun, InitAcc).
 -spec foldl(Fd::file:io_device(), Pos::integer(), Fun::fun(), Acc::any()) ->
         any().
+% leaf node
+foldl(Fd, Pos, Fun, Acc) when is_tuple(Pos) ->
+    % Pos is a child of a leaf node (a node that contains the actual data)
+    Fun(Pos, Acc);
+% inner node
 foldl(Fd, Pos, Fun, Acc) ->
     {ok, Parent} = couch_file:pread_term(Fd, Pos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
 
-    if
-    % leaf node
-    is_tuple(hd(EntriesPos)) ->
-        Fun(EntriesPos, Acc);
-    % inner node
-    true ->
-        lists:foldl(fun(EntryPos, Acc2) ->
-            foldl(Fd, EntryPos, Fun, Acc2)
-        end, Acc, EntriesPos)
-    end.
+    lists:foldl(fun(EntryPos, Acc2) ->
+        foldl(Fd, EntryPos, Fun, Acc2)
+    end, Acc, EntriesPos).
 
 
 
