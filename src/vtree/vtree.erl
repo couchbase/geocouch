@@ -16,7 +16,8 @@
          area/1, merge_mbr/2, find_area_min_nth/1, partition_node/1,
          calc_nodes_mbr/1, calc_mbr/1, best_split/1, minimal_overlap/2,
          calc_overlap/2, minimal_coverage/2, delete/4, add_remove/5,
-         split_flipped_bbox/2, count_lookup/3, split_node/1, count_total/2]).
+         split_flipped_bbox/2, count_lookup/3, split_node/1, count_total/2,
+         foldl/4]).
 
 -export([get_node/2]).
 -export([foldl_stop/3]).
@@ -97,29 +98,29 @@ count_lookup(Fd, Pos, Bbox) ->
 count_total(Fd, nil) ->
     0;
 count_total(Fd, RootPos) ->
-    fold(Fd, RootPos, fun(Node, Acc) ->
+    foldl(Fd, RootPos, fun(Node, Acc) ->
         Acc + 1
     end, 0).
 
 % @doc Folds through all leaf nodes. Fun takes a leaf child node (that
 % contains the catual data) as first argument, the accumulator as second.
--spec fold(Fd::file:io_device(), RootPos::integer(), Fun::fun(),
+-spec foldl(Fd::file:io_device(), RootPos::integer(), Fun::fun(),
         InitAcc::any()) -> any().
-fold(Fd, RootPos, Fun, InitAcc) ->
-    foldl(Fd, RootPos, Fun, InitAcc).
--spec foldl(Fd::file:io_device(), Pos::integer(), Fun::fun(), Acc::any()) ->
+foldl(Fd, RootPos, Fun, InitAcc) ->
+    fold(Fd, RootPos, Fun, InitAcc).
+-spec fold(Fd::file:io_device(), Pos::integer(), Fun::fun(), Acc::any()) ->
         any().
 % leaf node
-foldl(Fd, Pos, Fun, Acc) when is_tuple(Pos) ->
+fold(Fd, Pos, Fun, Acc) when is_tuple(Pos) ->
     % Pos is a child of a leaf node (a node that contains the actual data)
     Fun(Pos, Acc);
 % inner node
-foldl(Fd, Pos, Fun, Acc) ->
+fold(Fd, Pos, Fun, Acc) ->
     {ok, Parent} = couch_file:pread_term(Fd, Pos),
     {ParentMbr, ParentMeta, EntriesPos} = Parent,
 
     lists:foldl(fun(EntryPos, Acc2) ->
-        foldl(Fd, EntryPos, Fun, Acc2)
+        fold(Fd, EntryPos, Fun, Acc2)
     end, Acc, EntriesPos).
 
 
