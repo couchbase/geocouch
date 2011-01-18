@@ -712,6 +712,10 @@ test_count_total() ->
             "/tmp/randtree.bin", 338),
     Count2 = vtree:count_total(Fd2, RootPos2),
     etap:is(Count2, 338, "Total number of geometries is correct (b)"),
+
+    Count3 = vtree:count_total(Fd2, nil),
+    etap:is(Count3, 0,
+            "Total number of geometries is correct (for empty tree)"),
     ok.
 
 

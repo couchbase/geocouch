@@ -94,6 +94,8 @@ count_lookup(Fd, Pos, Bbox) ->
 
 % Returns the total number of geometries
 -spec count_total(Fd::file:io_device(), RootPos::integer()) -> integer().
+count_total(Fd, nil) ->
+    0;
 count_total(Fd, RootPos) ->
     count_total(Fd, RootPos, 0).
 -spec count_total(Fd::file:io_device(), Pos::integer(), Count::integer()) ->
