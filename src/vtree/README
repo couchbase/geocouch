@@ -5,3 +5,8 @@ erl -pa PATH-TO-COUCHDB-BEAM-FILES -noshell -s run_vtreeviz run -s init stop -fi
 
 The output is a Graphviz dot file. Create a PNG out of it with:
 dot -Tpng -o randtree.png YOUR-DOT-FILE
+
+
+If you want to run the vtree tests:
+go to build dir and:
+erl -pa PATH-TO-COUCHDB-BEAM-FILES -pa PATH-TO-ETAP-BEAM-FILES -noshell -s vtree_test start -s init stop

@@ -36,6 +36,7 @@ start() ->
     test_insert(),
     test_delete(),
     test_split_node(),
+    test_count_total(),
 
     etap:end_tests().
 
@@ -672,7 +673,7 @@ test_delete() ->
     {ok, Pos5_5} = vtree:delete(Fd, Node4Id, Node4Mbr, Pos5_4),
     {ok, Pos5_6} = vtree:delete(Fd, Node3Id, Node3Mbr, Pos5_5),
 
-    etap:is(vtree:delete(Fd, Node1Id, Node1Mbr, Pos5_6), empty,
+    etap:is(vtree:delete(Fd, Node1Id, Node1Mbr, Pos5_6), {empty, nil},
             "After deletion of node, the tree is empty (tree height=2)"),
 
     etap:is(vtree:delete(Fd, Node5Id, Node5Mbr, Pos5_6), not_found,
@@ -698,6 +699,21 @@ test_split_node() ->
     etap:is(length(element(3, Node1b)), 2,
         "Split node with one item too much (correct number of children (b))"),
     ok.
+
+test_count_total() ->
+    etap:plan(2),
+
+    {ok, {Fd1, {RootPos1, _}}} = vtree_test:build_random_tree(
+            "/tmp/randtree.bin", 20),
+    Count1 = vtree:count_total(Fd1, RootPos1),
+    etap:is(Count1, 20, "Total number of geometries is correct (a)"),
+
+    {ok, {Fd2, {RootPos2, _}}} = vtree_test:build_random_tree(
+            "/tmp/randtree.bin", 338),
+    Count2 = vtree:count_total(Fd2, RootPos2),
+    etap:is(Count2, 338, "Total number of geometries is correct (b)"),
+    ok.
+
 
 -spec build_random_tree(Filename::string(), Num::integer()) ->
         {ok, {file:io_device(), {integer(), integer()}}} | {error, string()}.

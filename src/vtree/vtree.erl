@@ -16,7 +16,7 @@
          area/1, merge_mbr/2, find_area_min_nth/1, partition_node/1,
          calc_nodes_mbr/1, calc_mbr/1, best_split/1, minimal_overlap/2,
          calc_overlap/2, minimal_coverage/2, delete/4, add_remove/5,
-         split_flipped_bbox/2, count_lookup/3, split_node/1]).
+         split_flipped_bbox/2, count_lookup/3, split_node/1, count_total/2]).
 
 -export([get_node/2]).
 -export([foldl_stop/3]).
@@ -30,10 +30,10 @@
 % Design question: Should not fully filled nodes have only as many members as nodes, or be filled up with nils to their maximum number of nodes? - Current implementation is the first one (dynamic number of members).
 
 % Nodes maximum/minimum filling grade (TODO vmx: shouldn't be hard-coded)
--define(MAX_FILLED, 40).
--define(MIN_FILLED, 20).
-%-define(MAX_FILLED, 4).
-%-define(MIN_FILLED, 2).
+%-define(MAX_FILLED, 40).
+%-define(MIN_FILLED, 20).
+-define(MAX_FILLED, 4).
+-define(MIN_FILLED, 2).
 
 
 % NOTE vmx: At the moment "leaf" is used for the nodes that
@@ -85,11 +85,32 @@ get_timestamp() ->
     {Mega,Sec,Micro} = erlang:now(),
     ((Mega*1000000+Sec)*1000000+Micro)/1000000.
 
-% Returns the number of matching geometries only
+% Returns only the number of matching geometries
 count_lookup(Fd, Pos, Bbox) ->
     case lookup(Fd, Pos, Bbox, {fun(Item, Acc) -> {ok, Acc+1} end, 0}) of
         {ok, []} -> 0;
         {ok, Count} -> Count
+    end.
+
+% Returns the total number of geometries
+-spec count_total(Fd::file:io_device(), RootPos::integer()) -> integer().
+count_total(Fd, RootPos) ->
+    count_total(Fd, RootPos, 0).
+-spec count_total(Fd::file:io_device(), Pos::integer(), Count::integer()) ->
+        integer().
+count_total(Fd, Pos, Count) ->
+    {ok, Parent} = couch_file:pread_term(Fd, Pos),
+    {ParentMbr, ParentMeta, EntriesPos} = Parent,
+
+    if
+    % leaf node
+    is_tuple(hd(EntriesPos)) ->
+        Count + length(EntriesPos);
+    % inner node
+    true ->
+        lists:foldl(fun(EntryPos, Count2) ->
+            count_total(Fd, EntryPos, Count2)
+        end, Count, EntriesPos)
     end.
 
 
