@@ -90,10 +90,10 @@ test_insert() ->
             "Insert a node into an empty tree" ++
             " (check if it was written correctly)"),
     {ok, Mbr1_2, Pos2, 1} = vtree:insert(Fd, 0, <<"Node2">>, Node2),
-    etap:is(vtree:get_node(Fd, Pos2), {ok, Tree1Node1_2}, 
+    etap:is(vtree:get_node(Fd, Pos2), {ok, Tree1Node1_2},
             "Insert a node into a not yet full leaf node (root node) (a)"),
     {ok, Mbr1_2_3, Pos3, 1} = vtree:insert(Fd, Pos2, <<"Node3">>, Node3),
-    etap:is(vtree:get_node(Fd, Pos3), {ok, Tree1Node1_2_3}, 
+    etap:is(vtree:get_node(Fd, Pos3), {ok, Tree1Node1_2_3},
             "Insert a node into a not yet full leaf node (root node) (b)"),
     {ok, Mbr1_2_3_4, Pos4, 1} = vtree:insert(Fd, Pos3, <<"Node4">>, Node4),
     etap:is(vtree:get_node(Fd, Pos4), {ok, Tree1Node1_2_3_4},
@@ -106,7 +106,7 @@ test_insert() ->
                   {ok, Tree1Node1_2_3_4_5},
             "Insert a nodes into a full leaf node (root node)"),
     ok.
-    
+
 
 test_within() ->
     etap:plan(4),
@@ -149,7 +149,7 @@ test_intersect() ->
             "MBR intersection (W and E edge (middle))"),
     etap:is(vtree:intersect(Mbr1_2, {-10, -9, 18, 10}), true,
             "MBR intersection (W and E edge (top))"),
-    etap:is(vtree:intersect(Mbr1_2, {-25, -4, 2, 12}), true, 
+    etap:is(vtree:intersect(Mbr1_2, {-25, -4, 2, 12}), true,
             "MBR intersection (N and S edge (left))"),
     etap:is(vtree:intersect(Mbr1_2, {-15, -4, 2, 12}), true,
             "MBR intersection (N and S edge (middle))"),
@@ -168,7 +168,7 @@ test_disjoint() ->
             "MBRs are disjoint"),
     etap:is(vtree:disjoint(Mbr1_2, {-27, 2, 18, 10}), false,
             "MBRs are not disjoint").
-    
+
 
 test_lookup() ->
     etap:plan(6),
@@ -314,7 +314,7 @@ test_split_flipped_bbox() ->
             not_flipped,
             "Not flipped Bbox"),
     ok.
-    
+
 
 test_area() ->
     etap:plan(5),
