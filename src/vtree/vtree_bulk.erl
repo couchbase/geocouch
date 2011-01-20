@@ -60,6 +60,10 @@
 -spec bulk_load(Fd::file:io_device(), RootPos::integer(),
         TargetTreeHeight::integer(), Nodes::[vtree_node()]) ->
         {ok, integer(), integer()}.
+% No nodes to load
+bulk_load(Fd, RootPos, TargetTreeHeight, []) ->
+    {ok, RootPos, TargetTreeHeight};
+% Tree is empty
 bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) when TargetTreeHeight==0 ->
     % Tree is empty => bulk load it
     {Omt, TreeHeight} = omt_load(Nodes, ?MAX_FILLED),
