@@ -154,7 +154,7 @@ spatial_docs(Proc, Docs) ->
                         % do some post-processing of the result documents
                         FunRs2 = process_result(FunRs),
                         %JsonDoc = couch_query_servers:json_doc(Doc),
-                        ?LOG_DEBUG("spatial_docs:~n~p~n~p", [FunRs, FunRs2]),
+                        %?LOG_DEBUG("spatial_docs:~n~p~n~p", [FunRs, FunRs2]),
                         %[list_to_tuple(FunResult) || FunResult <- [FunRs]]
                         %[list_to_tuple(FunResult) || FunResult <- [FunRs2]]
                         [FunRs2]

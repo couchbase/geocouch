@@ -29,7 +29,7 @@
     init_args,
     group,
     updater_pid=nil,
-%    compactor_pid=nil,
+    compactor_pid=nil,
     waiting_commit=false,
     waiting_list=[],
     ref_counter=nil
@@ -131,7 +131,96 @@ handle_call({request_group, RequestSeq}, From,
 ?LOG_DEBUG("(3) request_group handler: seqs: req: ~p", [RequestSeq]),
     {noreply, State#group_state{
         waiting_list=[{From, RequestSeq}|WaitList]
-        }, infinity}.
+        }, infinity};
+
+handle_call(request_group_info, _From, State) ->
+    GroupInfo = get_group_info(State),
+    {reply, {ok, GroupInfo}, State}.
+
+handle_cast({start_compact, CompactFun}, #group_state{compactor_pid=nil}
+        = State) ->
+    #group_state{
+        group = #spatial_group{name = GroupId, sig = GroupSig} = Group,
+        init_args = {RootDir, DbName, _}
+    } = State,
+    ?LOG_INFO("Spatial index compaction starting for ~s ~s",
+        [DbName, GroupId]),
+    {ok, Db} = couch_db:open_int(DbName, []),
+    {ok, Fd} = open_index_file(compact, RootDir, DbName, GroupSig),
+    NewGroup = reset_file(Db, Fd, DbName, Group),
+    Pid = spawn_link(fun() -> CompactFun(Group, NewGroup) end),
+    {noreply, State#group_state{compactor_pid = Pid}};
+handle_cast({start_compact, _}, State) ->
+    %% compact already running, this is a no-op
+    {noreply, State};
+
+handle_cast({compact_done, #spatial_group{current_seq=NewSeq} = NewGroup},
+        #group_state{group = #spatial_group{current_seq=OldSeq}} = State)
+        when NewSeq >= OldSeq ->
+    #group_state{
+        group = #spatial_group{name=GroupId, fd=OldFd, sig=GroupSig} = Group,
+        init_args = {RootDir, DbName, _},
+        updater_pid = UpdaterPid,
+        ref_counter = RefCounter
+    } = State,
+
+    ?LOG_INFO("Spatial index compaction complete for ~s ~s",
+        [DbName, GroupId]),
+    FileName = index_file_name(RootDir, DbName, GroupSig),
+    CompactName = index_file_name(compact, RootDir, DbName, GroupSig),
+    ok = couch_file:delete(RootDir, FileName),
+    ok = file:rename(CompactName, FileName),
+
+    %% if an updater is running, kill it and start a new one
+    NewUpdaterPid =
+    if is_pid(UpdaterPid) ->
+        unlink(UpdaterPid),
+        exit(UpdaterPid, spatial_compaction_complete),
+        Owner = self(),
+        spawn_link(fun()-> couch_spatial_updater:update(Owner, NewGroup) end);
+    true ->
+        nil
+    end,
+
+    %% cleanup old group
+    unlink(OldFd),
+    couch_ref_counter:drop(RefCounter),
+    {ok, NewRefCounter} = couch_ref_counter:start([NewGroup#spatial_group.fd]),
+    case Group#spatial_group.db of
+        nil -> ok;
+        Else -> couch_db:close(Else)
+    end,
+
+    self() ! delayed_commit,
+    {noreply, State#group_state{
+        group=NewGroup,
+        ref_counter=NewRefCounter,
+        compactor_pid=nil,
+        updater_pid=NewUpdaterPid
+    }};
+handle_cast({compact_done, NewGroup}, State) ->
+    #group_state{
+        group = #spatial_group{name = GroupId, current_seq = CurrentSeq},
+        init_args={_RootDir, DbName, _}
+    } = State,
+    ?LOG_INFO("Spatial index compaction still behind for ~s ~s -- " ++
+        "current: ~p compact: ~p",
+        [DbName, GroupId, CurrentSeq, NewGroup#spatial_group.current_seq]),
+    couch_db:close(NewGroup#spatial_group.db),
+    {ok, Db} = couch_db:open_int(DbName, []),
+    Pid = spawn_link(fun() ->
+        {_,Ref} = erlang:spawn_monitor(fun() ->
+            couch_spatial_updater:update(nil, NewGroup#spatial_group{db = Db})
+        end),
+        receive
+            {'DOWN', Ref, _, _, {new_group, NewGroup2}} ->
+                #spatial_group{name=GroupId} = NewGroup2,
+                Pid2 = couch_spatial:get_group_server(DbName, GroupId),
+                gen_server:cast(Pid2, {compact_done, NewGroup2})
+        end
+    end),
+    {noreply, State#group_state{compactor_pid = Pid}};
+
 
 handle_cast({partial_update, Pid, NewGroup}, #group_state{updater_pid=Pid}
         = State) ->
@@ -347,6 +436,11 @@ index_file_name(RootDir, DbName, GroupSig) ->
     couch_view_group:design_root(RootDir, DbName) ++
         couch_util:to_hex(?b2l(GroupSig)) ++".spatial".
 
+index_file_name(compact, RootDir, DbName, GroupSig) ->
+    couch_view_group:design_root(RootDir, DbName) ++
+        couch_util:to_hex(?b2l(GroupSig)) ++".compact.spatial".
+
+
 open_index_file(RootDir, DbName, GroupSig) ->
     FileName = index_file_name(RootDir, DbName, GroupSig),
     case couch_file:open(FileName) of
@@ -354,6 +448,42 @@ open_index_file(RootDir, DbName, GroupSig) ->
     {error, enoent} -> couch_file:open(FileName, [create]);
     Error           -> Error
     end.
+
+open_index_file(compact, RootDir, DbName, GroupSig) ->
+    FileName = index_file_name(compact, RootDir, DbName, GroupSig),
+    case couch_file:open(FileName) of
+    {ok, Fd}        -> {ok, Fd};
+    {error, enoent} -> couch_file:open(FileName, [create]);
+    Error           -> Error
+    end.
+
+get_group_info(State) ->
+    #group_state{
+        group=Group,
+        updater_pid=UpdaterPid,
+        compactor_pid=CompactorPid,
+        waiting_commit=WaitingCommit,
+        waiting_list=WaitersList
+    } = State,
+    #spatial_group{
+        fd = Fd,
+        sig = GroupSig,
+        def_lang = Lang,
+        current_seq=CurrentSeq,
+        purge_seq=PurgeSeq
+    } = Group,
+    {ok, Size} = couch_file:bytes(Fd),
+    [
+        {signature, ?l2b(couch_util:to_hex(?b2l(GroupSig)))},
+        {language, Lang},
+        {disk_size, Size},
+        {updater_running, UpdaterPid /= nil},
+        {compact_running, CompactorPid /= nil},
+        {waiting_commit, WaitingCommit},
+        {waiting_clients, length(WaitersList)},
+        {update_seq, CurrentSeq},
+        {purge_seq, PurgeSeq}
+    ].
 
 reset_group(#spatial_group{indexes=Indexes}=Group) ->
     Indexes2 = [Index#spatial{treepos=nil} || Index <- Indexes],

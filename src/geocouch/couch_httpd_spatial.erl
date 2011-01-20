@@ -15,7 +15,7 @@
 -include("couch_spatial.hrl").
 
 -export([handle_spatial_req/3, spatial_etag/3, spatial_etag/4,
-         load_index/3]).
+         load_index/3, handle_compact_req/2, handle_design_info_req/3]).
 
 -import(couch_httpd,
         [send_json/2, send_json/3, send_method_not_allowed/2, send_chunk/2,
@@ -33,6 +33,31 @@ handle_spatial_req(#httpd{method='GET',
 
 handle_spatial_req(Req, _Db, _DDoc) ->
     send_method_not_allowed(Req, "GET,HEAD").
+
+% pendant is in couch_httpd_db
+handle_compact_req(#httpd{method='POST',
+        path_parts=[DbName, _ , Id|_]}=Req, Db) ->
+    ok = couch_db:check_is_admin(Db),
+    couch_httpd:validate_ctype(Req, "application/json"),
+    ok = couch_spatial_compactor:start_compact(DbName, Id),
+    send_json(Req, 202, {[{ok, true}]});
+handle_compact_req(Req, _Db) ->
+    send_method_not_allowed(Req, "POST").
+
+% pendant is in couch_httpd_db
+handle_design_info_req(#httpd{
+            method='GET',
+            path_parts=[_DbName, _Design, DesignName, _]
+        }=Req, Db, _DDoc) ->
+    DesignId = <<"_design/", DesignName/binary>>,
+    {ok, GroupInfoList} = couch_spatial:get_group_info(Db, DesignId),
+    send_json(Req, 200, {[
+        {name, DesignName},
+        {spatial_index, {GroupInfoList}}
+    ]});
+handle_design_info_req(Req, _Db, _DDoc) ->
+    send_method_not_allowed(Req, "GET").
+
 
 load_index(Req, Db, {DesignId, SpatialName}) ->
     QueryArgs = parse_spatial_params(Req),

@@ -13,10 +13,15 @@
 -module(couch_spatial).
 -behaviour(gen_server).
 
--export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2,
+    terminate/2, code_change/3]).
 -export([fold/5]).
 % For List functions
 -export([get_spatial_index/4]).
+% For compactor
+-export([get_group_server/2, get_item_count/2]).
+% For _spatialinfo
+-export([get_group_info/2]).
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
@@ -82,6 +87,10 @@ get_group(Db, GroupId, Stale) ->
         ok
     end,
     Result.
+
+get_group_info(Db, GroupId) ->
+    couch_view_group:request_group_info(
+        get_group_server(couch_db:name(Db), GroupId)).
 
 delete_index_dir(RootDir, DbName) ->
     couch_view:nuke_dir(RootDir ++ "/." ++ ?b2l(DbName) ++ "_design").
@@ -189,3 +198,8 @@ fold(Group, Index, FoldFun, InitAcc, Bbox) ->
     {_State, Acc} = vtree:lookup(Group#spatial_group.fd,
                             Index#spatial.treepos, Bbox, {FoldFun, InitAcc}),
     {ok, Acc}.
+
+% counterpart in couch_view is get_row_count/1
+get_item_count(Fd, TreePos) ->
+    Count = vtree:count_total(Fd, TreePos),
+    {ok, Count}.

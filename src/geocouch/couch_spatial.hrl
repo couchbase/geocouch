@@ -10,6 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
+% The counterpart to #spatial_group in the view server is #group
 -record(spatial_group, {
     sig=nil,
     db=nil,
@@ -40,6 +41,7 @@
     purge_seq=0 % comes from couch_spatial_group requirements
 }).
 
+% The counterpart to #spatial_index_header in the view server is #index_header
 -record(spatial_index_header, {
     seq=0,
     purge_seq=0,
@@ -47,12 +49,16 @@
     index_states=nil % pointers/positions to the indexes
 }).
 
+% The counterpart to #spatial_query_args in the view server is
+% #view_query_args
 -record(spatial_query_args, {
     bbox=nil,
     stale=nil,
     count=false
 }).
 
+% The counterpart to #spatial_fold_helper_funs in the view server is
+% #view__fold_helper_funs
 -record(spatial_fold_helper_funs, {
     start_response,
     send_row
