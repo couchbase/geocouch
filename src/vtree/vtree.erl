@@ -74,7 +74,7 @@ add_remove(Fd, Pos, TargetTreeHeight, AddKeyValues, KeysToRemove) ->
         [{Mbr, #node{type=leaf}, {DocId, Value}}|Acc]
     end, [], AddKeyValues),
     {ok, NewPos2, TreeHeight} = vtree_bulk:bulk_load(
-            Fd, Pos, TargetTreeHeight, AddKeyValues2),
+            Fd, NewPos, TargetTreeHeight, AddKeyValues2),
     T2 = get_timestamp(),
     io:format(user, "It took: ~ps~n", [T2-T1]),
     io:format(user, "Tree height: ~p~n", [TreeHeight]),
