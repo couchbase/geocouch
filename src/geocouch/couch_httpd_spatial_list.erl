@@ -15,6 +15,8 @@
 -include("couch_spatial.hrl").
 
 -export([handle_spatial_list_req/3]).
+% deprecated API
+-export([handle_spatial_list_req_deprecated/3]).
 
 -import(couch_httpd, [send_json/2, send_method_not_allowed/2,
                       send_error/4, send_chunked_error/2]).
@@ -22,12 +24,12 @@
 
 % spatial-list request with spatial index and list from same design doc.
 handle_spatial_list_req(#httpd{method='GET',
-        path_parts=[_, _, DesignName, _, ListName, SpatialName]}=Req, Db, DDoc) ->
+        path_parts=[_, _, DesignName, _, _, ListName, SpatialName]}=Req, Db, DDoc) ->
     handle_spatial_list(Req, Db, DDoc, ListName, {DesignName, SpatialName});
 
 % spatial-list request with spatial index and list from different design docs.
 handle_spatial_list_req(#httpd{method='GET',
-        path_parts=[_, _, _, _, ListName, DesignName, SpatialName]}=Req,
+        path_parts=[_, _, _, _, _, ListName, DesignName, SpatialName]}=Req,
         Db, DDoc) ->
     handle_spatial_list(Req, Db, DDoc, ListName, {DesignName, SpatialName});
 
@@ -46,6 +48,24 @@ handle_spatial_list(Req, Db, DDoc, LName, {SpatialDesignName, SpatialName}) ->
     couch_httpd:etag_respond(Req, Etag, fun() ->
         output_list(Req, Db, DDoc, LName, Index, QueryArgs, Etag, Group)
     end).
+
+% Deprecated API call
+handle_spatial_list_req_deprecated(#httpd{method='GET',
+        path_parts=[A, B, DesignName, C, ListName, SpatialName]}=Req, Db, DDoc) ->
+    Req2 = Req#httpd{path_parts=
+        [A, B, DesignName, C, <<"foo">>, ListName, SpatialName]},
+    handle_spatial_list_req(Req2, Db, DDoc);
+handle_spatial_list_req_deprecated(#httpd{method='GET',
+        path_parts=[A, B, C, D, E, ListName, DesignName, SpatialName]}=Req,
+        Db, DDoc) ->
+    Req2 = Req#httpd{path_parts=
+        [A, B, C, D, E, <<"foo">>, ListName, DesignName, SpatialName]},
+    handle_spatial_list_req(Req2, Db, DDoc);
+handle_spatial_list_req_deprecated(#httpd{method='GET'}=Req, _Db, _DDoc) ->
+    send_error(Req, 404, <<"list_error">>, <<"Invalid path.">>);
+handle_spatial_list_req_deprecated(Req, _Db, _DDoc) ->
+    send_method_not_allowed(Req, "GET,HEAD").
+
 
 list_etag(#httpd{user_ctx=UserCtx}=Req, Db, Group, Index, More) ->
     Accept = couch_httpd:header_value(Req, "Accept"),

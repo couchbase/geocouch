@@ -15,14 +15,35 @@
 -include("couch_spatial.hrl").
 
 -export([handle_spatial_req/3, spatial_etag/3, spatial_etag/4,
-         load_index/3, handle_compact_req/2, handle_design_info_req/3,
+         load_index/3, handle_compact_req/3, handle_design_info_req/3,
          handle_spatial_cleanup_req/2]).
 
 -import(couch_httpd,
         [send_json/2, send_json/3, send_method_not_allowed/2, send_chunk/2,
          start_json_response/2, start_json_response/3, end_json_response/1]).
 
-handle_spatial_req(#httpd{method='GET',
+% Either answer a normal spatial query, or keep dispatching if the path part
+% after _spatial starts with an underscore.
+handle_spatial_req(#httpd{
+        path_parts=[_, _, _Dname, _, SpatialName|_]}=Req, Db, DDoc) ->
+    case SpatialName of
+    % the path after _spatial starts with an underscore => dispatch
+    <<$_,_/binary>> ->
+        dispatch_sub_spatial_req(Req, Db, DDoc);
+    _ ->
+        handle_spatial(Req, Db, DDoc)
+    end.
+
+% the dispatching of endpoints below _spatial needs to be done manually
+dispatch_sub_spatial_req(#httpd{
+        path_parts=[_, _, _DName, Spatial, SpatialDisp|_]}=Req,
+        Db, DDoc) ->
+    Conf = couch_config:get("httpd_design_handlers",
+        ?b2l(<<Spatial/binary, "/", SpatialDisp/binary>>)),
+    Fun = couch_httpd:make_arity_3_fun(Conf),
+    apply(Fun, [Req, Db, DDoc]).
+
+handle_spatial(#httpd{method='GET',
         path_parts=[_, _, DName, _, SpatialName]}=Req, Db, DDoc) ->
     ?LOG_DEBUG("Spatial query (~p): ~n~p", [DName, DDoc#doc.id]),
     #spatial_query_args{
@@ -31,18 +52,17 @@ handle_spatial_req(#httpd{method='GET',
     {ok, Index, Group} = couch_spatial:get_spatial_index(
                            Db, DDoc#doc.id, SpatialName, Stale),
     output_spatial_index(Req, Index, Group, Db, QueryArgs);
-
-handle_spatial_req(Req, _Db, _DDoc) ->
+handle_spatial(Req, _Db, _DDoc) ->
     send_method_not_allowed(Req, "GET,HEAD").
 
 % pendant is in couch_httpd_db
 handle_compact_req(#httpd{method='POST',
-        path_parts=[DbName, _ , Id|_]}=Req, Db) ->
+        path_parts=[DbName, _ , DName|_]}=Req, Db, _DDoc) ->
     ok = couch_db:check_is_admin(Db),
     couch_httpd:validate_ctype(Req, "application/json"),
-    ok = couch_spatial_compactor:start_compact(DbName, Id),
+    ok = couch_spatial_compactor:start_compact(DbName, DName),
     send_json(Req, 202, {[{ok, true}]});
-handle_compact_req(Req, _Db) ->
+handle_compact_req(Req, _Db, _DDoc) ->
     send_method_not_allowed(Req, "POST").
 
 % pendant is in couch_httpd_db
@@ -59,7 +79,7 @@ handle_spatial_cleanup_req(Req, _Db) ->
 % pendant is in couch_httpd_db
 handle_design_info_req(#httpd{
             method='GET',
-            path_parts=[_DbName, _Design, DesignName, _]
+            path_parts=[_DbName, _Design, DesignName, _, _]
         }=Req, Db, _DDoc) ->
     DesignId = <<"_design/", DesignName/binary>>,
     {ok, GroupInfoList} = couch_spatial:get_group_info(Db, DesignId),
