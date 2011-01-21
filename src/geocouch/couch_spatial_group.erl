@@ -486,7 +486,7 @@ get_group_info(State) ->
     ].
 
 reset_group(#spatial_group{indexes=Indexes}=Group) ->
-    Indexes2 = [Index#spatial{treepos=nil} || Index <- Indexes],
+    Indexes2 = [Index#spatial{treepos=nil,treeheight=0} || Index <- Indexes],
     Group#spatial_group{db=nil,fd=nil,query_server=nil,current_seq=0,
             indexes=Indexes2}.
 
