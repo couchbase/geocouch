@@ -31,6 +31,7 @@
 % Design question: Should not fully filled nodes have only as many members as nodes, or be filled up with nils to their maximum number of nodes? - Current implementation is the first one (dynamic number of members).
 
 % Nodes maximum/minimum filling grade (TODO vmx: shouldn't be hard-coded)
+% The -define(MAX_FILLED, 4) is needed when running the (Erlang based) tests.
 -define(MAX_FILLED, 40).
 -define(MIN_FILLED, 20).
 %-define(MAX_FILLED, 4).

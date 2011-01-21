@@ -23,6 +23,7 @@
 %    (type=inner/type=leaf)
 
 % Nodes maximum filling grade (TODO vmx: shouldn't be hard-coded)
+% The -define(MAX_FILLED, 4) is needed when running the (Erlang based) tests.
 -define(MAX_FILLED, 40).
 %-define(MAX_FILLED, 4).
 
