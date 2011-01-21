@@ -99,35 +99,46 @@ couchTests.spatial_compaction = function(debug) {
   db.bulkSave(docs);
 
 
-  resp = db.view('foo/view1', {});
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
+  resp = JSON.parse(xhr.responseText);
   T(resp.rows.length === 1000);
 
-  resp = db.view('foo/view2', {});
-  T(resp.rows.length === 1000);
+  xhr = CouchDB.request("GET", url_pre + "fooIndex?bbox=" + bbox.join(","));
+  resp = JSON.parse(xhr.responseText);
+  T(resp.rows.length === 500);
 
-  resp = db.designInfo("_design/foo");
-  T(resp.view_index.update_seq === 6000);
+  xhr = CouchDB.request("GET",
+      '/test_suite_db/_design/compaction/_spatialinfo');
+  resp = JSON.parse(xhr.responseText);
+  T(resp.spatial_index.update_seq === 3001);
 
-  var disk_size_before_compact = resp.view_index.disk_size;
+  var disk_size_before_compact = resp.spatial_index.disk_size;
 
   // compact view group
-  var xhr = CouchDB.request("POST", "/" + db.name + "/_spatialcompact" +
-      "/foo");
+  xhr = CouchDB.request("POST", "/" + db.name + "/_spatialcompact/compaction");
   T(JSON.parse(xhr.responseText).ok === true);
 
-  resp = db.designInfo("_design/foo");
-  while (resp.view_index.compact_running === true) {
-    resp = db.designInfo("_design/foo");
+  xhr = CouchDB.request("GET",
+      '/test_suite_db/_design/compaction/_spatialinfo');
+  resp = JSON.parse(xhr.responseText);
+  while (resp.spatial_index.compact_running === true) {
+    xhr = CouchDB.request("GET",
+        '/test_suite_db/_design/compaction/_spatialinfo');
+    resp = JSON.parse(xhr.responseText);
   }
 
 
-  resp = db.view('foo/view1', {});
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
+  resp = JSON.parse(xhr.responseText);
   T(resp.rows.length === 1000);
 
-  resp = db.view('foo/view2', {});
-  T(resp.rows.length === 1000);
+  xhr = CouchDB.request("GET", url_pre + "fooIndex?bbox=" + bbox.join(","));
+  resp = JSON.parse(xhr.responseText);
+  T(resp.rows.length === 500);
 
-  resp = db.designInfo("_design/foo");
-  T(resp.view_index.update_seq === 6000);
-  T(resp.view_index.disk_size < disk_size_before_compact);
+  xhr = CouchDB.request("GET",
+      '/test_suite_db/_design/compaction/_spatialinfo');
+  resp = JSON.parse(xhr.responseText);
+  T(resp.spatial_index.update_seq === 3001);
+  T(resp.spatial_index.disk_size < disk_size_before_compact);
 };
