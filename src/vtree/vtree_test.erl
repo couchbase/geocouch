@@ -678,6 +678,47 @@ test_delete() ->
 
     etap:is(vtree:delete(Fd, Node5Id, Node5Mbr, Pos5_6), not_found,
             "Node can't be found (tree height=2)"),
+
+
+    % Test what happens if all nodes have the same MBR
+    Mbr = {-10,-10,20,20},
+    Node11 = {Mbr, #node{type=leaf}, <<"Node11">>},
+    Node12 = {Mbr, #node{type=leaf}, <<"Node12">>},
+    Node13 = {Mbr, #node{type=leaf}, <<"Node13">>},
+    Node14 = {Mbr, #node{type=leaf}, <<"Node14">>},
+    Node15 = {Mbr, #node{type=leaf}, <<"Node15">>},
+    % od = on disk
+    Node11od = {Mbr, #node{type=leaf}, {<<"Node11">>, <<"Node11">>}},
+    Node12od = {Mbr, #node{type=leaf}, {<<"Node12">>, <<"Node12">>}},
+    Node13od = {Mbr, #node{type=leaf}, {<<"Node13">>, <<"Node13">>}},
+    Node14od = {Mbr, #node{type=leaf}, {<<"Node14">>, <<"Node14">>}},
+    Node15od = {Mbr, #node{type=leaf}, {<<"Node15">>, <<"Node15">>}},
+    {ok, Mbr, Pos11, 1} = vtree:insert(Fd, nil, <<"Node11">>, Node11),
+    {ok, Mbr, Pos12, 1} = vtree:insert(Fd, Pos11, <<"Node12">>, Node12),
+    {ok, Mbr, Pos13, 1} = vtree:insert(Fd, Pos12, <<"Node13">>, Node13),
+    {ok, Mbr, Pos14, 1} = vtree:insert(Fd, Pos13, <<"Node14">>, Node14),
+    {ok, Mbr, Pos15, 2} = vtree:insert(Fd, Pos14, <<"Node15">>, Node15),
+
+    {ok, Pos16} = vtree:delete(Fd, <<"Node15">>, Mbr, Pos15),
+    {ok, {Mbr, _, [Pos16C1, Pos16C2]}} = vtree:get_node(Fd, Pos16),
+    {ok, {Mbr, _, [Node11od, Node12od]}} = vtree:get_node(Fd, Pos16C1),
+    {ok, {Mbr, _, [Node13od, Node14od]}} = vtree:get_node(Fd, Pos16C2),
+
+
+    {ok, Pos17} = vtree:delete(Fd, <<"Node12">>, Mbr, Pos16),
+    {ok, {Mbr, _, [Pos17C1, Pos17C2]}} = vtree:get_node(Fd, Pos17),
+    {ok, {Mbr, _, [Node13od, Node14od]}} = vtree:get_node(Fd, Pos17C1),
+    {ok, {Mbr, _, [Node11od]}} = vtree:get_node(Fd, Pos17C2),
+
+    {ok, Pos18} = vtree:delete(Fd, <<"Node11">>, Mbr, Pos17),
+    {ok, {Mbr, _, [Pos18C1]}} = vtree:get_node(Fd, Pos18),
+    {ok, {Mbr, _, [Node13od, Node14od]}} = vtree:get_node(Fd, Pos18C1),
+
+    {ok, Pos19} = vtree:delete(Fd, <<"Node13">>, Mbr, Pos18),
+    {ok, {Mbr, _, [Pos19C1]}} = vtree:get_node(Fd, Pos19),
+    {ok, {Mbr, _, [Node14od]}} = vtree:get_node(Fd, Pos19C1),
+
+    {empty, nil} = vtree:delete(Fd, <<"Node14">>, Mbr, Pos19),
     ok.
 
 
