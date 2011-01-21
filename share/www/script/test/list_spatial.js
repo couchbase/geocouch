@@ -190,7 +190,7 @@ couchTests.list_spatial = function(debug) {
   }
 
   var etag, xhr;
-  var url_pre = '/test_suite_db/_design/lists/_spatiallist/';
+  var url_pre = '/test_suite_db/_design/lists/_spatial/_list/';
   var url_bbox = '?bbox=-180,-90,180,90';
   var docs = makeSpatialDocs(0, 10);
   db.bulkSave(docs);
@@ -223,7 +223,8 @@ couchTests.list_spatial = function(debug) {
       "test_suite_db",
       "_design",
       "lists",
-      "_spatiallist",
+      "_spatial",
+      "_list",
       "basicJSON",
       "basicIndex"
   ]);
@@ -326,7 +327,7 @@ couchTests.list_spatial = function(debug) {
 
   var erlViewTest = function() {
     T(db.save(erlListDoc).ok);
-    var url = "/test_suite_db/_design/erlang/_spatiallist/" +
+    var url = "/test_suite_db/_design/erlang/_spatial/_list/" +
               "simple/indexes/basicIndex" + url_bbox;
     xhr = CouchDB.request("GET", url);
     T(xhr.status == 200, "multiple languages in design docs.");
