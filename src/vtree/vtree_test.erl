@@ -692,7 +692,6 @@ test_delete() ->
     Node12od = {Mbr, #node{type=leaf}, {<<"Node12">>, <<"Node12">>}},
     Node13od = {Mbr, #node{type=leaf}, {<<"Node13">>, <<"Node13">>}},
     Node14od = {Mbr, #node{type=leaf}, {<<"Node14">>, <<"Node14">>}},
-    Node15od = {Mbr, #node{type=leaf}, {<<"Node15">>, <<"Node15">>}},
     {ok, Mbr, Pos11, 1} = vtree:insert(Fd, nil, <<"Node11">>, Node11),
     {ok, Mbr, Pos12, 1} = vtree:insert(Fd, Pos11, <<"Node12">>, Node12),
     {ok, Mbr, Pos13, 1} = vtree:insert(Fd, Pos12, <<"Node13">>, Node13),
