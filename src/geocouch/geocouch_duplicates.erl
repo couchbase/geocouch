@@ -17,7 +17,8 @@
 % those functions.
 
 -include("couch_db.hrl").
--export([start_doc_map/3, start_list_resp/6, send_non_empty_chunk/2, sort_lib/1]).
+-export([start_doc_map/3, start_list_resp/6, send_non_empty_chunk/2,
+    sort_lib/1, list_index_files/1]).
 
 % Needed for get_os_process/1
 -record(proc, {
@@ -126,3 +127,9 @@ sort_lib([{LName, {LObj}}|Rest], LAcc) ->
     sort_lib(Rest, [{LName, LSorted}|LAcc]);
 sort_lib([{LName, LCode}|Rest], LAcc) ->
     sort_lib(Rest, [{LName, LCode}|LAcc]).
+
+% From couch_view
+list_index_files(Db) ->
+    % call server to fetch the index files
+    RootDir = couch_config:get("couchdb", "view_index_dir"),
+    filelib:wildcard(RootDir ++ "/." ++ ?b2l(couch_db:name(Db)) ++ "_design"++"/*").

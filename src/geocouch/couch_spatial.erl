@@ -22,6 +22,9 @@
 -export([get_group_server/2, get_item_count/2]).
 % For _spatialinfo
 -export([get_group_info/2]).
+% For _spatial_cleanup
+-export([cleanup_index_files/1]).
+
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
@@ -91,6 +94,36 @@ get_group(Db, GroupId, Stale) ->
 get_group_info(Db, GroupId) ->
     couch_view_group:request_group_info(
         get_group_server(couch_db:name(Db), GroupId)).
+
+% The only reason why couch_view:cleanup_index_files can't be used is the
+% call to get_group_info
+cleanup_index_files(Db) ->
+    % load all ddocs
+    {ok, DesignDocs} = couch_db:get_design_docs(Db),
+
+    % make unique list of group sigs
+    Sigs = lists:map(fun(#doc{id = GroupId}) ->
+        {ok, Info} = get_group_info(Db, GroupId),
+        ?b2l(couch_util:get_value(signature, Info))
+    end, [DD||DD <- DesignDocs, DD#doc.deleted == false]),
+
+    % It's ok to use a clone of couch_view:list_index_files, as
+    % spatial indexes and view indexes are in the same
+    % directory (view_index_dir setting)
+    FileList = geocouch_duplicates:list_index_files(Db),
+
+    % regex that matches all ddocs
+    RegExp = "("++ string:join(Sigs, "|") ++")",
+
+    % filter out the ones in use
+    DeleteFiles = [FilePath
+           || FilePath <- FileList,
+              re:run(FilePath, RegExp, [{capture, none}]) =:= nomatch],
+    % delete unused files
+    ?LOG_DEBUG("deleting unused view index files: ~p",[DeleteFiles]),
+    RootDir = couch_config:get("couchdb", "view_index_dir"),
+    [couch_file:delete(RootDir,File,false)||File <- DeleteFiles],
+    ok.
 
 delete_index_dir(RootDir, DbName) ->
     couch_view:nuke_dir(RootDir ++ "/." ++ ?b2l(DbName) ++ "_design").

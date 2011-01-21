@@ -15,7 +15,8 @@
 -include("couch_spatial.hrl").
 
 -export([handle_spatial_req/3, spatial_etag/3, spatial_etag/4,
-         load_index/3, handle_compact_req/2, handle_design_info_req/3]).
+         load_index/3, handle_compact_req/2, handle_design_info_req/3,
+         handle_spatial_cleanup_req/2]).
 
 -import(couch_httpd,
         [send_json/2, send_json/3, send_method_not_allowed/2, send_chunk/2,
@@ -42,6 +43,17 @@ handle_compact_req(#httpd{method='POST',
     ok = couch_spatial_compactor:start_compact(DbName, Id),
     send_json(Req, 202, {[{ok, true}]});
 handle_compact_req(Req, _Db) ->
+    send_method_not_allowed(Req, "POST").
+
+% pendant is in couch_httpd_db
+handle_spatial_cleanup_req(#httpd{method='POST'}=Req, Db) ->
+    % delete unreferenced index files
+    ok = couch_db:check_is_admin(Db),
+    couch_httpd:validate_ctype(Req, "application/json"),
+    ok = couch_spatial:cleanup_index_files(Db),
+    send_json(Req, 202, {[{ok, true}]});
+
+handle_spatial_cleanup_req(Req, _Db) ->
     send_method_not_allowed(Req, "POST").
 
 % pendant is in couch_httpd_db
