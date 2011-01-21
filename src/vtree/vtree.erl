@@ -52,7 +52,7 @@ add_remove(_Fd, Pos, TargetTreeeHeight, [], []) ->
 add_remove(Fd, Pos, TargetTreeHeight, AddKeyValues, KeysToRemove) ->
     % XXX vmx not sure about the structure of "KeysToRemove"
     NewPos = lists:foldl(fun({Mbr, DocId}, CurPos) ->
-        io:format("vtree: delete (~p:~p): ~p~n", [Fd, CurPos, DocId]),
+        %io:format("vtree: delete (~p:~p): ~p~n", [Fd, CurPos, DocId]),
         % delete/4 returns {ok, integer()} or {empty, nil}
         {_, CurPos2} = delete(Fd, DocId, Mbr, CurPos),
         CurPos2
