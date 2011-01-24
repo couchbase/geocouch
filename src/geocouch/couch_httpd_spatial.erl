@@ -190,26 +190,26 @@ spatial_etag(_Db, #spatial_group{sig=Sig},
 parse_spatial_params(Req) ->
     QueryList = couch_httpd:qs(Req),
     QueryParams = lists:foldl(fun({K, V}, Acc) ->
-        parse_view_param(K, V) ++ Acc
+        parse_spatial_param(K, V) ++ Acc
     end, [], QueryList),
     _QueryArgs = lists:foldl(fun({K, V}, Args2) ->
         validate_spatial_query(K, V, Args2)
     end, #spatial_query_args{}, lists:reverse(QueryParams)).
 
-parse_view_param("bbox", Bbox) ->
+parse_spatial_param("bbox", Bbox) ->
     [{bbox, list_to_tuple(?JSON_DECODE("[" ++ Bbox ++ "]"))}];
-parse_view_param("stale", "ok") ->
+parse_spatial_param("stale", "ok") ->
     [{stale, ok}];
-parse_view_param("stale", "update_after") ->
+parse_spatial_param("stale", "update_after") ->
     [{stale, update_after}];
-parse_view_param("stale", _Value) ->
+parse_spatial_param("stale", _Value) ->
     throw({query_parse_error,
             <<"stale only available as stale=ok or as stale=update_after">>});
-parse_view_param("count", "true") ->
+parse_spatial_param("count", "true") ->
     [{count, true}];
-parse_view_param("count", _Value) ->
+parse_spatial_param("count", _Value) ->
     throw({query_parse_error, <<"count only available as count=true">>});
-parse_view_param(Key, Value) ->
+parse_spatial_param(Key, Value) ->
     [{extra, {Key, Value}}].
 
 validate_spatial_query(bbox, Value, Args) ->
