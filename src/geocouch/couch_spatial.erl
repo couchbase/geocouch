@@ -15,7 +15,7 @@
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2,
     terminate/2, code_change/3]).
--export([fold/5]).
+-export([fold/6]).
 % For List functions
 -export([get_spatial_index/4]).
 % For compactor
@@ -227,9 +227,10 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 % counterpart in couch_view is fold/4
-fold(Group, Index, FoldFun, InitAcc, Bbox) ->
-    {_State, Acc} = vtree:lookup(Group#spatial_group.fd,
-                            Index#spatial.treepos, Bbox, {FoldFun, InitAcc}),
+fold(Group, Index, FoldFun, InitAcc, Bbox, Bounds) ->
+    {_State, Acc} = vtree:lookup(
+        Group#spatial_group.fd, Index#spatial.treepos, Bbox,
+        {FoldFun, InitAcc}, Bounds),
     {ok, Acc}.
 
 % counterpart in couch_view is get_row_count/1

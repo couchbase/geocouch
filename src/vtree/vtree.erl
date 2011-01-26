@@ -12,11 +12,11 @@
 
 -module(vtree).
 
--export([lookup/3, lookup/4, within/2, intersect/2, disjoint/2, insert/4,
+-export([lookup/3, lookup/5, within/2, intersect/2, disjoint/2, insert/4,
          area/1, merge_mbr/2, find_area_min_nth/1, partition_node/1,
          calc_nodes_mbr/1, calc_mbr/1, best_split/1, minimal_overlap/2,
          calc_overlap/2, minimal_coverage/2, delete/4, add_remove/5,
-         split_flipped_bbox/2, count_lookup/3, split_node/1, count_total/2,
+         split_bbox_if_flipped/2, count_lookup/3, split_node/1, count_total/2,
          foldl/4]).
 
 -export([get_node/2]).
@@ -142,12 +142,20 @@ lookup(Fd, Pos, Bbox) ->
     lookup(Fd, Pos, Bbox, {fun({Bbox2, DocId, Value}, Acc) ->
          Acc2 = [{Bbox2, DocId, Value}|Acc],
          {ok, Acc2}
-    end, []}).
+    end, []}, nil).
 lookup(_Fd, nil, _Bbox, {FoldFun, InitAcc}) ->
     {ok, InitAcc};
-lookup(Fd, Pos, Bbox, {FoldFun, InitAcc}) when not is_list(Bbox) ->
-    % default bounds are from this world
-    lookup(Fd, Pos, Bbox, {FoldFun, InitAcc}, {-180, -90, 180, 90});
+lookup(_Fd, _Pos, [], {FoldFun, InitAcc}) ->
+    {ok, InitAcc};
+% Only a single bounding box. No bounds given. If bounding box is flipped,
+% throw an error.
+lookup(Fd, Pos, Bbox, FoldFunAndAcc) when not is_list(Bbox) ->
+    case bbox_is_flipped(Bbox) of
+    not_flipped ->
+        lookup(Fd, Pos, [Bbox], FoldFunAndAcc);
+    {flipped, _} ->
+        throw("Bounding ox is flipped, but no plane bounds given")
+    end;
 % For spatial index and spatial list requests InitAcc/Acc is:
 % {ok|stop, {Resp, SomeRestFromPreviousRow}}
 lookup(Fd, Pos, Bboxes, {FoldFun, InitAcc}) ->
@@ -184,14 +192,13 @@ lookup(Fd, Pos, Bboxes, {FoldFun, InitAcc}) ->
     end.
 
 
+lookup(Fd, Pos, Bbox, FoldFunAndAcc, nil) ->
+    lookup(Fd, Pos, [Bbox], FoldFunAndAcc);
 % Only a single bounding box. It may be split if it covers the data line
 lookup(Fd, Pos, Bbox, FoldFunAndAcc, Bounds) when not is_list(Bbox) ->
-    case split_flipped_bbox(Bbox, Bounds) of
-    not_flipped ->
-        lookup(Fd, Pos, [Bbox], FoldFunAndAcc);
-    Bboxes ->
-        lookup(Fd, Pos, Bboxes, FoldFunAndAcc)
-    end.
+    Bboxes = split_bbox_if_flipped(Bbox, Bounds),
+io:format(user, "splitted boxes: ~p~n", [Bboxes]),
+    lookup(Fd, Pos, Bboxes, FoldFunAndAcc).
 
 % It's just like lists:foldl/3. The difference is that it can be stopped.
 % Therefore you always need to return a tuple with either "ok" or "stop"
@@ -231,16 +238,36 @@ bboxes_within(Mbr, [Bbox|Tail]) ->
         bboxes_within(Mbr, Tail)
     end.
 
-% Splits a bounding box (BBox) at specific Bounds that is flipped
-split_flipped_bbox({W, S, E, N}, {BW, BS, BE, BN}) when E < W, N < S ->
-    [{W, S, BE, BN}, {BW, BS, E, N}];
-split_flipped_bbox({W, S, E, N}, {BW, _, BE, _}) when E < W ->
-    [{W, S, BE, N}, {BW, S, E, N}];
-split_flipped_bbox({W, S, E, N}, {_, BS, _, BN}) when N < S ->
-    [{W, S, E, BN}, {W, BS, E, N}];
-split_flipped_bbox(_Bbox, _Bounds) ->
-    not_flipped.
+split_bbox_if_flipped({W, S, E, N}=Bbox, {BW, BS, BE, BN}=Bounds) ->
+    case bbox_is_flipped(Bbox) of
+    {flipped, Direction} ->
+        Bboxes = case Direction of
+        both ->
+            [{W, S, BE, BN}, {W, BS, BE, N}, {BW, S, E, BN}, {BW, BS, E, N}];
+        x ->
+            [{W, S, BE, N}, {BW, S, E, N}];
+        y ->
+            [{W, S, E, BN}, {W, BS, E, N}]
+        end,
+        % if boxes are still flipped, they are out of the bounds
+        lists:foldl(fun(B, Acc) ->
+           case bbox_is_flipped(B) of
+               {flipped, _} -> Acc;
+               not_flipped -> [B|Acc]
+           end
+        end, [], Bboxes);
+    not_flipped ->
+        [Bbox]
+    end.
 
+bbox_is_flipped({W, S, E, N}) when E < W, N < S ->
+    {flipped, both};
+bbox_is_flipped({W, _S, E, _N}) when E < W ->
+    {flipped, x};
+bbox_is_flipped({_W, S, _E, N}) when N < S ->
+    {flipped, y};
+bbox_is_flipped(_Bbox) ->
+    not_flipped.
 
 % Tests if Inner is within Outer box
 within(Inner, Outer) ->

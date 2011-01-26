@@ -112,6 +112,10 @@ output_spatial_index(Req, Index, Group, _Db, QueryArgs) when
 
 % counterpart in couch_httpd_view is output_map_view/6
 output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
+    #spatial_query_args{
+        bbox = Bbox,
+        bounds = Bounds
+    } = QueryArgs,
     CurrentEtag = spatial_etag(Db, Group, Index),
     HelperFuns = #spatial_fold_helper_funs{
         start_response = fun json_spatial_start_resp/3,
@@ -126,8 +130,7 @@ output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
         % might be undefined) and the actual accumulator we only care
         % about in spatiallist functions)
         {ok, {Resp, _Acc}} = couch_spatial:fold(
-                                 Group, Index, FoldFun, FoldAccInit,
-                                 QueryArgs#spatial_query_args.bbox),
+            Group, Index, FoldFun, FoldAccInit, Bbox, Bounds),
         finish_spatial_fold(Req, Resp)
     end).
 
@@ -192,9 +195,25 @@ parse_spatial_params(Req) ->
     QueryParams = lists:foldl(fun({K, V}, Acc) ->
         parse_spatial_param(K, V) ++ Acc
     end, [], QueryList),
-    _QueryArgs = lists:foldl(fun({K, V}, Args2) ->
+    QueryArgs = lists:foldl(fun({K, V}, Args2) ->
         validate_spatial_query(K, V, Args2)
-    end, #spatial_query_args{}, lists:reverse(QueryParams)).
+    end, #spatial_query_args{}, lists:reverse(QueryParams)),
+
+    #spatial_query_args{
+        bbox = Bbox,
+        bounds = Bounds
+    } = QueryArgs,
+    case {Bbox, Bounds} of
+    % Coordinates of the bounding box are flipped and no bounds for the
+    % cartesian plane were set
+    {{W, S, E, N}, nil} when E < W; N < S ->
+        Msg = <<"Coordinates of the bounding box are flipped, but no bounds "
+                "for the cartesian plane were specified "
+                "(use the `plane_bounds` parameter)">>,
+        throw({query_parse_error, Msg});
+    _ ->
+        QueryArgs
+    end.
 
 parse_spatial_param("bbox", Bbox) ->
     [{bbox, list_to_tuple(?JSON_DECODE("[" ++ Bbox ++ "]"))}];
@@ -209,6 +228,8 @@ parse_spatial_param("count", "true") ->
     [{count, true}];
 parse_spatial_param("count", _Value) ->
     throw({query_parse_error, <<"count only available as count=true">>});
+parse_spatial_param("plane_bounds", Bounds) ->
+    [{bounds, list_to_tuple(?JSON_DECODE("[" ++ Bounds ++ "]"))}];
 parse_spatial_param(Key, Value) ->
     [{extra, {Key, Value}}].
 
@@ -218,9 +239,11 @@ validate_spatial_query(stale, ok, Args) ->
     Args#spatial_query_args{stale=ok};
 validate_spatial_query(stale, update_after, Args) ->
     Args#spatial_query_args{stale=update_after};
-validate_spatial_query(count, true, Args) ->
-    Args#spatial_query_args{count=true};
 validate_spatial_query(stale, _, Args) ->
     Args;
+validate_spatial_query(count, true, Args) ->
+    Args#spatial_query_args{count=true};
+validate_spatial_query(bounds, Value, Args) ->
+    Args#spatial_query_args{bounds=Value};
 validate_spatial_query(extra, _Value, Args) ->
     Args.

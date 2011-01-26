@@ -54,7 +54,9 @@
 -record(spatial_query_args, {
     bbox=nil,
     stale=nil,
-    count=false
+    count=false,
+    % Bounds of the cartesian plane
+    bounds=nil
 }).
 
 % The counterpart to #spatial_fold_helper_funs in the view server is

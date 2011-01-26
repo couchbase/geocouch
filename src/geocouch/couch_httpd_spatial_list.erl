@@ -77,19 +77,19 @@ output_list(_, _, _, _, _, #spatial_query_args{bbox=nil}, _, _) ->
 
 output_list(Req, Db, DDoc, LName, Index, QueryArgs, Etag, Group) ->
     #spatial_query_args{
-        bbox = Bbox
+        bbox = Bbox,
+        bounds = Bounds
     } = QueryArgs,
 
     couch_query_servers:with_ddoc_proc(DDoc, fun(QServer) ->
-        StartListRespFun = make_spatial_start_resp_fun(
-                               QServer, Db, LName),
+        StartListRespFun = make_spatial_start_resp_fun(QServer, Db, LName),
         CurrentSeq = Group#spatial_group.current_seq,
         {ok, Resp, BeginBody} = StartListRespFun(Req, Etag, [], CurrentSeq),
         geocouch_duplicates:send_non_empty_chunk(Resp, BeginBody),
         SendRowFun = make_spatial_get_row_fun(QServer, Resp),
         FoldAccInit = {undefined, ""},
-        {ok, {_Resp, Go}} = couch_spatial:fold(Group, Index, SendRowFun,
-                                               FoldAccInit, Bbox),
+        {ok, {_Resp, Go}} = couch_spatial:fold(
+            Group, Index, SendRowFun, FoldAccInit, Bbox, Bounds),
         case Go of
         [] ->
             {Proc, _DDocId} = QServer,

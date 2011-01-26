@@ -111,22 +111,6 @@ couchTests.spatial = function(debug) {
   TEquals(['2'], extract_ids(xhr.responseText),
           "bbox collapsed to a point should return the geometries there");
 
-  bbox = [-180, 28, 180, 17];
-  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
-  TEquals(['0','1','7','8','9'], extract_ids(xhr.responseText),
-          "bbox that spans the poles");
-
-  bbox = [-10, -90, -20, 90];
-  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
-  TEquals(['0','5','6','7','8','9'], extract_ids(xhr.responseText),
-          "bbox that spans the date line");
-
-  bbox = [-10, 28, -20, 17];
-  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
-  TEquals(['0','7','8','9'], extract_ids(xhr.responseText),
-          "bbox that spans the date line and poles");
-
-
   // count parameter tests
 
   bbox = [-180, -90, 180, 90];
@@ -230,5 +214,92 @@ couchTests.spatial = function(debug) {
   TEquals(['0','1','2','3','4','5','6','7','8','9'],
           extract_ids(xhr.responseText),
           "should return all geometries (test with CommonJS)");
-//  TEquals("PLANKTONwhatever/commonjs/upperplankton", xhr.responseText);
+
+
+  // Test plane wrapping
+
+  // Put one doc in every quadrant of the pole/dateline tests
+  db.bulkSave([
+    {_id: 'wrap1', loc: [-30, 50]},
+    {_id: 'wrap2', loc: [-15, 50]},
+    {_id: 'wrap3', loc: [10, 50]},
+    {_id: 'wrap4', loc: [-30, 22]},
+    {_id: 'wrap5', loc: [-15, 22]},
+    {_id: 'wrap6', loc: [10, 22]},
+    {_id: 'wrap7', loc: [-30, 5]},
+    {_id: 'wrap8', loc: [-15, 5]},
+    {_id: 'wrap9', loc: [10, 5]}
+  ]);
+
+  var planeBounds = [-180, -90, 180, 90];
+  bbox = [-180, 28, 180, 17];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals(
+    ['0','1','7','8','9','wrap1','wrap2','wrap3','wrap7','wrap8','wrap9'],
+    extract_ids(xhr.responseText), "bbox that spans the poles");
+
+  bbox = [-10, -90, -20, 90];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals(
+    ['0','5','6','7','8','9','wrap1','wrap3','wrap4','wrap6','wrap7','wrap9'],
+    extract_ids(xhr.responseText), "bbox that spans the date line");
+
+  bbox = [-10, 28, -20, 17];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals(['0','7','8','9','wrap1','wrap3','wrap7','wrap9'],
+    extract_ids(xhr.responseText), "bbox that spans the date line and poles");
+
+  // try plane bounds that are smaller than the bounding box
+  planeBounds = [-20, -20, 20, 20];
+  bbox = [-180, 28, 180, -28];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals(
+    [], extract_ids(xhr.responseText),
+    "bbox that would span the poles, but is outside of the plane bounds");
+
+  bbox = [28, -90, -28, 90];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals(
+    [], extract_ids(xhr.responseText),
+    "bbox that would spans the date line, but is outside of the plane bounds");
+
+  bbox = [28, 28, -28, -28];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals([], extract_ids(xhr.responseText),
+    "bbox that would span the date line and poles, but is outside of the" +
+      "plane bounds");
+
+  // try other plane bounds (but with bbox which is smaller)
+  planeBounds = [-25, -25, 25, 25];
+  bbox = [-25, 24, 25, 6];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals(
+    ['5', 'wrap8','wrap9'],
+    extract_ids(xhr.responseText), "bbox that spans the poles");
+
+  bbox = [11, -25, -10, 25];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals(
+    ['0','1','2','3','4','5','wrap5','wrap8'],
+    extract_ids(xhr.responseText), "bbox that spans the date line");
+
+  bbox = [11, 24, -10, 6];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+    "&plane_bounds=" + planeBounds.join(","));
+  TEquals(['5','wrap8'],
+    extract_ids(xhr.responseText), "bbox that spans the date line and poles");
+
+  // Try flipped bounding box without plane bounds
+  bbox = [11, 24, -10, 6];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
+  TEquals(400, xhr.status,
+    "flipped bbox without plane bounds should return an error");
 };

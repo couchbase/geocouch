@@ -22,7 +22,7 @@ start() ->
     test_disjoint(),
     test_lookup(),
     test_multilookup(),
-    test_split_flipped_bbox(),
+    test_split_bbox_if_flipped(),
     test_area(),
     test_merge_mbr(),
     test_find_area_min_nth(),
@@ -171,7 +171,7 @@ test_disjoint() ->
 
 
 test_lookup() ->
-    etap:plan(6),
+    etap:plan(8),
 
     {ok, Fd} = case couch_file:open(?FILENAME, [create, overwrite]) of
     {ok, Fd2} ->
@@ -222,6 +222,11 @@ test_lookup() ->
             "Find some nodes in tree (tree height=2) (b)"),
     {ok, Lookup6} = vtree:lookup(Fd, Pos5, Bbox3),
     etap:is(Lookup6, [], "Query window outside of all nodes (tree height=2)"),
+
+    {ok, Lookup7} = vtree:lookup(Fd, Pos5, [Bbox2, Bbox4]),
+    etap:is(length(Lookup7), 3, "Query with multiple windows (2 windows)"),
+    {ok, Lookup8} = vtree:lookup(Fd, Pos5, [Bbox2, Bbox4, {-20,1,-9,15}]),
+    etap:is(length(Lookup8), 4, "Query with multiple windows (3 windows)"),
     ok.
 
 
@@ -283,36 +288,74 @@ test_multilookup() ->
             "outside of all nodes"),
     ok.
 
-test_split_flipped_bbox() ->
-    etap:plan(8),
+test_split_bbox_if_flipped() ->
+    etap:plan(17),
 
-    etap:is(vtree:split_flipped_bbox({160,40,-120,60}, {-180,-90,180,90}),
-            [{160,40,180,60}, {-180,40,-120,60}],
+    etap:is(vtree:split_bbox_if_flipped({160,40,-120,60}, {-180,-90,180,90}),
+            [{-180,40,-120,60}, {160,40,180,60}],
             "Bbox over the date line and north (flipped in x direction)"),
-    etap:is(vtree:split_flipped_bbox({160,-60,-120,-40}, {-180,-90,180,90}),
-            [{160,-60,180,-40}, {-180,-60,-120,-40}],
+    etap:is(vtree:split_bbox_if_flipped({160,-60,-120,-40}, {-180,-90,180,90}),
+            [{-180,-60,-120,-40}, {160,-60,180,-40}],
             "Bbox over the date line and south (flipped in x direction)"),
-    etap:is(vtree:split_flipped_bbox({160,-40,-120,60}, {-180,-90,180,90}),
-            [{160,-40,180,60}, {-180,-40,-120,60}],
+    etap:is(vtree:split_bbox_if_flipped({160,-40,-120,60}, {-180,-90,180,90}),
+            [{-180,-40,-120,60}, {160,-40,180,60}],
             "Bbox over the date line and over equator (flipped in x "
             "direction)"),
 
-    etap:is(vtree:split_flipped_bbox({20,70,30,-60}, {-180,-90,180,90}),
-            [{20,70,30,90}, {20,-90,30,-60}],
+    etap:is(vtree:split_bbox_if_flipped({20,70,30,-60}, {-180,-90,180,90}),
+            [{20,-90,30,-60}, {20,70,30,90}],
             "Bbox over the pole and east (flipped in y direction)"),
-    etap:is(vtree:split_flipped_bbox({-30,70,-20,-60}, {-180,-90,180,90}),
-            [{-30,70,-20,90}, {-30,-90,-20,-60}],
+    etap:is(vtree:split_bbox_if_flipped({-30,70,-20,-60}, {-180,-90,180,90}),
+            [{-30,-90,-20,-60}, {-30,70,-20,90}],
             "Bbox over the pole and west (flipped in y direction)"),
-    etap:is(vtree:split_flipped_bbox({-30,70,20,-60}, {-180,-90,180,90}),
-            [{-30,70,20,90}, {-30,-90,20,-60}],
+    etap:is(vtree:split_bbox_if_flipped({-30,70,20,-60}, {-180,-90,180,90}),
+            [{-30,-90,20,-60}, {-30,70,20,90}],
             "Bbox over the pole and Greenwich (flipped in y direction)"),
 
-    etap:is(vtree:split_flipped_bbox({150,70,30,-60}, {-180,-90,180,90}),
-            [{150,70,180,90}, {-180,-90,30,-60}],
+    etap:is(vtree:split_bbox_if_flipped({150,70,30,-60}, {-180,-90,180,90}),
+            [{-180,-90,30,-60}, {-180,70,30,90},
+             {150,-90,180,-60}, {150,70,180,90}],
             "Bbox over the pole and date line (flipped in x and y direction)"),
-    etap:is(vtree:split_flipped_bbox({-30,-60,-20,70}, {-180,-90,180,90}),
-            not_flipped,
+    etap:is(vtree:split_bbox_if_flipped({-30,-60,-20,70}, {-180,-90,180,90}),
+            [{-30,-60,-20,70}],
             "Not flipped Bbox"),
+
+    etap:is(vtree:split_bbox_if_flipped({160,-40,-120,60}, {-170,-80,170,80}),
+            [{-170,-40,-120,60}, {160,-40,170,60}],
+            "Bbox (flipped in x direction) with different bounds"),
+    etap:is(vtree:split_bbox_if_flipped({-30,70,-20,-60}, {-170,-80,170,80}),
+            [{-30,-80,-20,-60}, {-30,70,-20,80}],
+            "Bbox (flipped in x direction) with different bounds"),
+    etap:is(vtree:split_bbox_if_flipped({150,70,30,-60}, {-170,-80,170,80}),
+            [{-170,-80,30,-60}, {-170,70,30,80},
+             {150,-80,170,-60}, {150,70,170,80}],
+            "Bbox (flipped in x and y direction) with different bounds"),
+
+    etap:is(vtree:split_bbox_if_flipped(
+             {-180, 28, 180, -28}, {-20, -20, 20, 20}), [],
+           "Bbox that would be flipped in y direction," ++
+           "but is out of bounds"),
+    etap:is(vtree:split_bbox_if_flipped(
+             {28, -90, -28, 90}, {-20, -20, 20, 20}), [],
+           "Bbox that would be flipped in x direction," ++
+           "but is out of bounds"),
+    etap:is(vtree:split_bbox_if_flipped(
+             {28, 28, -28, -28}, {-20, -20, 20, 20}), [],
+           "Bbox that would be flipped in x and y direction," ++
+           "but is out of bounds"),
+
+    etap:is(vtree:split_bbox_if_flipped(
+             {-180, 15, 180, -28}, {-20, -20, 20, 20}), [{-180,15,180,20}],
+           "Bbox that is flipped in y direction," ++
+           "one side is out of bounds"),
+    etap:is(vtree:split_bbox_if_flipped(
+             {28, -90, -18, 90}, {-20, -20, 20, 20}), [{-20,-90,-18,90}],
+           "Bbox that would be flipped in x direction," ++
+           "one side is out of bounds"),
+    etap:is(vtree:split_bbox_if_flipped(
+             {18, 28, -28, -15}, {-20, -20, 20, 20}), [{18,-20,20,-15}],
+           "Bbox that would be flipped in x and y direction," ++
+           "one side of each direction is out of bounds"),
     ok.
 
 
