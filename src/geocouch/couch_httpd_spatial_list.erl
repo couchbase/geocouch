@@ -54,12 +54,16 @@ handle_spatial_list_req_deprecated(#httpd{method='GET',
         path_parts=[A, B, DesignName, C, ListName, SpatialName]}=Req, Db, DDoc) ->
     Req2 = Req#httpd{path_parts=
         [A, B, DesignName, C, <<"foo">>, ListName, SpatialName]},
+    ?LOG_INFO("WARNING: Request to deprecated _spatiallist handler, " ++
+              "please use _spatial/_list instead!", []),
     handle_spatial_list_req(Req2, Db, DDoc);
 handle_spatial_list_req_deprecated(#httpd{method='GET',
         path_parts=[A, B, C, D, ListName, DesignName, SpatialName]}=Req,
         Db, DDoc) ->
     Req2 = Req#httpd{path_parts=
         [A, B, C, D, <<"foo">>, ListName, DesignName, SpatialName]},
+    ?LOG_INFO("WARNING: Request to deprecated _spatiallist handler, " ++
+              "please use _spatial/_list instead!", []),
     handle_spatial_list_req(Req2, Db, DDoc);
 handle_spatial_list_req_deprecated(#httpd{method='GET'}=Req, _Db, _DDoc) ->
     send_error(Req, 404, <<"list_error">>, <<"Invalid path.">>);
