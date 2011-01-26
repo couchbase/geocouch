@@ -56,10 +56,10 @@ handle_spatial_list_req_deprecated(#httpd{method='GET',
         [A, B, DesignName, C, <<"foo">>, ListName, SpatialName]},
     handle_spatial_list_req(Req2, Db, DDoc);
 handle_spatial_list_req_deprecated(#httpd{method='GET',
-        path_parts=[A, B, C, D, E, ListName, DesignName, SpatialName]}=Req,
+        path_parts=[A, B, C, D, ListName, DesignName, SpatialName]}=Req,
         Db, DDoc) ->
     Req2 = Req#httpd{path_parts=
-        [A, B, C, D, E, <<"foo">>, ListName, DesignName, SpatialName]},
+        [A, B, C, D, <<"foo">>, ListName, DesignName, SpatialName]},
     handle_spatial_list_req(Req2, Db, DDoc);
 handle_spatial_list_req_deprecated(#httpd{method='GET'}=Req, _Db, _DDoc) ->
     send_error(Req, 404, <<"list_error">>, <<"Invalid path.">>);
