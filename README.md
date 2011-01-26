@@ -204,3 +204,21 @@ the query will return, not the geometry themselves.
     curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=0,0,180,90'
 
     {"count":1}
+
+
+Compaction, cleanup and info
+----------------------------
+
+The API of GeoCouch's spatial indexes is similar to the one for the
+Views. Compaction of spatial indexes is per Design Document, thus:
+
+    curl -X POST 'http://localhost:5984/places/_design/main/_spatial/_compact' -H 'Content-Type: application/json'
+
+To cleanup spatial indexes that are now longer in use (this is per database):
+
+    curl -X POST 'http://localhost:5984/places/_spatial_cleanup' -H 'Content-Type: application/json'
+
+To get information about the spatial indexes of a certain Design
+Document use the the `_info` handler:
+
+    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/_info'
