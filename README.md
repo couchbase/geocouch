@@ -123,8 +123,11 @@ the upper one. Such a bounding box has a seems invalid at first
 glance, but isn't. For example a bounding box like `110,-60,-30,15`
 would include Australia and South America, but not Africa.
 
-GeoCouch automatically detects such bounding boxes and returns the
-expected result. Give it a try (with the same Design Document as
+GeoCouch operates on a plane and doesn't perform spherical
+calculations. Therefore the bounds of the plane needs to be set
+explicitly with the `plane_bounds` parameter. If bounding boxes are
+flipped, a search across those bounds will be performed
+automatically. Give it a try (with the same Design Document as
 above). Insert some Documents:
 
     curl -X PUT -d '{"loc": [17.15, -22.566667]}' http://127.0.0.1:5984/places/namibia
@@ -133,7 +136,7 @@ above). Insert some Documents:
 
 And request only Australia and Brasilia:
 
-    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=110,-60,-30,15'
+    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=110,-60,-30,15&plane_bounds=-180,-90,180,90'
 
 The result is as expected:
 
@@ -145,7 +148,7 @@ The result is as expected:
 The bounding with the same numbers, but different order
 (`-30,-60,110,15`) would only return Namibia:
 
-    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=-30,-60,110,15'
+    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=-30,-60,110,15&plane_bounds=-180,-90,180,90'
 
     {"update_seq":6,"rows":[
     {"id":"namibia","bbox":[17.15,-22.566667,17.15,-22.566667],"value":["namibia",[17.15,-22.566667]]}
