@@ -167,10 +167,10 @@ sure you use the right `_rev`:
     curl -X PUT -d '{"_rev": "1-121efc747b00743b8c7621ffccf1ac40", "lists": {"wkt": "function(head, req) {\n    var row;\n    while (row = getRow()) {\n        send(\"POINT(\" + row.value[1].join(\" \") + \")\\n\");\n    }\n};"}, "spatial":{"points":"function(doc) {\n    if (doc.loc) {\n        emit({\n            type: \"Point\",\n            coordinates: [doc.loc[0], doc.loc[1]]\n        }, [doc._id, doc.loc]);\n    }};"}}' http://127.0.0.1:5984/places/_design/main
 
 Now you can request this List function as you would do for CouchDB,
-though with a different Design handler (`_spatiallist` instead of
+though with a different Design handler (`_spatial/_list` instead of
 `_list` ):
 
-    curl -X GET 'http://localhost:5984/places/_design/main/_spatiallist/wkt/points?bbox=-180,-90,180,90'
+    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/_list/wkt/points?bbox=-180,-90,180,90'
 
 The result is:
 
@@ -186,7 +186,7 @@ ID in parenthesis:
 
     curl -X PUT -d '{"lists": {"wkt": "function(head, req) {\n    var row;\n    while (row = getRow()) {\n        send(\"POINT(\" + row.value[1].join(\" \") + \") (\" + row.id + \")\\n\");\n    }\n};"}}' http://127.0.0.1:5984/places/_design/listfunonly
 
-    curl -X GET 'http://localhost:5984/places/_design/listfunonly/_spatiallist/wkt/main/points?bbox=-180,-90,180,90'
+    curl -X GET 'http://localhost:5984/places/_design/listfunonly/_spatial/_list/wkt/main/points?bbox=-180,-90,180,90'
 
 
 Other supported query arguments
