@@ -7,7 +7,8 @@ Prerequisites
 -------------
 
 A working installation of CouchDB with corresponding source
-code. GeoCouch works best with the latest stable releases of CouchDB.
+code. GeoCouch works best with the latest stable releases of CouchDB
+(must be >= 1.0.2).
 
 
 Installation
