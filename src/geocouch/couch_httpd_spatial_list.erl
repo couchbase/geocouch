@@ -119,7 +119,7 @@ make_spatial_start_resp_fun(QueryServer, Db, LName) ->
 
 % Counterpart to make_map_send_row_fun/1 in couch_http_show.
 make_spatial_get_row_fun(QueryServer, Resp) ->
-    fun({_Bbox, _DocId, _Value}=Row, _Acc) ->
+    fun({{_Bbox, _DocId}, _Value}=Row, _Acc) ->
         {State, Result} = send_list_row(Resp, QueryServer, Row),
         {State, {Resp, Result}}
     end.
@@ -141,6 +141,6 @@ send_list_row(Resp, QueryServer, Row) ->
             throw({already_sent, Resp, Error})
     end.
 
-prompt_list_row({Proc, _DDocId}, {Bbox, DocId, Value}) ->
+prompt_list_row({Proc, _DDocId}, {{Bbox, DocId}, Value}) ->
     JsonRow = {[{id, DocId}, {key, tuple_to_list(Bbox)}, {value, Value}]},
     couch_query_servers:proc_prompt(Proc, [<<"list_row">>, JsonRow]).

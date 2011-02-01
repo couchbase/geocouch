@@ -143,7 +143,7 @@ make_spatial_fold_funs(Req, _QueryArgs, Etag, _Db, UpdateSeq, HelperFuns) ->
     % The Acc is there to output characters that belong to the previous line,
     % but only if one line follows (think of a comma separated list which
     % doesn't have a comma at the last item)
-    fun({Bbox, DocId, Value}, {Resp, Acc}) ->
+    fun({{Bbox, DocId}, Value}, {Resp, Acc}) ->
         case Resp of
         undefined ->
             {ok, NewResp, BeginBody} = StartRespFun(Req, Etag, UpdateSeq),

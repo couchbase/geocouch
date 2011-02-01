@@ -228,6 +228,15 @@ code_change(_OldVsn, State, _Extra) ->
 
 % counterpart in couch_view is fold/4
 fold(Group, Index, FoldFun, InitAcc, Bbox, Bounds) ->
+%    WrapperFun = fun(Node, Acc) ->
+%?LOG_DEBUG("fold: FoldFun: ~p", [Node]),
+%?LOG_DEBUG("fold: FoldFun: expanded: ~p", [couch_view:expand_dups([Node], [])]),
+%        FoldFun(couch_view:expand_dups([Node], []), Acc)
+%    end,
+%    {_State, Acc} = vtree:lookup(
+%        Group#spatial_group.fd, Index#spatial.treepos, Bbox,
+%        {WrapperFun, InitAcc}, Bounds),
+%    {ok, Acc}.
     {_State, Acc} = vtree:lookup(
         Group#spatial_group.fd, Index#spatial.treepos, Bbox,
         {FoldFun, InitAcc}, Bounds),

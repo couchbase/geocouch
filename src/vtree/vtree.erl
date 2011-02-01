@@ -139,7 +139,9 @@ fold(Fd, Pos, Fun, Acc) ->
 % This lookup function is mainly for testing
 lookup(Fd, Pos, Bbox) ->
     % default function returns a list of 3-tuple with MBR, id, value
-    lookup(Fd, Pos, Bbox, {fun({Bbox2, DocId, Value}, Acc) ->
+    lookup(Fd, Pos, Bbox, {fun({{Bbox2, DocId}, Value}, Acc) ->
+         % NOTE vmx (2011-02-01) This should perhaps also be changed from
+         %     {Bbox2, DocId, Value} to {{Bbox2, DocId}, Value}
          Acc2 = [{Bbox2, DocId, Value}|Acc],
          {ok, Acc2}
     end, []}, nil).
@@ -176,14 +178,14 @@ lookup(Fd, Pos, Bboxes, {FoldFun, InitAcc}) ->
         % all children are within the bbox we search with
         true ->
             foldl_stop(fun({Mbr, _Meta, {Id, Value}}, Acc) ->
-                FoldFun({Mbr, Id, Value}, Acc)
+                FoldFun({{Mbr, Id}, Value}, Acc)
             end, InitAcc, NodesPos);
         false ->
             % loop through all data nodes and find not disjoint ones
             foldl_stop(fun({Mbr, _Meta, {Id, Value}}, Acc) ->
                 case bboxes_not_disjoint(Mbr, Bboxes) of
                 true ->
-                    FoldFun({Mbr, Id, Value}, Acc);
+                    FoldFun({{Mbr, Id}, Value}, Acc);
                 false ->
                     {ok, Acc}
                 end
@@ -192,8 +194,10 @@ lookup(Fd, Pos, Bboxes, {FoldFun, InitAcc}) ->
     end.
 
 
+lookup(Fd, Pos, Bbox, FoldFunAndAcc, nil) when is_list(Bbox) ->
+    lookup(Fd, Pos, Bbox, FoldFunAndAcc);
 lookup(Fd, Pos, Bbox, FoldFunAndAcc, nil) ->
-    lookup(Fd, Pos, [Bbox], FoldFunAndAcc);
+    lookup(Fd, Pos, Bbox, FoldFunAndAcc);
 % Only a single bounding box. It may be split if it covers the data line
 lookup(Fd, Pos, Bbox, FoldFunAndAcc, Bounds) when not is_list(Bbox) ->
     Bboxes = split_bbox_if_flipped(Bbox, Bounds),
