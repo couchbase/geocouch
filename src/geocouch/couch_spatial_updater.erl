@@ -149,15 +149,9 @@ spatial_docs(Proc, Docs) ->
             lists:map(
                 fun(FunRs) ->
                     case FunRs of
-                    [] -> [];
-                    FunRs ->
+                        [] -> [];
                         % do some post-processing of the result documents
-                        FunRs2 = process_result(FunRs),
-                        %JsonDoc = couch_query_servers:json_doc(Doc),
-                        %?LOG_DEBUG("spatial_docs:~n~p~n~p", [FunRs, FunRs2]),
-                        %[list_to_tuple(FunResult) || FunResult <- [FunRs]]
-                        %[list_to_tuple(FunResult) || FunResult <- [FunRs2]]
-                        [FunRs2]
+                        FunRs -> process_results(FunRs)
                     end
                 end,
             FunsResults)
@@ -262,11 +256,18 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
 % Return the bounding box of a GeoJSON geometry. "Geo" is wrapped in
 % brackets ({}) as returned from proplists:get_value()
 geojson_get_bbox(Geo) ->
-    {Bbox, nil} = process_result([[Geo|[nil]]]),
+    {Bbox, nil} = process_result([Geo|[nil]]),
     Bbox.
 
 
-process_result([[{Geo}|[Value]]]) ->
+process_results(Results) ->
+    % NOTE vmx (2011-02-01): the ordering of the results doesn't matter
+    %     therefore we don't need to reverse the list.
+    lists:foldl(fun(Result, Acc) ->
+        [process_result(Result)|Acc]
+    end, [], Results).
+
+process_result([{Geo}|[Value]]) ->
     Type = proplists:get_value(<<"type">>, Geo),
     Bbox = case Type of
     <<"GeometryCollection">> ->
@@ -410,7 +411,7 @@ process_result_geometrycollection_fail_test() ->
                   {[{<<"type">>,<<"LineString">>},
                     {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]},
     ?assertError(function_clause, process_result([[Geojson, <<"somedoc">>]])).
-    
+
 process_result_point_test() ->
     Geojson = {[{<<"type">>,<<"Point">>},
                 {<<"coordinates">>,[100.0,0.0]}]},
