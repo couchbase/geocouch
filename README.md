@@ -52,7 +52,7 @@ Add the test to `<vanilla-couch>/share/www/script/test/couch_tests.js`
     loadTest("spatial.js");
     loadTest("list_spatial.js");
     loadTest("etags_spatial.js");
-    loadTest("multiple_spatial.js");
+    loadTest("multiple_spatial_rows.js");
     loadTest("spatial_compaction.js");
 
 ### Run CouchDB with GeoCouch
