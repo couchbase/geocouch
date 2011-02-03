@@ -18,7 +18,7 @@
 
 -include("couch_db.hrl").
 -export([start_doc_map/3, start_list_resp/6, send_non_empty_chunk/2,
-    sort_lib/1, list_index_files/1]).
+    sort_lib/1, list_index_files/1, make_arity_3_fun/1]).
 
 % Needed for get_os_process/1
 -record(proc, {
@@ -139,3 +139,12 @@ list_index_files(Db) ->
     % call server to fetch the index files
     RootDir = couch_config:get("couchdb", "view_index_dir"),
     filelib:wildcard(RootDir ++ "/." ++ ?b2l(couch_db:name(Db)) ++ "_design"++"/*").
+
+% From couch_httpd (will be exported from 1.1.x on)
+make_arity_3_fun(SpecStr) ->
+    case couch_util:parse_term(SpecStr) of
+    {ok, {Mod, Fun, SpecArg}} ->
+	fun(Arg1, Arg2, Arg3) -> Mod:Fun(Arg1, Arg2, Arg3, SpecArg) end;
+    {ok, {Mod, Fun}} ->
+	fun(Arg1, Arg2, Arg3) -> Mod:Fun(Arg1, Arg2, Arg3) end
+    end.

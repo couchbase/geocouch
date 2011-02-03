@@ -40,7 +40,7 @@ dispatch_sub_spatial_req(#httpd{
         Db, DDoc) ->
     Conf = couch_config:get("httpd_design_handlers",
         ?b2l(<<Spatial/binary, "/", SpatialDisp/binary>>)),
-    Fun = couch_httpd:make_arity_3_fun(Conf),
+    Fun = geocouch_duplicates:make_arity_3_fun(Conf),
     apply(Fun, [Req, Db, DDoc]).
 
 handle_spatial(#httpd{method='GET',
