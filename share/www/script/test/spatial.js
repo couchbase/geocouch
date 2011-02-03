@@ -21,11 +21,12 @@ couchTests.spatial = function(debug) {
   var designDoc = {
     _id:"_design/spatial",
     language: "javascript",
+    /* This is a 1.1.x feature, disable for now
     views: {
       lib: {
         geo: "exports.type = 'Point';"
       }
-    },
+    }, */
     spatial : {
       basicIndex : stringFun(function(doc) {
         emit({
@@ -46,14 +47,15 @@ couchTests.spatial = function(debug) {
         if (doc._id.substr(0,3)=="geo") {
           emit(doc.geom, doc.string);
         }
-      }),
+      })
+      /* This is a 1.1.x feature, disable for now
       withCommonJs : stringFun(function(doc) {
         var lib = require('views/lib/geo');
         emit({
           type: lib.type,
           coordinates: [doc.loc[0], doc.loc[1]]
         }, doc.string);
-      })
+      })*/
     }
   };
 
@@ -207,6 +209,7 @@ couchTests.spatial = function(debug) {
           "if bounding box calculation was correct, it should at least" +
           " return the geoGeometryCollection");
 
+/* This is a 1.1.x feature, disable for now
   // test if CommonJS modules can be imported
   bbox = [-180, -90, 180, 90];
   xhr = CouchDB.request("GET", url_pre + "withCommonJs?bbox=" + bbox.join(","));
@@ -214,7 +217,7 @@ couchTests.spatial = function(debug) {
   TEquals(['0','1','2','3','4','5','6','7','8','9'],
           extract_ids(xhr.responseText),
           "should return all geometries (test with CommonJS)");
-
+*/
 
   // Test plane wrapping
 
