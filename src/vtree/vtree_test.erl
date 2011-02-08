@@ -35,6 +35,7 @@ start() ->
     test_calc_overlap(),
     test_insert(),
     test_delete(),
+    test_delete_same_id(),
     test_split_node(),
     test_count_total(),
 
@@ -763,6 +764,121 @@ test_delete() ->
     {empty, nil} = vtree:delete(Fd, <<"Node14">>, Mbr, Pos19),
     ok.
 
+test_delete_same_id() ->
+    % Test what happens if multiple emits in one function happened
+    etap:plan(9),
+
+    {ok, Fd} = case couch_file:open(?FILENAME, [create, overwrite]) of
+    {ok, Fd2} ->
+        {ok, Fd2};
+    {error, Reason} ->
+        io:format("ERROR (~s): Couldn't open file (~s) for tree storage~n",
+                  [Reason, ?FILENAME])
+    end,
+
+    Node21 = {{10,5,13,15}, #node{type=leaf}, <<"Node">>},
+    Node22 = {{-18,-3,-10,-1}, #node{type=leaf}, <<"Node">>},
+    Node23 = {{-21,2,-10,14}, #node{type=leaf}, <<"Node">>},
+    Node24 = {{5,-32,19,-25}, #node{type=leaf}, <<"Node">>},
+    Node25 = {{-5,-16,4,19}, #node{type=leaf}, <<"Node">>},
+    % od = on disk
+    Node21od = {{10,5,13,15}, #node{type=leaf}, {<<"Node">>,<<"Node">>}},
+    Node22od = {{-18,-3,-10,-1}, #node{type=leaf}, {<<"Node">>,<<"Node">>}},
+    Node23od = {{-21,2,-10,14}, #node{type=leaf}, {<<"Node">>,<<"Node">>}},
+    Node24od = {{5,-32,19,-25}, #node{type=leaf}, {<<"Node">>,<<"Node">>}},
+    Node25od = {{-5,-16,4,19}, #node{type=leaf}, {<<"Node">>,<<"Node">>}},
+
+    Mbr1 = {10,5,13,15},
+    Mbr1_2 = {-18,-3,13,15},
+    Mbr1_2_3 = {-21,-3,13,15},
+    Mbr1_2_3_4 = {-21,-32,19,15},
+    Mbr1_2_3_4_5 = {-21,-32,19,19},
+    Mbr1_3_4 = {-21,-32,19,15},
+    Mbr1_3_4_5 = {-21,-32,19,19},
+    Mbr1_3_4 = {-21,-32,19,15},
+    Mbr1_3_4_5 = {-21,-32,19,19},
+    Mbr1_4_5 = {-5,-32,19,19},
+    Mbr1_4 = {5,-32,19,15},
+    {Mbr2, _, _} = Node22,
+    Mbr2_3 = {-21,-3,-10,14},
+    Mbr2_3_4_5 = {-21,-32,19,19},
+    {Mbr3, _, _} = Node23,
+    Mbr4_5 = {-5,-32,19,19},
+
+    {ok, Mbr1, 0, 1} = vtree:insert(Fd, nil, <<"Node">>, Node21),
+    {ok, Mbr1_2, Pos22, 1} = vtree:insert(Fd, 0, <<"Node">>, Node22),
+    {ok, Mbr1_2_3, Pos23, 1} = vtree:insert(Fd, Pos22, <<"Node">>, Node23),
+    {ok, Mbr1_2_3_4, Pos24, 1} = vtree:insert(Fd, Pos23, <<"Node">>, Node24),
+    {ok, Mbr1_2_3_4_5, Pos25, 2} = vtree:insert(Fd, Pos24, <<"Node">>, Node25),
+    Tree23 = {Mbr3, #node{type=leaf}, [Node23od]},
+    Tree22_3 = {Mbr2_3, #node{type=leaf}, [Node22od, Node23od]},
+    Tree24_5 = {Mbr4_5, #node{type=leaf}, [Node24od, Node25od]},
+    Tree21_4_5 = {Mbr1_4_5, #node{type=leaf}, [Node21od, Node24od, Node25od]},
+    Tree22_3_4_5 = {Mbr2_3_4_5, #node{type=inner}, [Tree22_3, Tree24_5]},
+    Tree21_3_4_5 = {Mbr1_3_4_5, #node{type=inner}, [Tree21_4_5, Tree23]},
+    Tree21_4 = {Mbr1_4, #node{type=leaf}, [Node21od, Node24od]},
+    Tree21_3_4 = {Mbr1_3_4, #node{type=inner}, [Tree23, Tree21_4]},
+
+    {Node1Mbr, _, <<"Node">>} = Node21,
+    {Node2Mbr, _, <<"Node">>} = Node22,
+    {Node3Mbr, _, <<"Node">>} = Node23,
+    {Node4Mbr, _, <<"Node">>} = Node24,
+    {Node5Mbr, _, <<"Node">>} = Node25,
+
+    etap:is(vtree:delete(Fd, <<"bliblablubfoobar">>, Node1Mbr, Pos22),
+            not_found,
+            "Delete a node which ID's doesn't exist (tree height=1)"),
+    {ok, Pos22_1} = vtree:delete(Fd, <<"Node">>, Node1Mbr, Pos22),
+    etap:is(vtree:get_node(Fd, Pos22_1),
+            {ok, {Mbr2, #node{type=leaf}, [Node22od]}},
+            "Delete a node (tree height=1) (a)"),
+
+    {ok, Pos22_2} = vtree:delete(Fd, <<"Node">>, Node2Mbr, Pos22),
+    etap:is(vtree:get_node(Fd, Pos22_2),
+            {ok, {Mbr1, #node{type=leaf}, [Node21od]}},
+            "Delete a node (tree height=1) (b)"),
+
+    {ok, Pos25_1} = vtree:delete(Fd, <<"Node">>, Node1Mbr, Pos25),
+    {ok, {Pos25_1Mbr, Pos25_1Meta, [Pos25_1C1, Pos25_1C2]}} = vtree:get_node(
+                                                            Fd, Pos25_1),
+    {ok, Pos25_1Child1} = vtree:get_node(Fd, Pos25_1C1),
+    {ok, Pos25_1Child2} = vtree:get_node(Fd, Pos25_1C2),
+    etap:is({Pos25_1Mbr, Pos25_1Meta, [Pos25_1Child1, Pos25_1Child2]}, Tree22_3_4_5,
+            "Delete a node (tree height=2) (a)"),
+
+    {ok, Pos25_2} = vtree:delete(Fd, <<"Node">>, Node2Mbr, Pos25),
+    {ok, {Pos25_2Mbr, Pos25_2Meta, [Pos25_2C1, Pos25_2C2]}} = vtree:get_node(
+                                                            Fd, Pos25_2),
+    {ok, Pos25_2Child1} = vtree:get_node(Fd, Pos25_2C1),
+    {ok, Pos25_2Child2} = vtree:get_node(Fd, Pos25_2C2),
+    etap:is({Pos25_2Mbr, Pos25_2Meta, [Pos25_2Child1, Pos25_2Child2]}, Tree21_3_4_5,
+            "Delete a node (tree height=2) (b)"),
+
+    {ok, Pos25_3} = vtree:delete(Fd, <<"Node">>, Node3Mbr, Pos25_2),
+    {ok, {Pos25_3Mbr, Pos25_3Meta, [Pos25_3C]}} = vtree:get_node(Fd, Pos25_3),
+    {ok, Pos25_3Child} = vtree:get_node(Fd, Pos25_3C),
+    etap:is({Pos25_3Mbr, Pos25_3Meta, [Pos25_3Child]},
+            {Mbr1_4_5, #node{type=inner}, [Tree21_4_5]},
+            "Delete a node which is the only child (tree height=2) (b)"),
+
+    {ok, Pos25_4} = vtree:delete(Fd, <<"Node">>, Node5Mbr, Pos25_2),
+    {ok, {Pos25_4Mbr, Pos25_4Meta, [Pos25_4C1, Pos25_4C2]}} = vtree:get_node(
+                                                            Fd, Pos25_4),
+    {ok, Pos25_4Child1} = vtree:get_node(Fd, Pos25_4C1),
+    {ok, Pos25_4Child2} = vtree:get_node(Fd, Pos25_4C2),
+    etap:is({Pos25_4Mbr, Pos25_4Meta, [Pos25_4Child1, Pos25_4Child2]}, Tree21_3_4,
+            "Delete a node (tree height=2) (b)"),
+
+    % previous tests test the same code path already
+    {ok, Pos25_5} = vtree:delete(Fd, <<"Node">>, Node4Mbr, Pos25_4),
+    {ok, Pos25_6} = vtree:delete(Fd, <<"Node">>, Node3Mbr, Pos25_5),
+
+    etap:is(vtree:delete(Fd, <<"Node">>, Node1Mbr, Pos25_6), {empty, nil},
+            "After deletion of node, the tree is empty (tree height=2)"),
+
+    etap:is(vtree:delete(Fd, <<"Node">>, Node5Mbr, Pos25_6), not_found,
+            "Node can't be found (tree height=2)"),
+    ok.
 
 test_split_node() ->
     etap:plan(3),

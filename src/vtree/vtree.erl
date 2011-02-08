@@ -699,8 +699,9 @@ delete(Fd, DeleteId, DeleteMbr, [NodePos|NodePosTail]) ->
                 delete(Fd, DeleteId, DeleteMbr, NodePosTail)
             end;
         leaf ->
-            case funtake(fun({_, _, {DocId, _Value}}) -> DocId end,
-                         DeleteId, NodeEntriesPos) of
+            case funtake(
+                    fun({DocMbr, _, {DocId, _Value}}) -> {DocMbr, DocId} end,
+                    {DeleteMbr, DeleteId}, NodeEntriesPos) of
             {value, EntriesNew} ->
                 case EntriesNew of
                 [] ->
