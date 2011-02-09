@@ -21,11 +21,11 @@ couchTests.multiple_spatial_rows = function(debug) {
     language: "javascript",
     spatial: {
       sameKey: (function(doc) {
-        for each (var city in doc.cities) {
+        for (var i=0; i<doc.cities.length; i++) {
           emit({
             type: "Point",
             coordinates: doc.loc
-          }, city + ', ' + doc._id);
+          }, doc.cities[i] + ', ' + doc._id);
         }
       }).toString(),
       differentKey: (function(doc) {
@@ -43,8 +43,8 @@ couchTests.multiple_spatial_rows = function(debug) {
   function extract_values(str) {
     var json = JSON.parse(str);
     var res = [];
-    for each (var row in json.rows) {
-      res.push(row.value);
+    for (var i=0; i<json.rows.length; i++) {
+      res.push(json.rows[i].value);
     }
     return res.sort();
   }
