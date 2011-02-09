@@ -144,6 +144,10 @@ couchTests.list_spatial = function(debug) {
       listWithCommonJs: stringFun(function() {
         var lib = require('somelib');
         return lib.type;
+      }),
+      properties: stringFun(function() {
+        start({"headers":{"Content-Type" : "application/json"}});
+        return  JSON.stringify(getRow());
       })
     },
     somelib: "exports.type = 'point';"
@@ -214,7 +218,9 @@ couchTests.list_spatial = function(debug) {
   TEquals(11, resp.head.update_seq);
 
   T(resp.rows.length == 10);
-  TEquals({"id":"9","key":[-10,33,-10,33],"value":"9"}, resp.rows[0]);
+  TEquals("9", resp.rows[0].id);
+  TEquals([-10,33,-10,33], resp.rows[0].key);
+  TEquals("9", resp.rows[0].value);
 
 
   TEquals(resp.req.info.db_name, "test_suite_db");
@@ -353,4 +359,12 @@ couchTests.list_spatial = function(debug) {
   db.bulkSave(docs);
   xhr = CouchDB.request("GET", url_pre + "emptyList/basicIndex" + url_bbox);
   T(xhr.responseText.match(/^ $/));
+
+  // Test if row contains bbox and geometry properties
+  xhr = CouchDB.request("GET", url_pre + "properties/basicIndex" + url_bbox);
+  T(xhr.status == 200, "properties");
+  resp = JSON.parse(xhr.responseText);
+  TEquals([-10, 33, -10, 33], resp.bbox);
+  TEquals("Point", resp.geometry.type);
+  TEquals([-10, 33], resp.geometry.coordinates);
 };

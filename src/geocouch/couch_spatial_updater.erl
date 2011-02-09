@@ -340,8 +340,8 @@ geojsongeom_to_geocouch(Geom) ->
     % XXX vmx (2011-02-04) GeometryCollection isn't supported atm
     Type = proplists:get_value(<<"type">>, Geom),
     Coords = proplists:get_value(<<"coordinates">>, Geom),
-    TypeAtom = list_to_atom(string:to_lower(?b2l(Type))),
-    [{type, TypeAtom}, {coordinates,Coords}].
+    TypeAtom = binary_to_atom(Type, latin1),
+    [{type, TypeAtom}, {coordinates, Coords}].
 
 % The tests are based on the examples of the GeoJSON format specification
 bbox_test() ->
