@@ -247,8 +247,20 @@ omt_write_tree(Fd, [H|_T]=Leafs, Depth, _Acc) when is_tuple(H) ->
     % Instead return a list of of tuples with the node's MBR and the node
     % itself
     Mbr = vtree:calc_nodes_mbr(Leafs),
-    {ok, Pos} = couch_file:append_term(
-            Fd, {Mbr, #node{type=leaf}, Leafs}),
+    % We can not only pass in single nodes, but also subtrees. If the third
+    % element of the tuple is a tuple, it's a leaf node, if it is a list,
+    % it's an inner node
+    Node = case is_tuple(element(3, H)) of
+    true ->
+        {Mbr, #node{type=leaf}, Leafs};
+    false ->
+        PosList = lists:map(fun(N) ->
+            {ok, Pos} = couch_file:append_term(Fd, N),
+            Pos
+        end, Leafs),
+        {Mbr, #node{type=inner}, PosList}
+    end,
+    {ok, Pos} = couch_file:append_term(Fd, Node),
     {leaf_nodes, {Mbr, Pos}};
 omt_write_tree(Fd, [H|T], Depth, Acc) ->
     {_, Acc2} = case omt_write_tree(Fd, H, Depth+1, []) of
@@ -380,16 +392,13 @@ seedtree_write(Fd, Seedtree, InsertHeight) ->
     length(Level) =< ?MAX_FILLED ->
         {Level, TargetHeight};
     true ->
-        {Level2, _Level2Height} = omt_load(Level, ?MAX_FILLED),
-
-        Parents = lists:foldl(fun(Level3, LevelAcc) ->
-            ParentMbr = vtree:calc_nodes_mbr(Level3),
-            ChildrenPos = write_nodes(Fd, Level3),
-            % XXX vmx: Not sure if type=inner is always right
-            Parent = {ParentMbr, #node{type=inner}, ChildrenPos},
-            [Parent|LevelAcc]
-        end, [], Level2),
-        {Parents, TargetHeight+1}
+        {Level2, Level2Height} = omt_load(Level, ?MAX_FILLED),
+        {ok, ParentMbrAndPos} = omt_write_tree(Fd, Level2),
+        Parents = lists:map(fun({_, Pos}) ->
+            {ok, Node} = couch_file:pread_term(Fd, Pos),
+            Node
+        end, ParentMbrAndPos),
+        {Parents, TargetHeight+Level2Height-1}
     end,
 
     {RootNodes2, HeightDiff} = case Seedtree#seedtree_root.outliers of
@@ -1084,6 +1093,34 @@ bulk_load_test() ->
     ?assertEqual([{4,[3],47},{4,[3],64},{4,[3],72},{5,[4],136},{6,[5],236}],
             Results4_2),
     ok.
+
+bulk_load_regression_test() ->
+    Filename = "/tmp/bulk.bin",
+    Fd = case couch_file:open(Filename, [create, overwrite]) of
+    {ok, Fd2} ->
+        Fd2;
+    {error, _Reason} ->
+        io:format("ERROR: Couldn't open file (~s) for tree storage~n",
+                  [Filename])
+    end,
+
+    % Huge overflow at the root lead to error
+    Node1 = {{-10,-10,20,20}, #node{type=leaf}, {<<"Bulk">>, <<"Data">>}},
+    Nodes2 = lists:foldl(fun(I, Acc) ->
+        Node = {{-10,-10,20,20}, #node{type=leaf},
+            {<<"2Bulk">>, <<"2Data">>}},
+        [Node|Acc]
+    end, [], lists:seq(1,64)),
+
+    {ok, Pos1, Height1} = bulk_load(Fd, 0, 0, [Node1]),
+    ?debugVal(Pos1),
+    {ok, Pos2, Height2} = bulk_load(Fd, Pos1, Height1, Nodes2),
+    ?debugVal(Pos2),
+    ?assertEqual(4, Height2),
+    {ok, Lookup2} = vtree:lookup(Fd, Pos2, {0,0,1001,1001}),
+    ?assertEqual(65, length(Lookup2)),
+    LeafDepths2 = vtreestats:leaf_depths(Fd, Pos2),
+    ?assertEqual([3], LeafDepths2).
 
 
 % XXX vmx: tests with function (check_list/6 ) are missing
