@@ -142,6 +142,6 @@ send_list_row(Resp, QueryServer, Row) ->
     end.
 
 prompt_list_row({Proc, _DDocId}, {{Bbox, DocId}, {Geom, Value}}) ->
-    JsonRow = {[{id, DocId}, {key, tuple_to_list(Bbox)}, {value, Value},
+    JsonRow = {[{id, DocId}, {value, Value},
         {bbox, tuple_to_list(Bbox)}, {geometry, Geom}]},
     couch_query_servers:proc_prompt(Proc, [<<"list_row">>, JsonRow]).
