@@ -409,9 +409,9 @@ seedtree_write(Fd, Seedtree, InsertHeight) ->
         {ok, TmpRootPos} = write_parent(Fd, RootNodes),
         {ok, TmpRootNode} = couch_file:pread_term(Fd, TmpRootPos),
         {TmpRootPos2, TmpHeight} = lists:foldl(fun(Outlier, {CurPos, _}) ->
-            {Mbr, Meta, {DocId, Value}} = Outlier,
+            {Mbr, Meta, {DocId, {Geom, Value}}} = Outlier,
             {ok, _NewMbr, CurPos2, TreeHeight} = vtree:insert(
-                    Fd, CurPos, DocId, {Mbr, Meta, Value}),
+                    Fd, CurPos, DocId, {Mbr, Meta, Geom, Value}),
             {CurPos2, TreeHeight}
         end, {TmpRootPos, 0}, Seedtree#seedtree_root.outliers),
 
@@ -969,9 +969,9 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
     end,
 
     OmtNodes = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,20+I*250,30}),
-        Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+        Node = {NodeMbr, NodeMeta, {NodeId, {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1, TreeNodeNum)),
     {Omt, _OmtHeight} = omt_load(OmtNodes, MaxFilled),
@@ -982,7 +982,9 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
 
     Nodes = lists:foldl(fun(I, Acc) ->
         Node = {{200+I,250+I,300+I,350+I}, #node{type=leaf},
-            {"Node-" ++ integer_to_list(I), "Value-" ++ integer_to_list(I)}},
+            {"Node-" ++ integer_to_list(I),
+             {{linestring, [[200+I,250+I],[300+I,350+I]]},
+             "Value-" ++ integer_to_list(I)}}},
         [Node|Acc]
     end, [], lists:seq(1, NodesNum)),
 
@@ -1006,9 +1008,9 @@ bulk_load_test() ->
 
     % Load the initial tree (with bulk operation)
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,7)),
 
@@ -1022,9 +1024,9 @@ bulk_load_test() ->
 
     % Load some more nodes
     Nodes2 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,20)),
 
@@ -1038,9 +1040,9 @@ bulk_load_test() ->
 
     % Load some more nodes
     Nodes20 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,1)),
 
@@ -1049,9 +1051,9 @@ bulk_load_test() ->
     Results3 = lists:foldl(fun(Size, Acc2) ->
         {RootPos, RootHeight, _, _} = hd(Acc2),
         Nodes = lists:foldl(fun(I, Acc) ->
-           {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+           {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
                 vtree_test:random_node({I,27+I*329,45}),
-            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
+            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
           [Node|Acc]
         end, [], lists:seq(1, Size)),
 
@@ -1074,9 +1076,9 @@ bulk_load_test() ->
     Results4 = lists:foldl(fun(Size, Acc2) ->
         {RootPos, RootHeight, _, _} = hd(Acc2),
         Nodes = lists:foldl(fun(I, Acc) ->
-            {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+            {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
                 vtree_test:random_node({I,27+I*329,45}),
-            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], NodeData}},
+            Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
            [Node|Acc]
         end, [], lists:seq(1, Size)),
         {ok, Pos, Height} = bulk_load(Fd, RootPos, RootHeight, Nodes),
@@ -1103,12 +1105,12 @@ bulk_load_regression_test() ->
         io:format("ERROR: Couldn't open file (~s) for tree storage~n",
                   [Filename])
     end,
-
     % Huge overflow at the root lead to error
-    Node1 = {{-10,-10,20,20}, #node{type=leaf}, {<<"Bulk">>, <<"Data">>}},
+    Node1 = {{-10,-10,20,20}, #node{type=leaf},
+        {<<"Bulk">>, {{linestring, [[-10,-10],[20,20]]}, <<"Data">>}}},
     Nodes2 = lists:foldl(fun(I, Acc) ->
         Node = {{-10,-10,20,20}, #node{type=leaf},
-            {<<"2Bulk">>, <<"2Data">>}},
+            {<<"2Bulk">>, {{linestring, [[-10,-10],[20,20]]},<<"2Data">>}}},
         [Node|Acc]
     end, [], lists:seq(1,64)),
 
@@ -1146,9 +1148,9 @@ chunk_list_test() ->
 
 omt_load_test() ->
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,20+I*250,30}),
-        Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+        Node = {NodeMbr, NodeMeta, {NodeId, NodeGeom, NodeData}},
         [Node|Acc]
     end, [], lists:seq(1,9)),
     {Omt1, _OmtHeight1} = omt_load(Nodes1, 2),
@@ -1204,9 +1206,9 @@ omt_write_tree_test() ->
     end,
 
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,20+I*250,30}),
-        Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+        Node = {NodeMbr, NodeMeta, {NodeId, {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,9)),
 
@@ -1289,7 +1291,8 @@ omt_write_tree_test() ->
 
 
     % Test 3: OMT tree with MAX_FILLEd = 4 and only one node
-    Node3 = [{{68,132,678,722},#node{type=leaf},{<<"Node-1">>,<<"Value-1">>}}],
+    Node3 = [{{68,132,678,722}, #node{type=leaf},
+        {<<"Node-1">>, {{linestring, [[68,132],[678,722]]}, <<"Value-1">>}}}],
 
     {Omt3, OmtHeight3} = omt_load(Node3, 4),
     ?debugVal(Omt3),
@@ -1310,8 +1313,8 @@ omt_write_tree_test() ->
     {ok, LeafNodes2} = vtree:lookup(
             Fd, lists:nth(2, RootPosList), {0,0,1001,1001}),
     LeafNodes3 = lists:foldl(fun(LeafNode, Acc) ->
-        {NodeMbr, NodeId, NodeData} = LeafNode,
-        Node = {NodeMbr, #node{type=leaf}, {NodeId, NodeData}},
+        {NodeMbr, NodeId, NodeGeom, NodeData} = LeafNode,
+        Node = {NodeMbr, #node{type=leaf}, {NodeId, {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], LeafNodes1 ++ LeafNodes2),
     {Omt4, _OmtHeight4} = omt_load(LeafNodes3, 2),
@@ -1320,9 +1323,9 @@ omt_write_tree_test() ->
 
 omt_sort_nodes_test() ->
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,20+I*300,30-I*54}),
-        Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+        Node = {NodeMbr, NodeMeta, {NodeId, {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,6)),
     Sorted1 = omt_sort_nodes(Nodes1, 1),
@@ -1346,70 +1349,81 @@ seedtree_insert_test() ->
             "/tmp/randtree.bin", 20),
     ?debugVal(RootPos),
     SeedTree = seedtree_init(Fd, RootPos, 3),
-    {NodeId, {NodeMbr, NodeMeta, NodeData}} = vtree_test:random_node(),
-    Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+    {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} = vtree_test:random_node(),
+    Node = {NodeMbr, NodeMeta, {NodeId, {NodeGeom, NodeData}}},
     SeedTree2 = seedtree_insert(SeedTree, Node),
-
     SeedTree2Tree = SeedTree2#seedtree_root.tree,
     ?assertEqual({{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],
                 [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,<<"Value718132">>}}],7518}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[],6520}}]},
+                    {<<"Node718132">>,
+                        {{linestring,[[66,132],[252,718]]},
+                        <<"Value718132">>}}}],11362}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],[],9931}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
         SeedTree2Tree),
 
-    NodeNotInTree3 = {{2,3,4,5}, NodeMeta, {<<"notintree">>, datafoo}},
+    NodeNotInTree3 = {{2,3,4,5}, NodeMeta,
+        {<<"notintree">>, {{linestring,[[2,3],[4,5]]}, datafoo}}},
     SeedTree3 = seedtree_insert(SeedTree, NodeNotInTree3),
     Outliers3 = SeedTree3#seedtree_root.outliers,
-    ?assertEqual([{{2,3,4,5},{node,leaf},{<<"notintree">>,datafoo}}],
+    ?assertEqual([{{2,3,4,5}, {node,leaf},
+        {<<"notintree">>, {{linestring,[[2,3],[4,5]]}, datafoo}}}],
         Outliers3),
-    NodeNotInTree4 = {{-2,300.5,4.4,50.45},{node,leaf},
-        {<<"notintree2">>,datafoo2}},
+    NodeNotInTree4 = {{-2,300.5,4.4,50.45}, {node,leaf},
+        {<<"notintree2">>, {{linestring,[[-2,300.5],[4.4,50.45]]}, datafoo2}}},
     SeedTree4 = seedtree_insert(SeedTree2, NodeNotInTree4),
     Outliers4 = SeedTree4#seedtree_root.outliers,
     ?assertEqual(
-        [{{-2,300.5,4.4,50.45},{node,leaf},{<<"notintree2">>,datafoo2}}],
+        [{{-2,300.5,4.4,50.45},{node,leaf},
+         {<<"notintree2">>,{{linestring,[[-2,300.5],[4.4,50.45]]},datafoo2}}}],
         Outliers4
     ),
     SeedTree5 = seedtree_insert(SeedTree3, NodeNotInTree4),
     Outliers5 = SeedTree5#seedtree_root.outliers,
     ?assertEqual(
-        [{{-2,300.5,4.4,50.45},{node,leaf},{<<"notintree2">>,datafoo2}},
-         {{2,3,4,5},{node,leaf},{<<"notintree">>,datafoo}}],
+        [{{-2,300.5,4.4,50.45},{node,leaf},
+          {<<"notintree2">>, {{linestring,[[-2,300.5],[4.4,50.45]]},datafoo2}}},
+         {{2,3,4,5},{node,leaf},
+          {<<"notintree">>, {{linestring,[[2,3],[4,5]]},datafoo}}}],
         Outliers5
     ),
-    Node6 = {{342,456,959,513}, NodeMeta, {<<"intree01">>, datafoo3}},
+    Node6 = {{342,456,959,513}, NodeMeta,
+        {<<"intree01">>, {{linestring,[[342,456],[959,513]]}, datafoo3}}},
     SeedTree6 = seedtree_insert(SeedTree, Node6),
     {_, _, SeedTree6TreeLeaf} = SeedTree6#seedtree_root.tree,
 
     SeedTree6Tree = SeedTree6#seedtree_root.tree,
     ?assertEqual({{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[],7518}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],[],11362}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],
                 [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>, datafoo3}}],6520}}]},
+                    {<<"intree01">>,
+                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],9931}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
         SeedTree6Tree),
     SeedTree7 = seedtree_insert(SeedTree2, Node6),
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
     ?assertEqual({{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],
                 [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,<<"Value718132">>}}],7518}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],
+                    {<<"Node718132">>,
+                        {{linestring,[[66,132],[252,718]]},
+                        <<"Value718132">>}}}],11362}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],
                 [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>, datafoo3}}],6520}}]},
+                    {<<"intree01">>,
+                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],9931}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
         SeedTree7Tree).
 
 
@@ -1418,47 +1432,56 @@ seedtree_insert_list_test() ->
             "/tmp/randtree.bin", 20),
     ?debugVal(RootPos),
     SeedTree = seedtree_init(Fd, RootPos, 3),
-    {NodeId, {NodeMbr, NodeMeta, NodeData}} = vtree_test:random_node(),
-    Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+    {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} = vtree_test:random_node(),
+    Node = {NodeMbr, NodeMeta, {NodeId, {NodeGeom, NodeData}}},
     SeedTree2 = seedtree_insert(SeedTree, Node),
     SeedTree2Tree = SeedTree2#seedtree_root.tree,
     ?assertEqual({{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],
                 [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,<<"Value718132">>}}],7518}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[],6520}}]},
+                    {<<"Node718132">>,
+                        {{linestring,[[66,132],[252,718]]},
+                        <<"Value718132">>}}}],11362}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],[],9931}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
         SeedTree2Tree),
 
-    NodeNotInTree3 = {{2,3,4,5}, NodeMeta, {<<"notintree">>, datafoo}},
-    NodeNotInTree4 = {{-2,300.5,4.4,50.45},{node,leaf},
-        {<<"notintree2">>,datafoo2}},
+    NodeNotInTree3 = {{2,3,4,5}, NodeMeta,
+        {<<"notintree">>, {{linestring,[[2,3],[4,5]]}, datafoo}}},
+    NodeNotInTree4 = {{-2,300.5,4.4,50.45}, {node,leaf},
+        {<<"notintree2">>, {{linestring,[[-2,300.5],[4.4,50.45]]}, datafoo2}}},
     SeedTree5 = seedtree_insert_list(SeedTree,
         [NodeNotInTree3, NodeNotInTree4]),
     Outliers5 = SeedTree5#seedtree_root.outliers,
     ?assertEqual(
-        [{{-2,300.5,4.4,50.45},{node,leaf},{<<"notintree2">>,datafoo2}},
-         {{2,3,4,5},{node,leaf},{<<"notintree">>,datafoo}}],
+        [{{-2,300.5,4.4,50.45},{node,leaf},
+          {<<"notintree2">>,{{linestring,[[-2,300.5],[4.4,50.45]]},datafoo2}}},
+         {{2,3,4,5},{node,leaf},
+          {<<"notintree">>,{{linestring,[[2,3],[4,5]]},datafoo}}}],
         Outliers5
     ),
 
-    Node6 = {{342,456,959,513}, NodeMeta, {<<"intree01">>, datafoo3}},
+    Node6 = {{342,456,959,513}, NodeMeta,
+        {<<"intree01">>, {{linestring,[[342,456],[959,513]]}, datafoo3}}},
     SeedTree7 = seedtree_insert_list(SeedTree, [Node, Node6]),
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
     ?assertEqual({{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],
                 [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,<<"Value718132">>}}],7518}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],
+                    {<<"Node718132">>,
+                        {{linestring,[[66,132],[252,718]]},
+                        <<"Value718132">>}}}],11362}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],
                 [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>, datafoo3}}],6520}}]},
+                    {<<"intree01">>,
+                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],9931}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
         SeedTree7Tree).
 
 seedtree_init_test() ->
@@ -1467,18 +1490,18 @@ seedtree_init_test() ->
     ?debugVal(RootPos),
     SeedTree1 = seedtree_init(Fd, RootPos, 2),
     ?assertEqual({seedtree_root, {{4,43,980,986}, {node,inner},
-        [{{4,43,980,960}, {node,inner},{seedtree_leaf,[7518,6520],[],7579}},
-         {{27,163,597,986},{node,inner},{seedtree_leaf,[6006,5494],[],6174}}]},
+        [{{4,43,980,960}, {node,inner},{seedtree_leaf,[11362,9931],[],11423}},
+         {{27,163,597,986},{node,inner},{seedtree_leaf,[9258,8480],[],9426}}]},
          [], 2},
         SeedTree1),
     SeedTree2 = seedtree_init(Fd, RootPos, 3),
     ?assertEqual({seedtree_root, {{4,43,980,986}, {node,inner},
         [{{4,43,980,960}, {node,inner},
-            [{{4,43,865,787},{node,inner},{seedtree_leaf,[6688,7127,7348],[],7518}},
-             {{220,45,980,960},{node,inner},{seedtree_leaf,[6286,3391],[],6520}}]},
+            [{{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],[],11362}},
+             {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],[],9931}}]},
          {{27,163,597,986}, {node,inner},
-            [{{37,163,597,911},{node,inner},{seedtree_leaf,[3732,5606],[],6006}},
-             {{27,984,226,986},{node,inner},{seedtree_leaf,[5039],[],5494}}]}]},
+            [{{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
+             {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
          [], 3},
         SeedTree2),
 
@@ -1497,9 +1520,9 @@ seedtree_write_single_test() ->
 
     ?debugVal(RootPos),
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,1)),
 
@@ -1532,9 +1555,9 @@ seedtree_write_case1_test() ->
 
     ?debugVal(RootPos),
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,20)),
 
@@ -1649,9 +1672,9 @@ seedtree_write_case2_test() ->
     ?debugVal(TargetTreeHeight),
     ?debugVal(RootPos),
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,80)),
 
@@ -1671,9 +1694,9 @@ seedtree_write_case2_test() ->
 
     % Test 2.2: input tree is too high (2 levels)
     Nodes2 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,300)),
 
@@ -1790,9 +1813,9 @@ seedtree_write_case3_test() ->
     ?debugVal(TargetTreeHeight),
     ?debugVal(RootPos),
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,12)),
 
@@ -1818,9 +1841,9 @@ seedtree_write_case3_test() ->
     ?debugVal(RootPos2),
 
     Nodes2 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"bulk">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,12)),
 
@@ -1923,9 +1946,9 @@ insert_subtree_test() ->
 
     % Test 1: no split of the root node
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"subtree">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"subtree">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,5)),
     {Omt1, SubtreeHeight1} = omt_load(Nodes1, ?MAX_FILLED),
@@ -1942,9 +1965,9 @@ insert_subtree_test() ->
 
     % Test 2: split of the root node => tree increases in height
     Nodes2 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"subtree">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"subtree">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,250)),
     {Omt2, SubtreeHeight2} = omt_load(Nodes2, ?MAX_FILLED),
@@ -1975,9 +1998,9 @@ insert_outliers_test() ->
     % level. Rootnodes from newly created tree and rootnodes from target
     % tree *fit* into one node, there's no need for a split of the root node.
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,300)),
 
@@ -1997,9 +2020,9 @@ insert_outliers_test() ->
     % level. Rootnodes from newly created tree and rootnodes from target
     % tree  *don't fit* into one node, root node needs to be split
     Nodes2 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,1000)),
 
@@ -2018,9 +2041,9 @@ insert_outliers_test() ->
     % level. Rootnodes from newly created tree and nodes from target
     % tree *fit* into one node, there's no need for a split of a node.
     Nodes3 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,1500)),
 
@@ -2039,9 +2062,9 @@ insert_outliers_test() ->
     % level. Rootnodes from newly created tree and nodes from target
     % tree *don't fit* into one node, it needs to be split.
     Nodes4 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,4000)),
 
@@ -2060,9 +2083,9 @@ insert_outliers_test() ->
     % level. Rootnodes from newly created tree and nodes from target
     % tree *fit* into one node, there's no need for a split of a node.
     Nodes5 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,7)),
 
@@ -2081,9 +2104,9 @@ insert_outliers_test() ->
     % level. Rootnodes from newly created tree and nodes from target
     % tree *don't fit* into one node, it needs to be split.
     Nodes6 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"Out">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,16)),
 
@@ -2109,19 +2132,20 @@ seedtree_write_insert_test() ->
     end,
 
     Nodes1 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {NodeId, NodeData}},
+        Node = {NodeMbr, NodeMeta, {NodeId, NodeGeom, NodeData}},
         [Node|Acc]
     end, [], lists:seq(1,4)),
     Nodes2 = lists:foldl(fun(I, Acc) ->
-        {NodeId, {NodeMbr, NodeMeta, NodeData}} =
+        {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
             vtree_test:random_node({I,27+I*329,45}),
-        Node = {NodeMbr, NodeMeta, {[NodeId, <<"OMT">>], NodeData}},
+        Node = {NodeMbr, NodeMeta, {[NodeId, <<"OMT">>], NodeGeom, NodeData}},
         [Node|Acc]
     end, [], lists:seq(1,7)),
 
     Mbr1 = vtree:calc_nodes_mbr(Nodes1),
+    {X,Y,W,Z} = Mbr1,
 
     % This test will lead to an OMT tree with several nodes. There was a bug
     % that couldn't handle it.

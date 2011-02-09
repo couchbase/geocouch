@@ -78,8 +78,9 @@ io:format("vtree: delete: NewPos: ~p~n", [NewPos]),
 %    {Omt, TreeHeight} = vtree_bulk:omt_load(AddKeyValues2, ?MAX_FILLED),
 %    {ok, MbrAndPosList} = vtree_bulk:omt_write_tree(Fd, Omt),
 %    [{_Mbr, NewPos2}] = MbrAndPosList,
-    AddKeyValues2 = lists:foldl(fun({{Mbr, DocId}, Value}, Acc) ->
-        [{Mbr, #node{type=leaf}, {DocId, Value}}|Acc]
+    % GeomVal is 2-tuple with geometry and actual value
+    AddKeyValues2 = lists:foldl(fun({{Mbr, DocId}, GeomVal}, Acc) ->
+        [{Mbr, #node{type=leaf}, {DocId, GeomVal}}|Acc]
     end, [], AddKeyValues),
     {ok, NewPos2, TreeHeight} = vtree_bulk:bulk_load(
             Fd, NewPos, NewTargetTreeHeight, AddKeyValues2),
@@ -138,11 +139,13 @@ fold(Fd, Pos, Fun, Acc) ->
 
 % This lookup function is mainly for testing
 lookup(Fd, Pos, Bbox) ->
-    % default function returns a list of 3-tuple with MBR, id, value
-    lookup(Fd, Pos, Bbox, {fun({{Bbox2, DocId}, Value}, Acc) ->
-         % NOTE vmx (2011-02-01) This should perhaps also be changed from
-         %     {Bbox2, DocId, Value} to {{Bbox2, DocId}, Value}
-         Acc2 = [{Bbox2, DocId, Value}|Acc],
+    % default function returns a list of 2-tuple with
+    %  - 2-tuple with MBR and document ID
+    %  - 2-tuple with the geometry and the actual value
+    lookup(Fd, Pos, Bbox, {fun({{Bbox2, DocId}, {Geom, Value}}, Acc) ->
+         % NOTE vmx (2011-02-09) This should perhaps also be changed from
+         %     {Bbox2, DocId, Geom, Value} to {{Bbox2, DocId}, {Geom, Value}}
+         Acc2 = [{Bbox2, DocId, Geom, Value}|Acc],
          {ok, Acc2}
     end, []}, nil).
 lookup(_Fd, nil, _Bbox, {FoldFun, InitAcc}) ->
@@ -177,22 +180,21 @@ lookup(Fd, Pos, Bboxes, {FoldFun, InitAcc}) ->
         case bboxes_within(ParentMbr, Bboxes) of
         % all children are within the bbox we search with
         true ->
-            foldl_stop(fun({Mbr, _Meta, {Id, Value}}, Acc) ->
-                FoldFun({{Mbr, Id}, Value}, Acc)
+            foldl_stop(fun({Mbr, _Meta, {Id, {Geom, Value}}}, Acc) ->
+                FoldFun({{Mbr, Id}, {Geom, Value}}, Acc)
             end, InitAcc, NodesPos);
         false ->
             % loop through all data nodes and find not disjoint ones
-            foldl_stop(fun({Mbr, _Meta, {Id, Value}}, Acc) ->
+            foldl_stop(fun({Mbr, _Meta, {Id, {Geom, Value}}}, Acc) ->
                 case bboxes_not_disjoint(Mbr, Bboxes) of
                 true ->
-                    FoldFun({{Mbr, Id}, Value}, Acc);
+                    FoldFun({{Mbr, Id}, {Geom, Value}}, Acc);
                 false ->
                     {ok, Acc}
                 end
             end, InitAcc, NodesPos)
         end
     end.
-
 
 lookup(Fd, Pos, Bbox, FoldFunAndAcc, nil) when is_list(Bbox) ->
     lookup(Fd, Pos, Bbox, FoldFunAndAcc);
@@ -351,8 +353,8 @@ split_node({_Mbr, Meta, _Entries}=Node) ->
 % If a split occurs: {splitted, MBR_of_both_nodes,
 %                     {MBR_of_node1, position_in_file_node1},
 %                     {MBR_of_node2, position_in_file_node2}}
-insert(Fd, nil, Id, {Mbr, Meta, Value}) ->
-    InitialTree = {Mbr, #node{type=leaf}, [{Mbr, Meta, {Id, Value}}]},
+insert(Fd, nil, Id, {Mbr, Meta, Geom, Value}) ->
+    InitialTree = {Mbr, #node{type=leaf}, [{Mbr, Meta, {Id, {Geom, Value}}}]},
     {ok, Pos} = couch_file:append_term(Fd, InitialTree),
     {ok, Mbr, Pos, 1};
 
@@ -361,12 +363,12 @@ insert(Fd, RootPos, Id, Node) ->
     {ok, Mbr, NewPos, Height+1}.
 
 insert(Fd, RootPos, NewNodeId,
-       {NewNodeMbr, NewNodeMeta, NewNodeValue}, CallDepth) ->
-    NewNode = {NewNodeMbr, NewNodeMeta#node{type=leaf}, NewNodeValue},
+       {NewNodeMbr, NewNodeMeta, NewNodeGeom, NewNodeValue}, CallDepth) ->
+    NewNode = {NewNodeMbr, NewNodeMeta#node{type=leaf}, NewNodeGeom,
+        NewNodeValue},
     % EntriesPos is only a pointer to the node (position in file)
     {ok, {TreeMbr, Meta, EntriesPos}} = couch_file:pread_term(Fd, RootPos),
     EntryNum = length(EntriesPos),
-    %Entries = case Meta#node.type of
     Inserted = case Meta#node.type of
     leaf ->
         % NOTE vmx: Currently we don't save each entry individually, but the
@@ -376,12 +378,11 @@ insert(Fd, RootPos, NewNodeId,
         %    CurEntry
         %end, EntriesPos);
         Entries = EntriesPos,
-        LeafNodeMbr = merge_mbr(TreeMbr, element(1, NewNode)),
+        LeafNodeMbr = merge_mbr(TreeMbr, NewNodeMbr),
 
-        % store the ID with every node:
+        % store the ID and geometry with every node:
         NewNode2 = {NewNodeMbr, NewNodeMeta#node{type=leaf},
-               {NewNodeId, NewNodeValue}},
-
+               {NewNodeId, {NewNodeGeom, NewNodeValue}}},
         LeafNode = {LeafNodeMbr, #node{type=leaf}, Entries ++ [NewNode2]},
         if
         EntryNum < ?MAX_FILLED ->
@@ -414,9 +415,8 @@ insert(Fd, RootPos, NewNodeId,
         Expanded = lists:map(
             fun(Entry) ->
                 {EntryMbr, _, _} = Entry,
-                {NewNodeMbr2, _, _} = NewNode,
                 EntryArea = area(EntryMbr),
-                AreaMbr = merge_mbr(EntryMbr, NewNodeMbr2),
+                AreaMbr = merge_mbr(EntryMbr, NewNodeMbr),
                 NewArea = area(AreaMbr),
                 AreaDiff = NewArea - EntryArea,
                 %{EntryArea, NewArea, AreaDiff}
@@ -700,8 +700,9 @@ delete(Fd, DeleteId, DeleteMbr, [NodePos|NodePosTail]) ->
             end;
         leaf ->
             case funtake(
-                    fun({DocMbr, _, {DocId, _Value}}) -> {DocMbr, DocId} end,
-                    {DeleteMbr, DeleteId}, NodeEntriesPos) of
+                fun({DocMbr, _, {DocId, {_Geom, _Value}}}) ->
+                     {DocMbr, DocId}
+                end, {DeleteMbr, DeleteId}, NodeEntriesPos) of
             {value, EntriesNew} ->
                 case EntriesNew of
                 [] ->

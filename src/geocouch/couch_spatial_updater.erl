@@ -65,8 +65,6 @@ update(Owner, Group) ->
     {Group4, Results} = spatial_compute(Group3, UncomputedDocs),
     % Output is way to huge
     %?LOG_DEBUG("spatial_compute results: ~p", [Results]),
-    % XXX vmx: I don't quite understand what view_insert_query_results does.
-    %    It seems to optimize the result
     {ViewKVsToAdd2, DocIdViewIdKeys2} = view_insert_query_results(
             UncomputedDocs, Results, ViewKVsToAdd, DocIdViewIdKeys),
     couch_query_servers:stop_doc_map(Group4#spatial_group.query_server),
@@ -93,6 +91,8 @@ view_insert_doc_query_results(_Doc, [], [], ViewKVsAcc, ViewIdKeysAcc) ->
 view_insert_doc_query_results(#doc{id=DocId}=Doc, [ResultKVs|RestResults], [{View, KVs}|RestViewKVs], ViewKVsAcc, ViewIdKeysAcc) ->
     % Take any identical keys and combine the values
     ResultKVs2 = lists:foldl(
+        % Key is the bounding box of the geometry,
+        % Value is a tuple of the the geometry and the actual value
         fun({Key,Value}, [{PrevKey,PrevVal}|AccRest]) ->
             case Key == PrevKey of
             true ->
@@ -143,9 +143,9 @@ spatial_docs(Proc, Docs) ->
             % the results are a json array of function map yields like this:
             % [FunResults1, FunResults2 ...]
             % where funresults is are json arrays of key value pairs:
-            % [[Key1, Value1], [Key2, Value2]]
+            % [[Geom1, Value1], [Geom2, Value2]]
             % Convert the key, value pairs to tuples like
-            % [{Key1, Value1}, {Key2, Value2}]
+            % [{Bbox1, {Geom1, Value1}}, {Bbox, {Geom2, Value2}}]
             lists:map(
                 fun(FunRs) ->
                     case FunRs of
@@ -207,7 +207,6 @@ process_doc(Db, Owner, DocInfo, {Docs, Group, IndexKVs, DocIdIndexIdKeys}) ->
 
 write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
     #spatial_group{id_btree=IdBtree, fd=Fd} = Group,
-
     AddDocIdIndexIdKeys = [{DocId, IndexIdKeys} || {DocId, IndexIdKeys} <- DocIdIndexIdKeys, IndexIdKeys /= []],
     RemoveDocIds = [DocId || {DocId, IndexIdKeys} <- DocIdIndexIdKeys, IndexIdKeys == []],
     LookupDocIds = [DocId || {DocId, _IndexIdKeys} <- DocIdIndexIdKeys],
@@ -227,7 +226,6 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
             end
         end,
         dict:new(), LookupResults),
-
     Indexes2 = lists:zipwith(fun(Index, {_Index, AddKeyValues}) ->
         KeysToRemove = couch_util:dict_find(Index#spatial.id_num, KeysToRemoveByIndex, []),
         %?LOG_DEBUG("storing spatial data: ~n~p~n~p~n~p",
@@ -256,7 +254,7 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
 % Return the bounding box of a GeoJSON geometry. "Geo" is wrapped in
 % brackets ({}) as returned from proplists:get_value()
 geojson_get_bbox(Geo) ->
-    {Bbox, nil} = process_result([Geo|[nil]]),
+    {Bbox, _, nil} = process_result([Geo|[nil]]),
     Bbox.
 
 
@@ -291,7 +289,9 @@ process_result([{Geo}|[Value]]) ->
             Bbox2
         end
     end,
-    {erlang:list_to_tuple(Bbox), Value}.
+
+    Geom = geojsongeom_to_geocouch(Geo),
+    {erlang:list_to_tuple(Bbox), {Geom, Value}}.
 
 
 extract_bbox(Type, Coords) ->
@@ -333,6 +333,15 @@ bbox([Coords|Rest], {Min, Max}) ->
     Max2 = lists:zipwith(fun(X, Y) -> erlang:max(X,Y) end, Coords, Max),
     bbox(Rest, {Min2, Max2}).
 
+
+% @doc Transforms a GeoJSON geometry (as Erlang terms), to an internal
+% structure
+geojsongeom_to_geocouch(Geom) ->
+    % XXX vmx (2011-02-04) GeometryCollection isn't supported atm
+    Type = proplists:get_value(<<"type">>, Geom),
+    Coords = proplists:get_value(<<"coordinates">>, Geom),
+    TypeAtom = list_to_atom(string:to_lower(?b2l(Type))),
+    [{type, TypeAtom}, {coordinates,Coords}].
 
 % The tests are based on the examples of the GeoJSON format specification
 bbox_test() ->
@@ -415,25 +424,29 @@ process_result_geometrycollection_fail_test() ->
 process_result_point_test() ->
     Geojson = {[{<<"type">>,<<"Point">>},
                 {<<"coordinates">>,[100.0,0.0]}]},
-    {Bbox, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    {Bbox, Geom, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({point, [100.0,0.0]}, Geom),
     ?assertEqual({100.0, 0.0, 100.0, 0.0}, Bbox).
 
 process_result_point_bbox_test() ->
     Geojson = {[{<<"type">>,<<"Point">>},
                 {<<"coordinates">>,[100.0,0.0]},
                 {<<"bbox">>,[100.0,0.0,105.54,8.614]}]},
-    {Bbox, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    {Bbox, Geom, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({point, [100.0,0.0]}, Geom),
     ?assertEqual({100.0, 0.0, 105.54, 8.614}, Bbox).
 
 process_result_linestring_test() ->
     Geojson = {[{<<"type">>,<<"LineString">>},
                 {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]},
-    {Bbox, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    {Bbox, Geom, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({linestring, [[101.0,0.0],[102.0,1.0]]}, Geom),
     ?assertEqual({101.0, 0.0, 102.0, 1.0}, Bbox).
 
 process_result_linestring_toosmallbbox_test() ->
     Geojson = {[{<<"type">>,<<"LineString">>},
                 {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]},
                 {<<"bbox">>,[101.0,0.0,101.54,0.614]}]},
-    {Bbox, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    {Bbox, Geom, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({linestring, [[101.0,0.0],[102.0,1.0]]}, Geom),
     ?assertEqual({101.0, 0.0, 101.54, 0.614}, Bbox).

@@ -143,14 +143,15 @@ make_spatial_fold_funs(Req, _QueryArgs, Etag, _Db, UpdateSeq, HelperFuns) ->
     % The Acc is there to output characters that belong to the previous line,
     % but only if one line follows (think of a comma separated list which
     % doesn't have a comma at the last item)
-    fun({{Bbox, DocId}, Value}, {Resp, Acc}) ->
+    fun({{Bbox, DocId}, {Geom, Value}}, {Resp, Acc}) ->
         case Resp of
         undefined ->
             {ok, NewResp, BeginBody} = StartRespFun(Req, Etag, UpdateSeq),
-            {ok, Acc2} = SendRowFun(NewResp, {Bbox, DocId, Value}, BeginBody),
+            {ok, Acc2} = SendRowFun(
+                NewResp, {{Bbox, DocId}, {Geom, Value}}, BeginBody),
             {ok, {NewResp, Acc2}};
         Resp ->
-            {ok, Acc2} = SendRowFun(Resp, {Bbox, DocId, Value}, Acc),
+            {ok, Acc2} = SendRowFun(Resp, {{Bbox, DocId}, {Geom, Value}}, Acc),
             {ok, {Resp, Acc2}}
         end
     end.
@@ -175,10 +176,11 @@ json_spatial_start_resp(Req, Etag, UpdateSeq) ->
     {ok, Resp, BeginBody}.
 
 % counterpart in couch_httpd_view is send_json_view_row/5
-send_json_spatial_row(Resp, {Bbox, DocId, Value}, RowFront) ->
+send_json_spatial_row(Resp, {{Bbox, DocId}, {Geom, Value}}, RowFront) ->
     JsonObj = {[{<<"id">>, DocId},
                   {<<"bbox">>, erlang:tuple_to_list(Bbox)},
                   {<<"value">>, Value}]},
+    % XXX vmx (2011-02-07) Geom is missing
     send_chunk(Resp, RowFront ++  ?JSON_ENCODE(JsonObj)),
     {ok, ",\r\n"}.
 
