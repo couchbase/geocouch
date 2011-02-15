@@ -180,7 +180,7 @@ send_json_spatial_row(Resp, {{Bbox, DocId}, {Geom, Value}}, RowFront) ->
     JsonObj = {[
         {<<"id">>, DocId},
         {<<"bbox">>, erlang:tuple_to_list(Bbox)},
-        {<<"geometry">>, Geom},
+        {<<"geometry">>, {Geom}},
         {<<"value">>, Value}]},
     send_chunk(Resp, RowFront ++  ?JSON_ENCODE(JsonObj)),
     {ok, ",\r\n"}.
