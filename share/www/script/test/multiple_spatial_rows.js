@@ -80,6 +80,8 @@ couchTests.multiple_spatial_rows = function(debug) {
   // add another city to NC
   nc.cities.push("Wilmington");
   T(db.save(nc).ok);
+  // Firefox sometimes failed here. Make sure everything is committed.
+  T(db.ensureFullCommit().ok);
 
   xhr = CouchDB.request("GET", url_pre + "sameKey?bbox=" + bbox.join(","));
   rows = extract_values(xhr.responseText);
@@ -98,6 +100,8 @@ couchTests.multiple_spatial_rows = function(debug) {
 
   // now delete MA
   T(db.deleteDoc(ma).ok);
+  // Firefox sometimes failed here. Make sure everything is committed.
+  T(db.ensureFullCommit().ok);
 
   xhr = CouchDB.request("GET", url_pre + "sameKey?bbox=" + bbox.join(","));
   rows = extract_values(xhr.responseText);
@@ -139,6 +143,8 @@ couchTests.multiple_spatial_rows = function(debug) {
   // add another city to NC
   nc.cities.push("Wilmington");
   T(db.save(nc).ok);
+  // Firefox sometimes failed here. Make sure everything is committed.
+  T(db.ensureFullCommit().ok);
 
   xhr = CouchDB.request(
     "GET", url_pre + "differentKey?bbox=" + bbox.join(","));
@@ -158,6 +164,8 @@ couchTests.multiple_spatial_rows = function(debug) {
 
   // now delete MA
   T(db.deleteDoc(ma).ok);
+  // Firefox sometimes failed here. Make sure everything is committed.
+  T(db.ensureFullCommit().ok);
 
   xhr = CouchDB.request(
     "GET", url_pre + "differentKey?bbox=" + bbox.join(","));
