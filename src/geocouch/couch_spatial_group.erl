@@ -378,7 +378,7 @@ set_index_sig(#spatial_group{
             design_options=DesignOptions}=G) ->
     IndexInfo = [I#spatial{update_seq=0, purge_seq=0} || I <- Indexes],
     G#spatial_group{sig=couch_util:md5(term_to_binary(
-        {IndexInfo, Language, DesignOptions}))};
+        {IndexInfo, Language, DesignOptions, ?LATEST_SPATIAL_DISK_VERSION}))};
 set_index_sig(#spatial_group{
             indexes=Indexes,
             lib=Lib,
@@ -386,7 +386,7 @@ set_index_sig(#spatial_group{
             design_options=DesignOptions}=G) ->
     IndexInfo = [I#spatial{update_seq=0, purge_seq=0} || I <- Indexes],
     G#spatial_group{sig=couch_util:md5(term_to_binary(
-        {IndexInfo, Language, DesignOptions,
+        {IndexInfo, Language, DesignOptions, ?LATEST_SPATIAL_DISK_VERSION,
         geocouch_duplicates:sort_lib(Lib)}))}.
 
 

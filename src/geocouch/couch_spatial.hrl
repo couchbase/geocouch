@@ -10,6 +10,8 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
+-define(LATEST_SPATIAL_DISK_VERSION, 1).
+
 % The counterpart to #spatial_group in the view server is #group
 -record(spatial_group, {
     sig=nil,
@@ -46,7 +48,8 @@
     seq=0,
     purge_seq=0,
     id_btree_state=nil, % pointer/position in file to back-index
-    index_states=nil % pointers/positions to the indexes
+    index_states=nil, % pointers/positions to the indexes
+    disk_version = ?LATEST_SPATIAL_DISK_VERSION
 }).
 
 % The counterpart to #spatial_query_args in the view server is
