@@ -79,15 +79,79 @@ couchTests.spatial = function(debug) {
     return res.sort();
   }
 
+  // wait for a certain number of seconds
+  function wait(secs) {
+    var t0 = new Date(), t1;
+    do {
+      CouchDB.request("GET", "/");
+      t1 = new Date();
+    } while ((t1 - t0) < secs*1000);
+  }
+
   var xhr;
   var url_pre = '/test_suite_db/_design/spatial/_spatial/';
   var docs = makeSpatialDocs(0, 10);
   db.bulkSave(docs);
+  var bbox = [-180, -90, 180, 90];
+
+  // stale tests
+
+  // make sure stale=ok doesn't trigger an update on not yet created index
+  // NOTE There's no good way to test it => wait for 3 seconds
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+                        '&stale=ok');
+  // wait 3 seconds for the next assertions to pass in very slow machines
+  wait(3);
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+                        '&stale=ok');
+  var resp = JSON.parse(xhr.responseText);
+  TEquals(0, resp.rows.length, "should return no geometries (empty index)");
+
+  // update the index
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
+  var lastUpdateSeq = JSON.parse(xhr.responseText).update_seq;
+
+  // stale=ok
+  db.save({"_id": "stale1", "loc": [50000,60000]});
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+                        "&stale=ok");
+  T(JSON.parse(xhr.responseText).update_seq == lastUpdateSeq);
+  wait(3);
+
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+                        "&stale=ok");
+  T(JSON.parse(xhr.responseText).update_seq == lastUpdateSeq);
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
+  T(JSON.parse(xhr.responseText).update_seq == lastUpdateSeq+1);
+
+  // stale=update_after
+  lastUpdateSeq++;
+  db.save({"_id": "stale2", "loc": [60000,70000]});
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+                        "&stale=update_after");
+  T(JSON.parse(xhr.responseText).update_seq == lastUpdateSeq);
+  wait(3);
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
+                        "&stale=ok");
+  T(JSON.parse(xhr.responseText).update_seq == lastUpdateSeq+1);
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
+  T(JSON.parse(xhr.responseText).update_seq == lastUpdateSeq+1);
+
+
+  // emit tests
+
+  // spatial function that doesn't always emit
+  bbox = [-180, -90, 180, 90];
+  xhr = CouchDB.request("GET", url_pre + "dontEmitAll?bbox=" + bbox.join(","));
+  TEquals(['6','7','8','9'], extract_ids(xhr.responseText),
+          "should return geometries with id>5");
+
+  xhr = CouchDB.request("GET", url_pre + "emitNothing?bbox=" + bbox.join(","));
+  TEquals('{\"rows\":[]}\n', xhr.responseText, "nothing emitted at all");
 
 
   // bounding box tests
 
-  var bbox = [-180, -90, 180, 90];
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
   TEquals(['0','1','2','3','4','5','6','7','8','9'],
           extract_ids(xhr.responseText),
@@ -113,6 +177,7 @@ couchTests.spatial = function(debug) {
   TEquals(['2'], extract_ids(xhr.responseText),
           "bbox collapsed to a point should return the geometries there");
 
+
   // count parameter tests
 
   bbox = [-180, -90, 180, 90];
@@ -122,10 +187,9 @@ couchTests.spatial = function(debug) {
           "should return the count of all geometries");
 
 
-  // stale tests
-
-  xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
-  var lastUpdateSeq = JSON.parse(xhr.responseText).update_seq;
+  // GeoJSON geometry tests
+  // NOTE vmx: (for all those tests) Should I test if the returned
+  //     bounding box is correct as well?
 
   // some geometries are based on the GeoJSON specification
   // http://geojson.org/geojson-spec.html (2010-08-17)
@@ -209,15 +273,6 @@ couchTests.spatial = function(debug) {
           "if bounding box calculation was correct, it should at least" +
           " return the geoGeometryCollection");
 
-/* This is a 1.1.x feature, disable for now
-  // test if CommonJS modules can be imported
-  bbox = [-180, -90, 180, 90];
-  xhr = CouchDB.request("GET", url_pre + "withCommonJs?bbox=" + bbox.join(","));
-  T(xhr.status == 200);
-  TEquals(['0','1','2','3','4','5','6','7','8','9'],
-          extract_ids(xhr.responseText),
-          "should return all geometries (test with CommonJS)");
-*/
 
   // Test plane wrapping
 

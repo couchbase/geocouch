@@ -10,6 +10,9 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
+% XXX TODO vmx (2011-02-15) Update code to reflect all changes that happened
+%     in couch_view_group.erl
+
 -module(couch_spatial_group).
 -behaviour(gen_server).
 
@@ -79,15 +82,10 @@ init({InitArgs, ReturnPid, Ref}) ->
             ignore;
         _ ->
             couch_db:monitor(Db),
-            Owner = self(),
-            Pid = spawn_link(
-                fun()-> couch_spatial_updater:update(Owner, Group) end
-            ),
             {ok, RefCounter} = couch_ref_counter:start([Fd]),
             {ok, #group_state{
                     db_name=couch_db:name(Db),
                     init_args=InitArgs,
-                    updater_pid = Pid,
                     group=Group,
                     ref_counter=RefCounter}}
         end;
