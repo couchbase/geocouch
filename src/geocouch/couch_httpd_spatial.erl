@@ -177,15 +177,13 @@ json_spatial_start_resp(Req, Etag, UpdateSeq) ->
 
 % counterpart in couch_httpd_view is send_json_view_row/5
 send_json_spatial_row(Resp, {{Bbox, DocId}, {Geom, Value}}, RowFront) ->
-    {Type, Coords} = Geom,
     JsonObj = {[
         {<<"id">>, DocId},
         {<<"bbox">>, erlang:tuple_to_list(Bbox)},
-        {<<"geometry">>, {[{<<"type">>, Type}, {<<"coordinates">>, Coords}]}},
+        {<<"geometry">>, couch_spatial_updater:geocouch_to_geojsongeom(Geom)},
         {<<"value">>, Value}]},
     send_chunk(Resp, RowFront ++  ?JSON_ENCODE(JsonObj)),
     {ok, ",\r\n"}.
-
 
 % counterpart in couch_httpd_view is view_group_etag/3 resp. /4
 spatial_etag(Db, Group, Index) ->

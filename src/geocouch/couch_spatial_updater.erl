@@ -18,6 +18,9 @@
 % for benchmark script
 -export([geojson_get_bbox/1]).
 
+% for output (couch_http_spatial, couch_http_spatial_list)
+-export([geocouch_to_geojsongeom/1]).
+
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
 
@@ -337,10 +340,26 @@ bbox([Coords|Rest], {Min, Max}) ->
 % @doc Transforms a GeoJSON geometry (as Erlang terms), to an internal
 % structure
 geojsongeom_to_geocouch(Geom) ->
-    % XXX vmx (2011-02-04) GeometryCollection isn't supported atm
     Type = proplists:get_value(<<"type">>, Geom),
-    Coords = proplists:get_value(<<"coordinates">>, Geom),
+    Coords = case Type of
+    <<"GeometryCollection">> ->
+        Geometries = proplists:get_value(<<"geometries">>, Geom),
+        [geojsongeom_to_geocouch(G) || {G} <- Geometries];
+    _ ->
+        proplists:get_value(<<"coordinates">>, Geom)
+    end,
     {binary_to_atom(Type, latin1), Coords}.
+
+% @doc Transforms internal structure to a GeoJSON geometry (as Erlang terms)
+geocouch_to_geojsongeom({Type, Coords}) ->
+    Coords2 = case Type of
+    'GeometryCollection' ->
+        Geoms = [geocouch_to_geojsongeom(C) || C <- Coords],
+        {"geometries", Geoms};
+    _ ->
+        {<<"coordinates">>, Coords}
+    end,
+    {[{<<"type">>, Type}, Coords2]}.
 
 % The tests are based on the examples of the GeoJSON format specification
 bbox_test() ->
@@ -407,7 +426,29 @@ process_result_geometrycollection_test() ->
                     {<<"coordinates">>,[100.0,0.0]}]},
                   {[{<<"type">>,<<"LineString">>},
                     {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]},
-    {Bbox, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
+    {Bbox, {Geom, <<"somedoc">>}} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({'GeometryCollection', [
+            {'Point', [100.0,0.0]},
+            {'LineString', [[101.0,0.0],[102.0,1.0]]}]},
+        Geom),
+    ?assertEqual({100.0, 0.0, 102.0, 1.0}, Bbox).
+
+% XXX vmx (2011-02-16) Nested GeometryCollections are currently not supported
+process_result_nested_geometrycollection_test() ->
+    Geojson = {[{<<"type">>,<<"GeometryCollection">>},
+                {<<"geometries">>,
+                 [{[{<<"type">>,<<"GeometryCollection">>},
+                  {<<"geometries">>,
+                   [{[{<<"type">>,<<"Point">>},
+                    {<<"coordinates">>,[100.0,0.0]}]},
+                    {[{<<"type">>,<<"LineString">>},
+                      {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]}
+                 ]}]},
+    {Bbox, {Geom, <<"somedoc">>}} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({'GeometryCollection', [{'GeometryCollection', [
+            {'Point', [100.0,0.0]},
+            {'LineString', [[101.0,0.0],[102.0,1.0]]}]}]},
+        Geom),
     ?assertEqual({100.0, 0.0, 102.0, 1.0}, Bbox).
 
 process_result_geometrycollection_fail_test() ->
@@ -423,29 +464,114 @@ process_result_geometrycollection_fail_test() ->
 process_result_point_test() ->
     Geojson = {[{<<"type">>,<<"Point">>},
                 {<<"coordinates">>,[100.0,0.0]}]},
-    {Bbox, Geom, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
-    ?assertEqual({point, [100.0,0.0]}, Geom),
+    {Bbox, {Geom, <<"somedoc">>}} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({'Point', [100.0,0.0]}, Geom),
     ?assertEqual({100.0, 0.0, 100.0, 0.0}, Bbox).
 
 process_result_point_bbox_test() ->
     Geojson = {[{<<"type">>,<<"Point">>},
                 {<<"coordinates">>,[100.0,0.0]},
                 {<<"bbox">>,[100.0,0.0,105.54,8.614]}]},
-    {Bbox, Geom, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
-    ?assertEqual({point, [100.0,0.0]}, Geom),
+    {Bbox, {Geom, <<"somedoc">>}} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({'Point', [100.0,0.0]}, Geom),
     ?assertEqual({100.0, 0.0, 105.54, 8.614}, Bbox).
 
 process_result_linestring_test() ->
     Geojson = {[{<<"type">>,<<"LineString">>},
                 {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]},
-    {Bbox, Geom, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
-    ?assertEqual({linestring, [[101.0,0.0],[102.0,1.0]]}, Geom),
+    {Bbox, {Geom, <<"somedoc">>}} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({'LineString', [[101.0,0.0],[102.0,1.0]]}, Geom),
     ?assertEqual({101.0, 0.0, 102.0, 1.0}, Bbox).
 
 process_result_linestring_toosmallbbox_test() ->
     Geojson = {[{<<"type">>,<<"LineString">>},
                 {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]},
                 {<<"bbox">>,[101.0,0.0,101.54,0.614]}]},
-    {Bbox, Geom, <<"somedoc">>} = process_result([Geojson, <<"somedoc">>]),
-    ?assertEqual({linestring, [[101.0,0.0],[102.0,1.0]]}, Geom),
+    {Bbox, {Geom, <<"somedoc">>}} = process_result([Geojson, <<"somedoc">>]),
+    ?assertEqual({'LineString', [[101.0,0.0],[102.0,1.0]]}, Geom),
     ?assertEqual({101.0, 0.0, 101.54, 0.614}, Bbox).
+
+
+geojsongeom_to_geocouch_point_test() ->
+    Geojson = [{<<"type">>,<<"Point">>},
+                {<<"coordinates">>,[100.0,0.0]}],
+    Geom = geojsongeom_to_geocouch(Geojson),
+    ?assertEqual({'Point', [100.0,0.0]}, Geom).
+
+geojsongeom_to_geocouch_linestring_test() ->
+    Geojson = [{<<"type">>,<<"LineString">>},
+                {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}],
+    Geom = geojsongeom_to_geocouch(Geojson),
+    ?assertEqual({'LineString', [[101.0,0.0],[102.0,1.0]]}, Geom).
+
+geojsongeom_to_geocouch_geometrycollection_test() ->
+    Geojson = [{<<"type">>,<<"GeometryCollection">>},
+                {<<"geometries">>,
+                 [{[{<<"type">>,<<"Point">>},
+                    {<<"coordinates">>,[100.0,0.0]}]},
+                  {[{<<"type">>,<<"LineString">>},
+                    {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}],
+    Geom = geojsongeom_to_geocouch(Geojson),
+    ?assertEqual({'GeometryCollection', [
+            {'Point', [100.0,0.0]},
+            {'LineString', [[101.0,0.0],[102.0,1.0]]}]},
+        Geom).
+
+geojsongeom_to_geocouch_nested_geometrycollection_test() ->
+    Geojson = [{<<"type">>,<<"GeometryCollection">>},
+                {<<"geometries">>,
+                 [{[{<<"type">>,<<"GeometryCollection">>},
+                  {<<"geometries">>,
+                   [{[{<<"type">>,<<"Point">>},
+                    {<<"coordinates">>,[100.0,0.0]}]},
+                    {[{<<"type">>,<<"LineString">>},
+                      {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]}
+                 ]}],
+    Geom = geojsongeom_to_geocouch(Geojson),
+    ?assertEqual({'GeometryCollection', [{'GeometryCollection', [
+            {'Point', [100.0,0.0]},
+            {'LineString', [[101.0,0.0],[102.0,1.0]]}]}]},
+        Geom).
+
+
+geocouch_to_geojsongeom_point_test() ->
+    Geom = {'Point', [100.0,0.0]},
+    Geojson = geocouch_to_geojsongeom(Geom),
+    ?assertEqual({[{<<"type">>,'Point'},
+                {<<"coordinates">>,[100.0,0.0]}]}, Geojson).
+
+geocouch_to_geojsongeom_linestring_test() ->
+    Geom = {'LineString', [[101.0,0.0],[102.0,1.0]]},
+    Geojson = geocouch_to_geojsongeom(Geom),
+    ?assertEqual({[{<<"type">>,'LineString'},
+                {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]},
+        Geojson).
+
+geocouch_to_geojsongeom_geometrycollection_test() ->
+    Geom = {'GeometryCollection', [
+            {'Point', [100.0,0.0]},
+            {'LineString', [[101.0,0.0],[102.0,1.0]]}]},
+    Geojson = geocouch_to_geojsongeom(Geom),
+    ?assertEqual({[{<<"type">>,'GeometryCollection'},
+                {"geometries",
+                 [{[{<<"type">>,'Point'},
+                    {<<"coordinates">>,[100.0,0.0]}]},
+                  {[{<<"type">>,'LineString'},
+                    {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]},
+        Geojson).
+
+geocouch_to_geojsongeom_nested_geometrycollection_test() ->
+    Geom = {'GeometryCollection', [{'GeometryCollection', [
+            {'Point', [100.0,0.0]},
+            {'LineString', [[101.0,0.0],[102.0,1.0]]}]}]},
+    Geojson = geocouch_to_geojsongeom(Geom),
+    ?assertEqual({[{<<"type">>,'GeometryCollection'},
+                {"geometries",
+                 [{[{<<"type">>,'GeometryCollection'},
+                  {"geometries",
+                   [{[{<<"type">>,'Point'},
+                    {<<"coordinates">>,[100.0,0.0]}]},
+                    {[{<<"type">>,'LineString'},
+                      {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]}
+                 ]}]},
+        Geojson).
