@@ -88,6 +88,15 @@ couchTests.spatial = function(debug) {
     } while ((t1 - t0) < secs*1000);
   }
 
+  function getGeomById(str, geomId) {
+    var json = JSON.parse(str);
+    for (var i in json.rows) {
+      if (json.rows[i].id===geomId) {
+        return json.rows[i].geometry;
+      }
+    }
+  }
+
   var xhr;
   var url_pre = '/test_suite_db/_design/spatial/_spatial/';
   var docs = makeSpatialDocs(0, 10);
@@ -230,7 +239,7 @@ couchTests.spatial = function(debug) {
     }}
   ];
   db.bulkSave(geoJsonDocs);
-
+T(false);
   bbox = [100.0, 0.0, 100.0, 0.0];
   xhr = CouchDB.request("GET", url_pre + "geoJsonGeoms?bbox=" + bbox.join(","));
   TEquals(true, /geoPoint/.test(extract_ids(xhr.responseText)),
@@ -272,6 +281,31 @@ couchTests.spatial = function(debug) {
   TEquals(true, /geoGeometryCollection/.test(extract_ids(xhr.responseText)),
           "if bounding box calculation was correct, it should at least" +
           " return the geoGeometryCollection");
+
+  // Test if all geometries were serialised correctly
+  bbox = [90, -1, 110, 10];
+  xhr = CouchDB.request("GET", url_pre + "geoJsonGeoms?bbox=" +
+                        bbox.join(","));
+  TEquals(geoJsonDocs[0].geom, getGeomById(xhr.responseText, 'geoPoint'),
+          'Point was serialised correctly');
+  TEquals(geoJsonDocs[1].geom, getGeomById(xhr.responseText, 'geoLineString'),
+          'LineString was serialised correctly');
+  TEquals(geoJsonDocs[2].geom, getGeomById(xhr.responseText, 'geoPolygon'),
+          'Polygon was serialised correctly');
+  TEquals(geoJsonDocs[3].geom,
+          getGeomById(xhr.responseText, 'geoPolygonWithHole'),
+          'Polygon (with holw) was serialised correctly');
+  TEquals(geoJsonDocs[4].geom, getGeomById(xhr.responseText, 'geoMultiPoint'),
+          'MultiPoint was serialised correctly');
+  TEquals(geoJsonDocs[5].geom,
+          getGeomById(xhr.responseText, 'geoMultiLineString'),
+          'point MultiLineString serialised correctly');
+  TEquals(geoJsonDocs[6].geom,
+          getGeomById(xhr.responseText, 'geoMultiPolygon'),
+          'MultiPolygon was serialised correctly');
+  TEquals(geoJsonDocs[7].geom,
+          getGeomById(xhr.responseText, 'geoGeometryCollection'),
+          'GeometryCollection was serialised correctly');
 
 
   // Test plane wrapping
