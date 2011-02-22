@@ -239,7 +239,7 @@ couchTests.spatial = function(debug) {
     }}
   ];
   db.bulkSave(geoJsonDocs);
-T(false);
+
   bbox = [100.0, 0.0, 100.0, 0.0];
   xhr = CouchDB.request("GET", url_pre + "geoJsonGeoms?bbox=" + bbox.join(","));
   TEquals(true, /geoPoint/.test(extract_ids(xhr.responseText)),
