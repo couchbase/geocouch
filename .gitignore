@@ -1,0 +1,5 @@
+*.beam
+*~
+*.orig
+*.rej
+erl_crash.dump
