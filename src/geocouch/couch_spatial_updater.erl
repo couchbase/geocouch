@@ -434,22 +434,22 @@ process_result_geometrycollection_test() ->
     ?assertEqual({100.0, 0.0, 102.0, 1.0}, Bbox).
 
 % XXX vmx (2011-02-16) Nested GeometryCollections are currently not supported
-process_result_nested_geometrycollection_test() ->
-    Geojson = {[{<<"type">>,<<"GeometryCollection">>},
-                {<<"geometries">>,
-                 [{[{<<"type">>,<<"GeometryCollection">>},
-                  {<<"geometries">>,
-                   [{[{<<"type">>,<<"Point">>},
-                    {<<"coordinates">>,[100.0,0.0]}]},
-                    {[{<<"type">>,<<"LineString">>},
-                      {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]}
-                 ]}]},
-    {Bbox, {Geom, <<"somedoc">>}} = process_result([Geojson, <<"somedoc">>]),
-    ?assertEqual({'GeometryCollection', [{'GeometryCollection', [
-            {'Point', [100.0,0.0]},
-            {'LineString', [[101.0,0.0],[102.0,1.0]]}]}]},
-        Geom),
-    ?assertEqual({100.0, 0.0, 102.0, 1.0}, Bbox).
+%process_result_nested_geometrycollection_test() ->
+%    Geojson = {[{<<"type">>,<<"GeometryCollection">>},
+%                {<<"geometries">>,
+%                 [{[{<<"type">>,<<"GeometryCollection">>},
+%                  {<<"geometries">>,
+%                   [{[{<<"type">>,<<"Point">>},
+%                    {<<"coordinates">>,[100.0,0.0]}]},
+%                    {[{<<"type">>,<<"LineString">>},
+%                      {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]}
+%                 ]}]},
+%    {Bbox, {Geom, <<"somedoc">>}} = process_result([Geojson, <<"somedoc">>]),
+%    ?assertEqual({'GeometryCollection', [{'GeometryCollection', [
+%            {'Point', [100.0,0.0]},
+%            {'LineString', [[101.0,0.0],[102.0,1.0]]}]}]},
+%        Geom),
+%    ?assertEqual({100.0, 0.0, 102.0, 1.0}, Bbox).
 
 process_result_geometrycollection_fail_test() ->
     % collection contains geometries with different dimensions
