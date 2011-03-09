@@ -11,7 +11,10 @@
 % the License.
 
 -module(couch_spatial_updater).
+
+-ifdef(makecheck).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([update/2]).
 

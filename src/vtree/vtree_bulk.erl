@@ -11,9 +11,15 @@
 % the License.
 
 -module(vtree_bulk).
--include_lib("eunit/include/eunit.hrl").
 
 -include("couch_db.hrl").
+
+-ifndef(makecheck).
+-define(MAX_FILLED, 40).
+-else.
+-include_lib("eunit/include/eunit.hrl").
+-define(MAX_FILLED, 4).
+-endif.
 
 -export([omt_load/2, omt_write_tree/2, bulk_load/4]).
 
@@ -22,13 +28,6 @@
 % XXX vmx: check if tree has correct meta information set for every node
 %    (type=inner/type=leaf)
 
-% Nodes maximum filling grade (TODO vmx: shouldn't be hard-coded)
-% The -define(MAX_FILLED, 4) is needed when running the (Erlang based) tests.
--ifndef(makecheck).
--define(MAX_FILLED, 40).
--else.
--define(MAX_FILLED, 4).
--endif.
 
 % The seedtree is kept in memory, therefore it makes sense to restrict the
 % maximum height of it.
