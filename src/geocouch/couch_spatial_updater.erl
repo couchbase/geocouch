@@ -361,6 +361,9 @@ geocouch_to_geojsongeom({Type, Coords}) ->
     end,
     {[{<<"type">>, Type}, Coords2]}.
 
+
+-ifdef(makecheck).
+
 % The tests are based on the examples of the GeoJSON format specification
 bbox_test() ->
     ?assertEqual([100.0, 0.0, 101.0, 1.0], 
@@ -575,3 +578,5 @@ geocouch_to_geojsongeom_nested_geometrycollection_test() ->
                       {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]}
                  ]}]},
         Geojson).
+
+-endif.

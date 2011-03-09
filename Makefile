@@ -5,6 +5,9 @@ all: builddir compile
 compile:
 	@$(ERL) -pa build -noinput +B -eval 'case make:all([{i, "'${COUCH_SRC}'"}]) of up_to_date -> halt(0); error -> halt(1) end.'
 
+compileforcheck:
+	@$(ERL) -pa build -noinput +B -eval 'case make:all([{i, "'${COUCH_SRC}'"}, {d, makecheck}]) of up_to_date -> halt(0); error -> halt(1) end.'
+
 builddir:
 	@mkdir -p build
 
@@ -12,6 +15,11 @@ buildandtest: all test
 
 test:
 	erl -pa build -pa ${COUCH_SRC} -run vtree_bulk test -run init stop -noshell
+	erl -pa build -pa ${COUCH_SRC} -run couch_spatial_updater test -run init stop -noshell
+	erl -pa build -pa ${COUCH_SRC} -run vtree_test start -run init stop -noshell
+
+check: clean builddir compileforcheck test
+	rm -rf build
 
 #coverage: compile
 #	mkdir -p coverage

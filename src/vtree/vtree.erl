@@ -32,10 +32,12 @@
 
 % Nodes maximum/minimum filling grade (TODO vmx: shouldn't be hard-coded)
 % The -define(MAX_FILLED, 4) is needed when running the (Erlang based) tests.
+-ifndef(makecheck).
 -define(MAX_FILLED, 40).
--define(MIN_FILLED, 20).
-%-define(MAX_FILLED, 4).
-%-define(MIN_FILLED, 2).
+%-define(MIN_FILLED, 20).
+-else.
+-define(MAX_FILLED, 4).
+-endif.
 
 
 % NOTE vmx: At the moment "leaf" is used for the nodes that

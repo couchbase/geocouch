@@ -24,8 +24,11 @@
 
 % Nodes maximum filling grade (TODO vmx: shouldn't be hard-coded)
 % The -define(MAX_FILLED, 4) is needed when running the (Erlang based) tests.
+-ifndef(makecheck).
 -define(MAX_FILLED, 40).
-%-define(MAX_FILLED, 4).
+-else.
+-define(MAX_FILLED, 4).
+-endif.
 
 % The seedtree is kept in memory, therefore it makes sense to restrict the
 % maximum height of it.
@@ -994,7 +997,7 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
 %%%%% Tests %%%%%
 
 
-%-ifdef(runnall).
+-ifdef(makecheck).
 
 bulk_load_test() ->
     Filename = "/tmp/bulk.bin",
@@ -2162,4 +2165,4 @@ seedtree_write_insert_test() ->
     ?debugVal(Result2),
     ?assertEqual(8, length(Result2)).
 
-%-endif.
+-endif.
