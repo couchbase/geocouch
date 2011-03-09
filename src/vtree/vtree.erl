@@ -12,6 +12,8 @@
 
 -module(vtree).
 
+-include("couch_db.hrl").
+
 -export([lookup/3, lookup/5, within/2, intersect/2, disjoint/2, insert/4,
          area/1, merge_mbr/2, find_area_min_nth/1, partition_node/1,
          calc_nodes_mbr/1, calc_mbr/1, best_split/1, minimal_overlap/2,
@@ -66,7 +68,6 @@ add_remove(Fd, Pos, TargetTreeHeight, AddKeyValues, KeysToRemove) ->
     end,
     T1 = get_timestamp(),
 
-io:format("vtree: delete: NewPos: ~p~n", [NewPos]),
 %    {NewPos2, TreeHeight} = lists:foldl(fun({{Mbr, DocId}, Value}, {CurPos, _}) ->
 %        %io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
 %        {ok, _NewMbr, CurPos2, TreeHeight} = insert(Fd, CurPos, DocId,
@@ -87,8 +88,8 @@ io:format("vtree: delete: NewPos: ~p~n", [NewPos]),
     {ok, NewPos2, TreeHeight} = vtree_bulk:bulk_load(
             Fd, NewPos, NewTargetTreeHeight, AddKeyValues2),
     T2 = get_timestamp(),
-    io:format(user, "It took: ~ps~n", [T2-T1]),
-    io:format(user, "Tree height: ~p~n", [TreeHeight]),
+    ?LOG_DEBUG("It took: ~ps~n", [T2-T1]),
+    ?LOG_DEBUG("Tree height: ~p~n", [TreeHeight]),
     {ok, NewPos2, TreeHeight}.
     %{ok, 0}.
 
@@ -205,7 +206,6 @@ lookup(Fd, Pos, Bbox, FoldFunAndAcc, nil) ->
 % Only a single bounding box. It may be split if it covers the data line
 lookup(Fd, Pos, Bbox, FoldFunAndAcc, Bounds) when not is_list(Bbox) ->
     Bboxes = split_bbox_if_flipped(Bbox, Bounds),
-io:format(user, "splitted boxes: ~p~n", [Bboxes]),
     lookup(Fd, Pos, Bboxes, FoldFunAndAcc).
 
 % It's just like lists:foldl/3. The difference is that it can be stopped.
@@ -594,16 +594,16 @@ best_split({PartW, PartS, PartE, PartN}) ->
             %     If there is only one node, use that one.
             case {MbrW, MbrS, MbrE, MbrN} of
                 {error, error, _, _} ->
-                    io:format("vtree: WORKAROUND WAS USED, PLEASE TELL vmx~n"),
+                    ?LOG_DEBUG("vtree: WORKAROUND WAS USED, PLEASE TELL vmx~n", []),
                     [{MbrE, PartE}, {MbrN, PartN}];
                 {_, _, error, error} ->
-                    io:format("vtree: WORKAROUND WAS USED, PLEASE TELL vmx~n"),
+                    ?LOG_DEBUG("vtree: WORKAROUND WAS USED, PLEASE TELL vmx~n", []),
                     [{MbrW, PartW}, {MbrS, PartS}];
                 {_, error, error, _} ->
-                    io:format("vtree: WORKAROUND WAS USED, PLEASE TELL vmx~n"),
+                    ?LOG_DEBUG("vtree: WORKAROUND WAS USED, PLEASE TELL vmx~n", []),
                     [{MbrW, PartW}, {MbrN, PartN}];
                 {error, _, _, error} ->
-                    io:format("vtree: WORKAROUND WAS USED, PLEASE TELL vmx~n"),
+                    ?LOG_DEBUG("vtree: WORKAROUND WAS USED, PLEASE TELL vmx~n", []),
                     [{MbrS, PartS}, {MbrE, PartE}];
                 _ ->
                     % XXX vmx this is the right, normal case (i.e. the hack
