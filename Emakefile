@@ -6,12 +6,10 @@
 ]}.
 
 % Tests
-{ [ 'test/src/*',
-    'test/src/*/*',
-    'test/src/*/*/*'
+{ [ 'test/*'
   ], [
   {i, "include"},
-  {outdir, "test/ebin"},
+  {outdir, "test"},
   debug_info
 ]}.
 

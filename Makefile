@@ -13,13 +13,12 @@ builddir:
 
 buildandtest: all test
 
-test:
-	erl -pa build -pa ${COUCH_SRC} -run vtree_bulk test -run init stop -noshell
-	erl -pa build -pa ${COUCH_SRC} -run couch_spatial_updater test -run init stop -noshell
-	erl -pa build -pa ${COUCH_SRC} -run vtree_test start -run init stop -noshell
+runtests:
+	ERL_FLAGS="-pa ${COUCH_SRC}" prove ./test/*.t
 
-check: clean builddir compileforcheck test
+check: clean builddir compileforcheck runtests
 	rm -rf build
+	rm -f test/*.beam
 
 #coverage: compile
 #	mkdir -p coverage
@@ -32,3 +31,4 @@ cover: compile
 
 clean:	
 	rm -rf build
+	rm -f test/*.beam

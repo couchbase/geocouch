@@ -1,3 +1,6 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+
 % Licensed under the Apache License, Version 2.0 (the "License"); you may not
 % use this file except in compliance with the License. You may obtain a copy of
 % the License at
@@ -10,13 +13,22 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(vtree_test).
--export([start/0, build_random_tree/2, random_node/0, random_node/1]).
-
 -define(FILENAME, "/tmp/vtree.bin").
 
+main(_) ->
+    code:add_pathz(filename:dirname(escript:script_name())),
+    gc_test_util:init_code_path(),
+    etap:plan(137),
+    case (catch test()) of
+        ok ->
+            etap:end_tests();
+        Other ->
+            etap:diag(io_lib:format("Test died abnormally: ~p", [Other])),
+            etap:bail(Other)
+    end,
+    ok.
 
-start() ->
+test() ->
     test_within(),
     test_intersect(),
     test_disjoint(),
@@ -39,15 +51,15 @@ start() ->
     test_split_node(),
     test_count_total(),
 
-    etap:end_tests().
-
+    %etap:end_tests().
+    ok.
 
 -record(node, {
     % type = inner | leaf
     type=leaf}).
 
 test_insert() ->
-    etap:plan(6),
+    %etap:plan(6),
 
     {ok, Fd} = case couch_file:open(?FILENAME, [create, overwrite]) of
     {ok, Fd2} ->
@@ -120,7 +132,7 @@ test_insert() ->
 
 
 test_within() ->
-    etap:plan(4),
+    %etap:plan(4),
     Bbox1 = {-20, -10, 30, 21},
     Bbox2 = {-20, -10, 0, 0},
     Mbr1_2 = {-18,-3,13,15},
@@ -134,7 +146,7 @@ test_within() ->
     ok.
 
 test_intersect() ->
-    etap:plan(17),
+    %etap:plan(17),
     Mbr1_2 = {-18,-3,13,15},
     etap:is(vtree:intersect(Mbr1_2, {-20, -11, 0, 0}), true,
             "MBR intersectton (S and W edge)"),
@@ -173,7 +185,7 @@ test_intersect() ->
     ok.
 
 test_disjoint() ->
-    etap:plan(2),
+    %etap:plan(2),
     Mbr1_2 = {-18,-3,13,15},
     etap:is(vtree:disjoint(Mbr1_2, {27, 20, 38, 40}), true,
             "MBRs are disjoint"),
@@ -182,7 +194,7 @@ test_disjoint() ->
 
 
 test_lookup() ->
-    etap:plan(8),
+    %etap:plan(8),
 
     {ok, Fd} = case couch_file:open(?FILENAME, [create, overwrite]) of
     {ok, Fd2} ->
@@ -246,7 +258,7 @@ test_lookup() ->
 
 
 test_multilookup() ->
-    etap:plan(5),
+    %etap:plan(5),
 
     {ok, Fd} = case couch_file:open(?FILENAME, [create, overwrite]) of
     {ok, Fd2} ->
@@ -309,7 +321,7 @@ test_multilookup() ->
     ok.
 
 test_split_bbox_if_flipped() ->
-    etap:plan(17),
+    %etap:plan(17),
 
     etap:is(vtree:split_bbox_if_flipped({160,40,-120,60}, {-180,-90,180,90}),
             [{-180,40,-120,60}, {160,40,180,60}],
@@ -380,7 +392,7 @@ test_split_bbox_if_flipped() ->
 
 
 test_area() ->
-    etap:plan(5),
+    %etap:plan(5),
     Mbr1 = {10,5,13,15},
     Mbr2 = {-18,-3,-10,-1},
     Mbr3 = {-21,2,-10,14},
@@ -394,7 +406,7 @@ test_area() ->
     ok.
 
 test_merge_mbr() ->
-    etap:plan(7),
+    %etap:plan(7),
     Mbr1 = {10,5,13,15},
     Mbr2 = {-18,-3,-10,-1},
     Mbr3 = {-21,2,-10,14},
@@ -416,7 +428,7 @@ test_merge_mbr() ->
     ok.
 
 test_find_area_min_nth() ->
-    etap:plan(5),
+    %etap:plan(5),
     etap:is(vtree:find_area_min_nth([{5, {23,64,24,79}}]), 1,
             "Find position of minimum area in a list with one element"),
     etap:is(vtree:find_area_min_nth([{538, {2,64,4,79}}, {29, {2,64,4,79}}]), 2,
@@ -433,7 +445,7 @@ test_find_area_min_nth() ->
     ok.
 
 test_partition_node() ->
-    etap:plan(3),
+    %etap:plan(3),
     Node1 = {{10,5,13,15}, #node{type=leaf}, <<"Node1">>},
     Node2 = {{-18,-3,-10,-1}, #node{type=leaf}, <<"Node2">>},
     Node3 = {{-21,2,-10,14}, #node{type=leaf}, <<"Node3">>},
@@ -459,7 +471,7 @@ test_partition_node() ->
 
 
 test_calc_mbr() ->
-    etap:plan(10),
+    %etap:plan(10),
     Mbr1 = {10,5,13,15},
     Mbr2 = {-18,-3,-10,-1},
     Mbr3 = {-21,2,-10,14},
@@ -487,7 +499,7 @@ test_calc_mbr() ->
     ok.
 
 test_calc_nodes_mbr() ->
-    etap:plan(9),
+    %etap:plan(9),
     Node1 = {{10,5,13,15}, #node{type=leaf}, <<"Node1">>},
     Node2 = {{-18,-3,-10,-1}, #node{type=leaf}, <<"Node2">>},
     Node3 = {{-21,2,-10,14}, #node{type=leaf}, <<"Node3">>},
@@ -513,7 +525,7 @@ test_calc_nodes_mbr() ->
     ok.
 
 test_best_split() ->
-    etap:plan(4),
+    %etap:plan(4),
     Node1 = {{10,5,13,15}, #node{type=leaf}, <<"Node1">>},
     Node2 = {{-18,-3,-10,-1}, #node{type=leaf}, <<"Node2">>},
     Node3 = {{-21,2,-10,14}, #node{type=leaf}, <<"Node3">>},
@@ -549,7 +561,7 @@ test_best_split() ->
 
 test_minimal_overlap() ->
     % XXX vmx: test fir S/N split is missing
-    etap:plan(2),
+    %etap:plan(2),
     Node1 = {{10,5,13,15}, <<"Node1">>},
     Node2 = {{-18,-3,-10,-1}, <<"Node2">>},
     Node3 = {{-21,2,-10,14}, <<"Node3">>},
@@ -577,7 +589,7 @@ test_minimal_overlap() ->
 
 test_minimal_coverage() ->
     % XXX vmx: test for equal coverage is missing
-    etap:plan(2),
+    %etap:plan(2),
     Node1 = {{10,5,13,15}, <<"Node1">>},
     Node2 = {{-18,-3,-10,-1}, <<"Node2">>},
     Node3 = {{-21,2,-10,14}, <<"Node3">>},
@@ -607,7 +619,7 @@ test_minimal_coverage() ->
 
 
 test_calc_overlap() ->
-    etap:plan(7),
+    %etap:plan(7),
     Mbr1 = {10,5,13,15},
     Mbr2 = {-18,-3,-10,-1},
     Mbr3 = {-21,2,-10,14},
@@ -632,7 +644,7 @@ test_calc_overlap() ->
     ok.
 
 test_delete() ->
-    etap:plan(9),
+    %etap:plan(9),
 
     {ok, Fd} = case couch_file:open(?FILENAME, [create, overwrite]) of
     {ok, Fd2} ->
@@ -804,7 +816,7 @@ test_delete() ->
 
 test_delete_same_id() ->
     % Test what happens if multiple emits in one function happened
-    etap:plan(9),
+    %etap:plan(9),
 
     {ok, Fd} = case couch_file:open(?FILENAME, [create, overwrite]) of
     {ok, Fd2} ->
@@ -932,7 +944,7 @@ test_delete_same_id() ->
     ok.
 
 test_split_node() ->
-    etap:plan(3),
+    %etap:plan(3),
 
     NodeToSplit1 =  {{52,45,969,960},{node,leaf}, [
         {{52,320,597,856},{node,leaf},{<<"Node7">>,<<"Node7">>}},
@@ -951,13 +963,15 @@ test_split_node() ->
     ok.
 
 test_count_total() ->
-    etap:plan(3),
+    %etap:plan(3),
 
-    {ok, {Fd1, {RootPos1, _}}} = build_random_tree("/tmp/randtree.bin", 20),
+    {ok, {Fd1, {RootPos1, _}}} = gc_test_util:build_random_tree(
+        "/tmp/randtree.bin", 20),
     Count1 = vtree:count_total(Fd1, RootPos1),
     etap:is(Count1, 20, "Total number of geometries is correct (a)"),
 
-    {ok, {Fd2, {RootPos2, _}}} = build_random_tree("/tmp/randtree.bin", 338),
+    {ok, {Fd2, {RootPos2, _}}} = gc_test_util:build_random_tree(
+        "/tmp/randtree.bin", 338),
     Count2 = vtree:count_total(Fd2, RootPos2),
     etap:is(Count2, 338, "Total number of geometries is correct (b)"),
 
@@ -965,59 +979,3 @@ test_count_total() ->
     etap:is(Count3, 0,
             "Total number of geometries is correct (for empty tree)"),
     ok.
-
-
--spec build_random_tree(Filename::string(), Num::integer()) ->
-        {ok, {file:io_device(), {integer(), integer()}}} | {error, string()}.
-build_random_tree(Filename, Num) ->
-    build_random_tree(Filename, Num, {654, 642, 698}).
--spec build_random_tree(Filename::string(), Num::integer(),
-        Seed::{integer(), integer(), integer()}) ->
-        {ok, {file:io_device(), {integer(), integer()}}} | {error, string()}.
-build_random_tree(Filename, Num, Seed) ->
-    random:seed(Seed),
-    case couch_file:open(Filename, [create, overwrite]) of
-    {ok, Fd} ->
-        Max = 1000,
-        {Tree, TreeHeight} = lists:foldl(
-            fun(Count, {CurTreePos, _CurTreeHeight}) ->
-                {W, X, Y, Z} = {random:uniform(Max), random:uniform(Max),
-                                random:uniform(Max), random:uniform(Max)},
-                RandomMbr = {erlang:min(W, X), erlang:min(Y, Z),
-                             erlang:max(W, X), erlang:max(Y, Z)},
-                RandomLineString = {linestring,
-                    [[erlang:min(W, X), erlang:min(Y, Z)],
-                    [erlang:max(W, X), erlang:max(Y, Z)]]},
-                %io:format("~p~n", [RandomMbr]),
-                {ok, _, NewRootPos, NewTreeHeight} = vtree:insert(
-                    Fd, CurTreePos,
-                    list_to_binary("Node" ++ integer_to_list(Count)),
-                    {RandomMbr, #node{type=leaf}, RandomLineString,
-                     list_to_binary("Node" ++ integer_to_list(Count))}),
-                %io:format("test_insertion: ~p~n", [NewRootPos]),
-                {NewRootPos, NewTreeHeight}
-            end, {nil, 0}, lists:seq(1,Num)),
-        %io:format("Tree: ~p~n", [Tree]),
-        {ok, {Fd, {Tree, TreeHeight}}};
-    {error, _Reason} ->
-        io:format("ERROR: Couldn't open file (~s) for tree storage~n",
-                  [Filename])
-    end.
-
-% @doc Create a random node. Return the ID of the node and the node itself.
--spec random_node() -> {string(), tuple()}.
-random_node() ->
-    random_node({654, 642, 698}).
--spec random_node(Seed::{integer(), integer(), integer()}) -> {string(), tuple()}.
-random_node(Seed) ->
-    random:seed(Seed),
-    Max = 1000,
-    {W, X, Y, Z} = {random:uniform(Max), random:uniform(Max),
-                    random:uniform(Max), random:uniform(Max)},
-    RandomMbr = {erlang:min(W, X), erlang:min(Y, Z),
-                 erlang:max(W, X), erlang:max(Y, Z)},
-    RandomLineString = {linestring, [[erlang:min(W, X), erlang:min(Y, Z)],
-        [erlang:max(W, X), erlang:max(Y, Z)]]},
-    {list_to_binary("Node" ++ integer_to_list(Y) ++ integer_to_list(Z)),
-     {RandomMbr, #node{type=leaf}, RandomLineString,
-      list_to_binary("Value" ++ integer_to_list(Y) ++ integer_to_list(Z))}}.
