@@ -109,23 +109,23 @@ test_insert() ->
 
     etap:is(vtree:insert(Fd, nil, <<"Node1">>, Node1), {ok, Mbr1, 0, 1},
             "Insert a node into an empty tree (write to disk)"),
-    etap:is(vtree:get_node(Fd, 0), {ok, Tree1Node1},
+    etap:is(get_node(Fd, 0), {ok, Tree1Node1},
             "Insert a node into an empty tree" ++
             " (check if it was written correctly)"),
     {ok, Mbr1_2, Pos2, 1} = vtree:insert(Fd, 0, <<"Node2">>, Node2),
-    etap:is(vtree:get_node(Fd, Pos2), {ok, Tree1Node1_2},
+    etap:is(get_node(Fd, Pos2), {ok, Tree1Node1_2},
             "Insert a node into a not yet full leaf node (root node) (a)"),
     {ok, Mbr1_2_3, Pos3, 1} = vtree:insert(Fd, Pos2, <<"Node3">>, Node3),
-    etap:is(vtree:get_node(Fd, Pos3), {ok, Tree1Node1_2_3},
+    etap:is(get_node(Fd, Pos3), {ok, Tree1Node1_2_3},
             "Insert a node into a not yet full leaf node (root node) (b)"),
     {ok, Mbr1_2_3_4, Pos4, 1} = vtree:insert(Fd, Pos3, <<"Node4">>, Node4),
-    etap:is(vtree:get_node(Fd, Pos4), {ok, Tree1Node1_2_3_4},
+    etap:is(get_node(Fd, Pos4), {ok, Tree1Node1_2_3_4},
             "Insert a nodes into a then to be full leaf node (root node)"),
     {ok, Mbr1_2_3_4_5, Pos5, 2} = vtree:insert(Fd, Pos4, <<"Node5">>, Node5),
     {ok, {Mbr1_2_3_4_5, #node{type=inner}, [Pos5_1, Pos5_2]}} =
-                vtree:get_node(Fd, Pos5),
+                get_node(Fd, Pos5),
     etap:is({ok, {Mbr1_2_3_4_5, #node{type=inner},
-                  [vtree:get_node(Fd, Pos5_1), vtree:get_node(Fd, Pos5_2)]}},
+                  [get_node(Fd, Pos5_1), get_node(Fd, Pos5_2)]}},
                   {ok, Tree1Node1_2_3_4_5},
             "Insert a nodes into a full leaf node (root node)"),
     ok.
@@ -233,26 +233,26 @@ test_lookup() ->
     {ok, Mbr1_2_3_4, Pos4, 1} = vtree:insert(Fd, Pos3, Id4, Node4),
     {ok, Mbr1_2_3_4_5, Pos5, 2} = vtree:insert(Fd, Pos4, Id5, Node5),
 
-    {ok, Lookup1} = vtree:lookup(Fd, Pos2, Bbox1),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, Pos2, Bbox1),
     etap:is(Lookup1, [{Mbr2, Id2, Geom2, Id2},{Mbr1, Id1, Geom1, Id1}],
             "Find all nodes in tree (tree height=1)"),
-    {ok, Lookup2} = vtree:lookup(Fd, Pos2, Bbox2),
+    {ok, Lookup2} = gc_test_util:lookup(Fd, Pos2, Bbox2),
     etap:is(Lookup2, [{Mbr2, Id2, Geom2, Id2}],
             "Find some nodes in tree (tree height=1)"),
-    {ok, Lookup3} = vtree:lookup(Fd, Pos2, Bbox3),
+    {ok, Lookup3} = gc_test_util:lookup(Fd, Pos2, Bbox3),
     etap:is(Lookup3, [], "Query window outside of all nodes (tree height=1)"),
-    {ok, Lookup4} = vtree:lookup(Fd, Pos5, Bbox2),
+    {ok, Lookup4} = gc_test_util:lookup(Fd, Pos5, Bbox2),
     etap:is(Lookup4, [{Mbr5, Id5, Geom5, Id5}, {Mbr2, Id2, Geom2, Id2}],
             "Find some nodes in tree (tree height=2) (a)"),
-    {ok, Lookup5} = vtree:lookup(Fd, Pos5, Bbox4),
+    {ok, Lookup5} = gc_test_util:lookup(Fd, Pos5, Bbox4),
     etap:is(Lookup5, [{Mbr5, Id5, Geom5, Id5}, {Mbr1, Id1, Geom1, Id1}],
             "Find some nodes in tree (tree height=2) (b)"),
-    {ok, Lookup6} = vtree:lookup(Fd, Pos5, Bbox3),
+    {ok, Lookup6} = gc_test_util:lookup(Fd, Pos5, Bbox3),
     etap:is(Lookup6, [], "Query window outside of all nodes (tree height=2)"),
 
-    {ok, Lookup7} = vtree:lookup(Fd, Pos5, [Bbox2, Bbox4]),
+    {ok, Lookup7} = gc_test_util:lookup(Fd, Pos5, [Bbox2, Bbox4]),
     etap:is(length(Lookup7), 3, "Query with multiple windows (2 windows)"),
-    {ok, Lookup8} = vtree:lookup(Fd, Pos5, [Bbox2, Bbox4, {-20,1,-9,15}]),
+    {ok, Lookup8} = gc_test_util:lookup(Fd, Pos5, [Bbox2, Bbox4, {-20,1,-9,15}]),
     etap:is(length(Lookup8), 4, "Query with multiple windows (3 windows)"),
     ok.
 
@@ -301,20 +301,20 @@ test_multilookup() ->
     {ok, Mbr1_2_3_4, Pos4, 1} = vtree:insert(Fd, Pos3, Id4, Node4),
     {ok, Mbr1_2_3_4_5, Pos5, 2} = vtree:insert(Fd, Pos4, Id5, Node5),
 
-    {ok, Lookup1} = vtree:lookup(Fd, Pos2, [Bbox1]),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, Pos2, [Bbox1]),
     etap:is(Lookup1, [{Mbr2, Id2, Geom2, Id2}, {Mbr1, Id1, Geom1, Id1}],
             "Find all nodes in tree (tree height=1) with one bbox"),
-    {ok, Lookup2} = vtree:lookup(Fd, Pos2, [Bbox1a, Bbox1b]),
+    {ok, Lookup2} = gc_test_util:lookup(Fd, Pos2, [Bbox1a, Bbox1b]),
     etap:is(Lookup2, [{Mbr2, Id2, Geom2, Id2}, {Mbr1, Id1, Geom1, Id1}],
             "Find all nodes in tree (tree height=1) with two bboxes"),
-    {ok, Lookup3} = vtree:lookup(Fd, Pos5, [Bbox2a, Bbox2b]),
+    {ok, Lookup3} = gc_test_util:lookup(Fd, Pos5, [Bbox2a, Bbox2b]),
     etap:is(Lookup3, [{Mbr2, Id2, Geom2, Id2}],
             "Find some nodes in tree (tree height=2) 2 bboxes"),
-    {ok, Lookup4} = vtree:lookup(Fd, Pos5, [Bbox2a, Bbox2b, Bbox2c]),
+    {ok, Lookup4} = gc_test_util:lookup(Fd, Pos5, [Bbox2a, Bbox2b, Bbox2c]),
     etap:is(Lookup4, [{Mbr2, Id2, Geom2, Id2}],
             "Find some nodes in tree (tree height=2) 3 bboxes (one outside "
             "of all nodes"),
-    {ok, Lookup5} = vtree:lookup(Fd, Pos5, [Bbox2c, Bbox3]),
+    {ok, Lookup5} = gc_test_util:lookup(Fd, Pos5, [Bbox2c, Bbox3]),
     etap:is(Lookup5, [],
             "Don't find any nodes in tree (tree height=2) 2 bboxes (both "
             "outside of all nodes"),
@@ -714,43 +714,43 @@ test_delete() ->
             "Delete a node which ID's doesn't exist (tree height=1)"),
 
     {ok, Pos2_1} = vtree:delete(Fd, Node1Id, Node1Mbr, Pos2),
-    etap:is(vtree:get_node(Fd, Pos2_1),
+    etap:is(get_node(Fd, Pos2_1),
             {ok, {Mbr2, #node{type=leaf}, [Node2od]}},
             "Delete a node (tree height=1) (a)"),
 
     {ok, Pos2_2} = vtree:delete(Fd, Node2Id, Node2Mbr, Pos2),
-    etap:is(vtree:get_node(Fd, Pos2_2),
+    etap:is(get_node(Fd, Pos2_2),
             {ok, {Mbr1, #node{type=leaf}, [Node1od]}},
             "Delete a node (tree height=1) (b)"),
 
     {ok, Pos5_1} = vtree:delete(Fd, Node1Id, Node1Mbr, Pos5),
-    {ok, {Pos5_1Mbr, Pos5_1Meta, [Pos5_1C1, Pos5_1C2]}} = vtree:get_node(
+    {ok, {Pos5_1Mbr, Pos5_1Meta, [Pos5_1C1, Pos5_1C2]}} = get_node(
                                                             Fd, Pos5_1),
-    {ok, Pos5_1Child1} = vtree:get_node(Fd, Pos5_1C1),
-    {ok, Pos5_1Child2} = vtree:get_node(Fd, Pos5_1C2),
+    {ok, Pos5_1Child1} = get_node(Fd, Pos5_1C1),
+    {ok, Pos5_1Child2} = get_node(Fd, Pos5_1C2),
     etap:is({Pos5_1Mbr, Pos5_1Meta, [Pos5_1Child1, Pos5_1Child2]}, Tree2_3_4_5,
             "Delete a node (tree height=2) (a)"),
 
     {ok, Pos5_2} = vtree:delete(Fd, Node2Id, Node2Mbr, Pos5),
-    {ok, {Pos5_2Mbr, Pos5_2Meta, [Pos5_2C1, Pos5_2C2]}} = vtree:get_node(
+    {ok, {Pos5_2Mbr, Pos5_2Meta, [Pos5_2C1, Pos5_2C2]}} = get_node(
                                                             Fd, Pos5_2),
-    {ok, Pos5_2Child1} = vtree:get_node(Fd, Pos5_2C1),
-    {ok, Pos5_2Child2} = vtree:get_node(Fd, Pos5_2C2),
+    {ok, Pos5_2Child1} = get_node(Fd, Pos5_2C1),
+    {ok, Pos5_2Child2} = get_node(Fd, Pos5_2C2),
     etap:is({Pos5_2Mbr, Pos5_2Meta, [Pos5_2Child1, Pos5_2Child2]}, Tree1_3_4_5,
             "Delete a node (tree height=2) (b)"),
 
     {ok, Pos5_3} = vtree:delete(Fd, Node3Id, Node3Mbr, Pos5_2),
-    {ok, {Pos5_3Mbr, Pos5_3Meta, [Pos5_3C]}} = vtree:get_node(Fd, Pos5_3),
-    {ok, Pos5_3Child} = vtree:get_node(Fd, Pos5_3C),
+    {ok, {Pos5_3Mbr, Pos5_3Meta, [Pos5_3C]}} = get_node(Fd, Pos5_3),
+    {ok, Pos5_3Child} = get_node(Fd, Pos5_3C),
     etap:is({Pos5_3Mbr, Pos5_3Meta, [Pos5_3Child]},
             {Mbr1_4_5, #node{type=inner}, [Tree1_4_5]},
             "Delete a node which is the only child (tree height=2) (b)"),
 
     {ok, Pos5_4} = vtree:delete(Fd, Node5Id, Node5Mbr, Pos5_2),
-    {ok, {Pos5_4Mbr, Pos5_4Meta, [Pos5_4C1, Pos5_4C2]}} = vtree:get_node(
+    {ok, {Pos5_4Mbr, Pos5_4Meta, [Pos5_4C1, Pos5_4C2]}} = get_node(
                                                             Fd, Pos5_4),
-    {ok, Pos5_4Child1} = vtree:get_node(Fd, Pos5_4C1),
-    {ok, Pos5_4Child2} = vtree:get_node(Fd, Pos5_4C2),
+    {ok, Pos5_4Child1} = get_node(Fd, Pos5_4C1),
+    {ok, Pos5_4Child2} = get_node(Fd, Pos5_4C2),
     etap:is({Pos5_4Mbr, Pos5_4Meta, [Pos5_4Child1, Pos5_4Child2]}, Tree1_3_4,
             "Delete a node (tree height=2) (b)"),
 
@@ -793,23 +793,23 @@ test_delete() ->
     {ok, Mbr, Pos15, 2} = vtree:insert(Fd, Pos14, <<"Node15">>, Node15),
 
     {ok, Pos16} = vtree:delete(Fd, <<"Node15">>, Mbr, Pos15),
-    {ok, {Mbr, _, [Pos16C1, Pos16C2]}} = vtree:get_node(Fd, Pos16),
-    {ok, {Mbr, _, [Node11od, Node12od]}} = vtree:get_node(Fd, Pos16C1),
-    {ok, {Mbr, _, [Node13od, Node14od]}} = vtree:get_node(Fd, Pos16C2),
+    {ok, {Mbr, _, [Pos16C1, Pos16C2]}} = get_node(Fd, Pos16),
+    {ok, {Mbr, _, [Node11od, Node12od]}} = get_node(Fd, Pos16C1),
+    {ok, {Mbr, _, [Node13od, Node14od]}} = get_node(Fd, Pos16C2),
 
 
     {ok, Pos17} = vtree:delete(Fd, <<"Node12">>, Mbr, Pos16),
-    {ok, {Mbr, _, [Pos17C1, Pos17C2]}} = vtree:get_node(Fd, Pos17),
-    {ok, {Mbr, _, [Node13od, Node14od]}} = vtree:get_node(Fd, Pos17C1),
-    {ok, {Mbr, _, [Node11od]}} = vtree:get_node(Fd, Pos17C2),
+    {ok, {Mbr, _, [Pos17C1, Pos17C2]}} = get_node(Fd, Pos17),
+    {ok, {Mbr, _, [Node13od, Node14od]}} = get_node(Fd, Pos17C1),
+    {ok, {Mbr, _, [Node11od]}} = get_node(Fd, Pos17C2),
 
     {ok, Pos18} = vtree:delete(Fd, <<"Node11">>, Mbr, Pos17),
-    {ok, {Mbr, _, [Pos18C1]}} = vtree:get_node(Fd, Pos18),
-    {ok, {Mbr, _, [Node13od, Node14od]}} = vtree:get_node(Fd, Pos18C1),
+    {ok, {Mbr, _, [Pos18C1]}} = get_node(Fd, Pos18),
+    {ok, {Mbr, _, [Node13od, Node14od]}} = get_node(Fd, Pos18C1),
 
     {ok, Pos19} = vtree:delete(Fd, <<"Node13">>, Mbr, Pos18),
-    {ok, {Mbr, _, [Pos19C1]}} = vtree:get_node(Fd, Pos19),
-    {ok, {Mbr, _, [Node14od]}} = vtree:get_node(Fd, Pos19C1),
+    {ok, {Mbr, _, [Pos19C1]}} = get_node(Fd, Pos19),
+    {ok, {Mbr, _, [Node14od]}} = get_node(Fd, Pos19C1),
 
     {empty, nil} = vtree:delete(Fd, <<"Node14">>, Mbr, Pos19),
     ok.
@@ -890,44 +890,44 @@ test_delete_same_id() ->
             "Delete a node which ID's doesn't exist (tree height=1) " ++
             "(same ID)"),
     {ok, Pos22_1} = vtree:delete(Fd, <<"Node">>, Node1Mbr, Pos22),
-    etap:is(vtree:get_node(Fd, Pos22_1),
+    etap:is(get_node(Fd, Pos22_1),
             {ok, {Mbr2, #node{type=leaf}, [Node22od]}},
             "Delete a node (tree height=1) (a) (same ID)"),
 
     {ok, Pos22_2} = vtree:delete(Fd, <<"Node">>, Node2Mbr, Pos22),
-    etap:is(vtree:get_node(Fd, Pos22_2),
+    etap:is(get_node(Fd, Pos22_2),
             {ok, {Mbr1, #node{type=leaf}, [Node21od]}},
             "Delete a node (tree height=1) (b) (same ID)"),
 
     {ok, Pos25_1} = vtree:delete(Fd, <<"Node">>, Node1Mbr, Pos25),
-    {ok, {Pos25_1Mbr, Pos25_1Meta, [Pos25_1C1, Pos25_1C2]}} = vtree:get_node(
+    {ok, {Pos25_1Mbr, Pos25_1Meta, [Pos25_1C1, Pos25_1C2]}} = get_node(
                                                             Fd, Pos25_1),
-    {ok, Pos25_1Child1} = vtree:get_node(Fd, Pos25_1C1),
-    {ok, Pos25_1Child2} = vtree:get_node(Fd, Pos25_1C2),
+    {ok, Pos25_1Child1} = get_node(Fd, Pos25_1C1),
+    {ok, Pos25_1Child2} = get_node(Fd, Pos25_1C2),
     etap:is({Pos25_1Mbr, Pos25_1Meta, [Pos25_1Child1, Pos25_1Child2]},
             Tree22_3_4_5, "Delete a node (tree height=2) (a) (same ID)"),
 
     {ok, Pos25_2} = vtree:delete(Fd, <<"Node">>, Node2Mbr, Pos25),
-    {ok, {Pos25_2Mbr, Pos25_2Meta, [Pos25_2C1, Pos25_2C2]}} = vtree:get_node(
+    {ok, {Pos25_2Mbr, Pos25_2Meta, [Pos25_2C1, Pos25_2C2]}} = get_node(
                                                             Fd, Pos25_2),
-    {ok, Pos25_2Child1} = vtree:get_node(Fd, Pos25_2C1),
-    {ok, Pos25_2Child2} = vtree:get_node(Fd, Pos25_2C2),
+    {ok, Pos25_2Child1} = get_node(Fd, Pos25_2C1),
+    {ok, Pos25_2Child2} = get_node(Fd, Pos25_2C2),
     etap:is({Pos25_2Mbr, Pos25_2Meta, [Pos25_2Child1, Pos25_2Child2]},
             Tree21_3_4_5, "Delete a node (tree height=2) (b) (same ID)"),
 
     {ok, Pos25_3} = vtree:delete(Fd, <<"Node">>, Node3Mbr, Pos25_2),
-    {ok, {Pos25_3Mbr, Pos25_3Meta, [Pos25_3C]}} = vtree:get_node(Fd, Pos25_3),
-    {ok, Pos25_3Child} = vtree:get_node(Fd, Pos25_3C),
+    {ok, {Pos25_3Mbr, Pos25_3Meta, [Pos25_3C]}} = get_node(Fd, Pos25_3),
+    {ok, Pos25_3Child} = get_node(Fd, Pos25_3C),
     etap:is({Pos25_3Mbr, Pos25_3Meta, [Pos25_3Child]},
             {Mbr1_4_5, #node{type=inner}, [Tree21_4_5]},
             "Delete a node which is the only child (tree height=2) (b) " ++
             "(same ID)"),
 
     {ok, Pos25_4} = vtree:delete(Fd, <<"Node">>, Node5Mbr, Pos25_2),
-    {ok, {Pos25_4Mbr, Pos25_4Meta, [Pos25_4C1, Pos25_4C2]}} = vtree:get_node(
+    {ok, {Pos25_4Mbr, Pos25_4Meta, [Pos25_4C1, Pos25_4C2]}} = get_node(
                                                             Fd, Pos25_4),
-    {ok, Pos25_4Child1} = vtree:get_node(Fd, Pos25_4C1),
-    {ok, Pos25_4Child2} = vtree:get_node(Fd, Pos25_4C2),
+    {ok, Pos25_4Child1} = get_node(Fd, Pos25_4C1),
+    {ok, Pos25_4Child2} = get_node(Fd, Pos25_4C2),
     etap:is({Pos25_4Mbr, Pos25_4Meta, [Pos25_4Child1, Pos25_4Child2]},
             Tree21_3_4, "Delete a node (tree height=2) (b) (same ID)"),
 
@@ -979,3 +979,9 @@ test_count_total() ->
     etap:is(Count3, 0,
             "Total number of geometries is correct (for empty tree)"),
     ok.
+
+
+%% Helpers %%
+
+get_node(Fd, Pos) ->
+    couch_file:pread_term(Fd, Pos).

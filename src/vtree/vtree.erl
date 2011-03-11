@@ -14,18 +14,11 @@
 
 -include("couch_db.hrl").
 
--export([lookup/3, lookup/5, within/2, intersect/2, disjoint/2, insert/4,
-         area/1, merge_mbr/2, find_area_min_nth/1, partition_node/1,
-         calc_nodes_mbr/1, calc_mbr/1, best_split/1, minimal_overlap/2,
-         calc_overlap/2, minimal_coverage/2, delete/4, add_remove/5,
-         split_bbox_if_flipped/2, count_lookup/3, split_node/1, count_total/2,
-         foldl/4]).
-
--export([get_node/2]).
--export([foldl_stop/3]).
+-export([add_remove/5, area/1, calc_mbr/1, calc_nodes_mbr/1, count_lookup/3,
+    count_total/2, disjoint/2, foldl/4, insert/4, lookup/5, merge_mbr/2,
+    split_node/1, within/2]).
 
 % TODO vmx: Function parameters order is inconsitent between insert and delete.
-
 
 
 % The bounding box coordinate order follows the GeoJSON specification (http://geojson.org/): {x-low, y-low, x-high, y-high}
@@ -39,6 +32,7 @@
 %-define(MIN_FILLED, 20).
 -else.
 -define(MAX_FILLED, 4).
+-compile(export_all).
 -endif.
 
 
@@ -139,18 +133,6 @@ fold(Fd, Pos, Fun, Acc) ->
 
 
 % All lookup functions return {ok|stop, Acc}
-
-% This lookup function is mainly for testing
-lookup(Fd, Pos, Bbox) ->
-    % default function returns a list of 2-tuple with
-    %  - 2-tuple with MBR and document ID
-    %  - 2-tuple with the geometry and the actual value
-    lookup(Fd, Pos, Bbox, {fun({{Bbox2, DocId}, {Geom, Value}}, Acc) ->
-         % NOTE vmx (2011-02-09) This should perhaps also be changed from
-         %     {Bbox2, DocId, Geom, Value} to {{Bbox2, DocId}, {Geom, Value}}
-         Acc2 = [{Bbox2, DocId, Geom, Value}|Acc],
-         {ok, Acc2}
-    end, []}, nil).
 lookup(_Fd, nil, _Bbox, {_FoldFun, InitAcc}) ->
     {ok, InitAcc};
 lookup(_Fd, _Pos, [], {_FoldFun, InitAcc}) ->
@@ -764,7 +746,3 @@ min(A, B) ->
 
 max(A, B) ->
     if A > B -> A ; true -> B end.
-
-
-get_node(Fd, Pos) ->
-    couch_file:pread_term(Fd, Pos).

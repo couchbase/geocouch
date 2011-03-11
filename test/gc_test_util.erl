@@ -12,7 +12,8 @@
 
 -module(gc_test_util).
 
--export([init_code_path/0, random_node/0, random_node/1, build_random_tree/2]).
+-export([init_code_path/0, random_node/0, random_node/1, build_random_tree/2,
+    lookup/3]).
 
 -record(node, {
     % type = inner | leaf
@@ -81,3 +82,15 @@ build_random_tree(Filename, Num, Seed) ->
         io:format("ERROR: Couldn't open file (~s) for tree storage~n",
                   [Filename])
     end.
+
+
+lookup(Fd, Pos, Bbox) ->
+    % default function returns a list of 2-tuple with
+    %  - 2-tuple with MBR and document ID
+    %  - 2-tuple with the geometry and the actual value
+    vtree:lookup(Fd, Pos, Bbox, {fun({{Bbox2, DocId}, {Geom, Value}}, Acc) ->
+         % NOTE vmx (2011-02-09) This should perhaps also be changed from
+         %     {Bbox2, DocId, Geom, Value} to {{Bbox2, DocId}, {Geom, Value}}
+         Acc2 = [{Bbox2, DocId, Geom, Value}|Acc],
+         {ok, Acc2}
+    end, []}, nil).

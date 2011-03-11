@@ -84,7 +84,7 @@ test_bulk_load() ->
 
     {ok, Pos1, Height1} = ?MOD:bulk_load(Fd, 0, 0, Nodes1),
     etap:is(Height1, 2, "Height is correct (bulk_load) (a)"),
-    {ok, Lookup1} = vtree:lookup(Fd, Pos1, {0,0,1001,1001}),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, Pos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 7, "Number of nodes is correct (bulk_load) (a)"),
     LeafDepths1 = vtreestats:leaf_depths(Fd, Pos1),
     etap:is(LeafDepths1, [1],
@@ -100,7 +100,7 @@ test_bulk_load() ->
 
     {ok, Pos2, Height2} = ?MOD:bulk_load(Fd, Pos1, Height1, Nodes2),
     etap:is(Height2, 4, "Height is correct (bulk_load) (b)"),
-    {ok, Lookup2} = vtree:lookup(Fd, Pos2, {0,0,1001,1001}),
+    {ok, Lookup2} = gc_test_util:lookup(Fd, Pos2, {0,0,1001,1001}),
     etap:is(length(Lookup2), 27,
         "Number of nodes is correct (bulk_load) (b)"),
     LeafDepths2 = vtreestats:leaf_depths(Fd, Pos2),
@@ -119,7 +119,7 @@ test_bulk_load() ->
         end, [], lists:seq(1, Size)),
 
         {ok, Pos, Height} = ?MOD:bulk_load(Fd, RootPos, RootHeight, Nodes),
-        {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
+        {ok, Lookup} = gc_test_util:lookup(Fd, Pos, {0,0,1001,1001}),
         LeafDepths = vtreestats:leaf_depths(Fd, Pos),
         [{Pos, Height, LeafDepths, length(Lookup)}|Acc2]
     end, [{Pos2, Height2, [0], 0}], BulkSize3),
@@ -138,7 +138,7 @@ test_bulk_load() ->
            [Node|Acc]
         end, [], lists:seq(1, Size)),
         {ok, Pos, Height} = ?MOD:bulk_load(Fd, RootPos, RootHeight, Nodes),
-        {ok, Lookup} = vtree:lookup(Fd, Pos, {0,0,1001,1001}),
+        {ok, Lookup} = gc_test_util:lookup(Fd, Pos, {0,0,1001,1001}),
         LeafDepths = vtreestats:leaf_depths(Fd, Pos),
        [{Pos, Height, LeafDepths, length(Lookup)}|Acc2]
     end, [{Pos2, Height2, [0], 0}], BulkSize4),
@@ -170,7 +170,7 @@ test_bulk_load_regression() ->
     {ok, Pos1, Height1} = ?MOD:bulk_load(Fd, 0, 0, [Node1]),
     {ok, Pos2, Height2} = ?MOD:bulk_load(Fd, Pos1, Height1, Nodes2),
     etap:is(Height2, 4, "Height is correct  (bulk_load_regression)"),
-    {ok, Lookup2} = vtree:lookup(Fd, Pos2, {0,0,1001,1001}),
+    {ok, Lookup2} = gc_test_util:lookup(Fd, Pos2, {0,0,1001,1001}),
     etap:is(length(Lookup2), 65,
         "Number of nodes is correct (bulk_load_regression)"),
     LeafDepths2 = vtreestats:leaf_depths(Fd, Pos2),
@@ -320,16 +320,16 @@ test_omt_write_tree() ->
     {Omt3, _OmtHeight3} = ?MOD:omt_load(Node3, 4),
     {ok, MbrAndPosList3} = ?MOD:omt_write_tree(Fd, Omt3),
     RootPosList3 = [Pos || {_Mbr, Pos} <- MbrAndPosList3],
-    {ok, Lookup3} = vtree:lookup(Fd, lists:nth(1,RootPosList3), {0,0,1001,1001}),
+    {ok, Lookup3} = gc_test_util:lookup(Fd, lists:nth(1,RootPosList3), {0,0,1001,1001}),
     etap:is(length(Lookup3), 1,
         "Correct number of nodes (omt_write_tree) "
         "(MAX_FILLED==4, only one node)"),
 
 
     % Test 4: round-trip: some nodes => OMT tree, write to disk, load from disk
-    {ok, LeafNodes1} = vtree:lookup(
+    {ok, LeafNodes1} = gc_test_util:lookup(
             Fd, lists:nth(1, RootPosList), {0,0,1001,1001}),
-    {ok, LeafNodes2} = vtree:lookup(
+    {ok, LeafNodes2} = gc_test_util:lookup(
             Fd, lists:nth(2, RootPosList), {0,0,1001,1001}),
     LeafNodes3 = lists:foldl(fun(LeafNode, Acc) ->
         {NodeMbr, NodeId, NodeGeom, NodeData} = LeafNode,
@@ -551,7 +551,7 @@ test_seedtree_write_single() ->
             Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     etap:is(Height1, 2, "Height is correct (seedtree_write_single)"),
     {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 8,
         "Number of nodes is correct (seedtree_write_single)"),
     LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
@@ -583,7 +583,7 @@ test_seedtree_write_case1() ->
             Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     etap:is(Height1, 4, "Height is correct (seedtree_write_case1)"),
     {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 45,
         "Number of nodes is correct (seedtree_write_case1)"),
     LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
@@ -604,7 +604,7 @@ test_seedtree_write_case1() ->
     etap:is(Height2, 3,
         "Height is correct (seedtree_write_case1) (height==1)"),
     {ok, ResultPos2} = ?MOD:write_parent(Fd2, Result2),
-    {ok, Lookup2} = vtree:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
+    {ok, Lookup2} = gc_test_util:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
     etap:is(length(Lookup2), 76,
         "Number of nodes is correct (seedtree_write_case1) (height==1)"),
     LeafDepths2 = vtreestats:leaf_depths(Fd2, ResultPos2),
@@ -625,7 +625,7 @@ test_seedtree_write_case1() ->
     etap:is(Height3, 4,
         "Height is correct (seedtree_write_case1) (height==2)"),
     {ok, ResultPos3} = ?MOD:write_parent(Fd3, Result3),
-    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
+    {ok, Lookup3} = gc_test_util:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
     etap:is(length(Lookup3), 208,
         "Number of nodes is correct (seedtree_write_case1) (height==2)"),
     LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
@@ -645,7 +645,7 @@ test_seedtree_write_case1() ->
     etap:is(Height4, 5,
         "Height is correct (seedtree_write_case1) (height==3)"),
     {ok, ResultPos4} = ?MOD:write_parent(Fd4, Result4),
-    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
+    {ok, Lookup4} = gc_test_util:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
     etap:is(length(Lookup4), 914,
         "Number of nodes is correct (seedtree_write_case1) (height==3)"),
     LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4),
@@ -666,7 +666,7 @@ test_seedtree_write_case1() ->
         "Height is correct (seedtree_write_case1) (height==1) "
         "(new data height==4)"),
     {ok, ResultPos5} = ?MOD:write_parent(Fd5, Result5),
-    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
+    {ok, Lookup5} = gc_test_util:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     etap:is(length(Lookup5), 1051,
         "Number of nodes is correct (seedtree_write_case1) (height==1) "
         "(new data height==4)"),
@@ -696,7 +696,7 @@ test_seedtree_write_case2() ->
             Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     etap:is(Height1, 4, "Height is correct (seedtree_write_case2)"),
     {ok, ResultPos1} = ?MOD:write_parent(Fd, Result1),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 105,
         "Number of nodes is correct (seedtree_write_case2)"),
     LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
@@ -717,7 +717,7 @@ test_seedtree_write_case2() ->
             TargetTreeHeight - Seedtree2_2#seedtree_root.height),
     etap:is(Height2, 5, "Height is correct (seedtree_write_case2) (2 levels)"),
     {ok, ResultPos2} = ?MOD:write_parent(Fd, Result2),
-    {ok, Lookup2} = vtree:lookup(Fd, ResultPos2, {0,0,1001,1001}),
+    {ok, Lookup2} = gc_test_util:lookup(Fd, ResultPos2, {0,0,1001,1001}),
     etap:is(length(Lookup2), 325,
         "Number of nodes is correct (seedtree_write_case2) (2 levels)"),
     LeafDepths2 = vtreestats:leaf_depths(Fd, ResultPos2),
@@ -738,7 +738,7 @@ test_seedtree_write_case2() ->
             TargetTreeHeight3 - Seedtree3_2#seedtree_root.height),
     etap:is(Height3, 3, "Height is correct (seedtree_write_case2) (1 level)"),
     {ok, ResultPos3} = ?MOD:write_parent(Fd3, Result3),
-    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
+    {ok, Lookup3} = gc_test_util:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
     etap:is(length(Lookup3), 114,
         "Number of nodes is correct (seedtree_write_case2) (1 level)"),
     LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
@@ -761,7 +761,7 @@ test_seedtree_write_case2() ->
         "Height is correct (seedtree_write_case2) "
         "(input tree 1 level too high)"),
     {ok, ResultPos4} = ?MOD:write_parent(Fd4, Result4),
-    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
+    {ok, Lookup4} = gc_test_util:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
     etap:is(length(Lookup4), 246,
         "Number of nodes is correct (seedtree_write_case2) "
         "(input tree 1 level too high)"),
@@ -786,7 +786,7 @@ test_seedtree_write_case2() ->
         "Height is correct (seedtree_write_case2) "
         "(input tree 2 levels too high)"),
     {ok, ResultPos5} = ?MOD:write_parent(Fd5, Result5),
-    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
+    {ok, Lookup5} = gc_test_util:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     etap:is(length(Lookup5), 296,
         "Number of nodes is correct (seedtree_write_case2) "
         "(input tree 2 levels too high)"),
@@ -810,7 +810,7 @@ test_seedtree_write_case2() ->
         "Height is correct (seedtree_write_case2) "
         "(input tree 2 levels too high, massive overflow)"),
     {ok, ResultPos6} = ?MOD:write_parent(Fd6, Result6),
-    {ok, Lookup6} = vtree:lookup(Fd6, ResultPos6, {0,0,1001,1001}),
+    {ok, Lookup6} = gc_test_util:lookup(Fd6, ResultPos6, {0,0,1001,1001}),
     etap:is(length(Lookup6), 220,
         "Number of nodes is correct (seedtree_write_case2) "
         "(input tree 2 levels too high, massive overflow)"),
@@ -839,7 +839,7 @@ test_seedtree_write_case3() ->
             Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     etap:is(Height1, 4, "Height is correct (seedtree_write_case3)"),
     {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 37,
         "Number of nodes is correct (seedtree_write_case3)"),
     LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
@@ -869,7 +869,7 @@ test_seedtree_write_case3() ->
         "Height is correct (seedtree_write_case3) "
         "(input tree 2 levels too small)"),
     {ok, ResultPos2} = ?MOD:write_parent(Fd2, Result2),
-    {ok, Lookup2_1} = vtree:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
+    {ok, Lookup2_1} = gc_test_util:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
     etap:is(length(Lookup2_1), 92,
         "Number of nodes is correct (seedtree_write_case3) "
         "(input tree 2 levels too small)"),
@@ -895,7 +895,7 @@ test_seedtree_write_case3() ->
         "(input tree 1 level too small, seed tree height==1))"),
     % Several parents => create new root node
     {ok, ResultPos3} = ?MOD:write_parent(Fd3, Result3),
-    {ok, Lookup3} = vtree:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
+    {ok, Lookup3} = gc_test_util:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
     etap:is(length(Lookup3), 68,
         "Number of nodes is correct (seedtree_write_case3) "
         "(input tree 1 level too small, seed tree height==1))"),
@@ -919,7 +919,7 @@ test_seedtree_write_case3() ->
         "Height is correct (seedtree_write_case3) "
         "(input tree 1 level too small, seed tree height==2)"),
     {ok, ResultPos4} = ?MOD:write_parent(Fd4, Result4),
-    {ok, Lookup4} = vtree:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
+    {ok, Lookup4} = gc_test_util:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
     etap:is(length(Lookup4), 200,
         "Number of nodes is correct (seedtree_write_case3) "
         "(input tree 1 level too small, seed tree height==2))"),
@@ -943,7 +943,7 @@ test_seedtree_write_case3() ->
         "Height is correct (seedtree_write_case3) "
         "(input tree 2 levels too small, seed tree height==2)"),
     {ok, ResultPos5} = couch_file:append_term(Fd5, hd(Result5)),
-    {ok, Lookup5} = vtree:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
+    {ok, Lookup5} = gc_test_util:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     etap:is(length(Lookup5), 772,
         "Number of nodes is correct (seedtree_write_case3) "
         "(input tree 2 levels too small, seed tree height==2))"),
@@ -969,7 +969,7 @@ test_insert_subtree() ->
 
     {ok, _NewMbr1, NewPos1, _Inc1} = ?MOD:insert_subtree(
             Fd, RootPos, MbrAndPosList1, 2),
-    {ok, Lookup1} = vtree:lookup(Fd, NewPos1, {0,0,1001,1001}),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, NewPos1, {0,0,1001,1001}),
     LeafDepths1 = vtreestats:leaf_depths(Fd, NewPos1),
     etap:is(length(Lookup1), 25,
         "Number of nodes is correct (insert_subtree)"),
@@ -988,7 +988,7 @@ test_insert_subtree() ->
 
     {ok, _NewMbr2, NewPos2, Inc2} = ?MOD:insert_subtree(
             Fd, RootPos, MbrAndPosList2, 0),
-    {ok, Lookup2} = vtree:lookup(Fd, NewPos2, {0,0,1001,1001}),
+    {ok, Lookup2} = gc_test_util:lookup(Fd, NewPos2, {0,0,1001,1001}),
     LeafDepths2 = vtreestats:leaf_depths(Fd, NewPos2),
     etap:is(Inc2, 1,
         "Tree height was increased (insert_subtree) (splitted root node)"),
@@ -1021,7 +1021,7 @@ test_insert_outliers() ->
     etap:is(ResultHeight1, 5,
         "Height is correct (insert_outliers) "
         "(same height, fits into one node)"),
-    {ok, Lookup1} = vtree:lookup(Fd, ResultPos1, {0,0,1001,1001}),
+    {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 325,
         "Number of nodes is correct (insert_outliers) "
         "(same height, fits into one node)"),
@@ -1047,7 +1047,7 @@ test_insert_outliers() ->
     etap:is(ResultHeight2, 6,
         "Height is correct (insert_outliers) "
         "(same height, doesn't fit into one node)"),
-    {ok, Lookup2} = vtree:lookup(Fd, ResultPos2, {0,0,1001,1001}),
+    {ok, Lookup2} = gc_test_util:lookup(Fd, ResultPos2, {0,0,1001,1001}),
     etap:is(length(Lookup2), 1025,
         "Number of nodes is correct (insert_outliers) "
         "(same height, doesn't fit into one node)"),
@@ -1072,7 +1072,7 @@ test_insert_outliers() ->
     etap:is(ResultHeight3, 6,
         "Height is correct (insert_outliers) "
         "(higher than target tree, fits into one node)"),
-    {ok, Lookup3} = vtree:lookup(Fd, ResultPos3, {0,0,1001,1001}),
+    {ok, Lookup3} = gc_test_util:lookup(Fd, ResultPos3, {0,0,1001,1001}),
     etap:is(length(Lookup3), 1525,
         "Number of nodes is correct (insert_outliers) "
         "(higher than target tree, fits into one node)"),
@@ -1097,7 +1097,7 @@ test_insert_outliers() ->
     etap:is(ResultHeight4, 7,
         "Height is correct (insert_outliers) "
         "(higher than target tree, doens't fit into one node)"),
-    {ok, Lookup4} = vtree:lookup(Fd, ResultPos4, {0,0,1001,1001}),
+    {ok, Lookup4} = gc_test_util:lookup(Fd, ResultPos4, {0,0,1001,1001}),
     etap:is(length(Lookup4), 4025,
         "Number of nodes is correct (insert_outliers) "
         "(higher than target tree, doesn't fit into one node)"),
@@ -1122,7 +1122,7 @@ test_insert_outliers() ->
     etap:is(ResultHeight5, 4,
         "Height is correct (insert_outliers) "
         "(smaller than target tree, fits into one node)"),
-    {ok, Lookup5} = vtree:lookup(Fd, ResultPos5, {0,0,1001,1001}),
+    {ok, Lookup5} = gc_test_util:lookup(Fd, ResultPos5, {0,0,1001,1001}),
     etap:is(length(Lookup5), 32,
         "Number of nodes is correct (insert_outliers) "
         "(higher than target tree, fits into one node)"),
@@ -1147,7 +1147,7 @@ test_insert_outliers() ->
     etap:is(ResultHeight6, 4,
         "Height is correct (insert_outliers) "
         "(smaller than target tree, doesn't fit into one node)"),
-    {ok, Lookup6} = vtree:lookup(Fd, ResultPos6, {0,0,1001,1001}),
+    {ok, Lookup6} = gc_test_util:lookup(Fd, ResultPos6, {0,0,1001,1001}),
     etap:is(length(Lookup6), 41,
         "Number of nodes is correct (insert_outliers) "
         "(higher than target tree, doesn't fit into one node)"),
