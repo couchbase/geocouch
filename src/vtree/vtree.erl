@@ -100,17 +100,17 @@ get_timestamp() ->
 
 % Returns only the number of matching geometries
 count_lookup(Fd, Pos, Bbox) ->
-    case lookup(Fd, Pos, Bbox, {fun(Item, Acc) -> {ok, Acc+1} end, 0}) of
+    case lookup(Fd, Pos, Bbox, {fun(_Item, Acc) -> {ok, Acc+1} end, 0}) of
         {ok, []} -> 0;
         {ok, Count} -> Count
     end.
 
 % Returns the total number of geometries
 -spec count_total(Fd::file:io_device(), RootPos::integer()) -> integer().
-count_total(Fd, nil) ->
+count_total(_Fd, nil) ->
     0;
 count_total(Fd, RootPos) ->
-    foldl(Fd, RootPos, fun(Node, Acc) ->
+    foldl(Fd, RootPos, fun(_Node, Acc) ->
         Acc + 1
     end, 0).
 
@@ -124,13 +124,13 @@ foldl(Fd, RootPos, Fun, InitAcc) ->
 -spec fold(Fd::file:io_device(), Pos::integer(), Fun::fun(), Acc::any()) ->
         any().
 % leaf node
-fold(Fd, Pos, Fun, Acc) when is_tuple(Pos) ->
+fold(_Fd, Pos, Fun, Acc) when is_tuple(Pos) ->
     % Pos is a child of a leaf node (a node that contains the actual data)
     Fun(Pos, Acc);
 % inner node
 fold(Fd, Pos, Fun, Acc) ->
     {ok, Parent} = couch_file:pread_term(Fd, Pos),
-    {ParentMbr, ParentMeta, EntriesPos} = Parent,
+    {_ParentMbr, _ParentMeta, EntriesPos} = Parent,
 
     lists:foldl(fun(EntryPos, Acc2) ->
         fold(Fd, EntryPos, Fun, Acc2)
@@ -151,9 +151,9 @@ lookup(Fd, Pos, Bbox) ->
          Acc2 = [{Bbox2, DocId, Geom, Value}|Acc],
          {ok, Acc2}
     end, []}, nil).
-lookup(_Fd, nil, _Bbox, {FoldFun, InitAcc}) ->
+lookup(_Fd, nil, _Bbox, {_FoldFun, InitAcc}) ->
     {ok, InitAcc};
-lookup(_Fd, _Pos, [], {FoldFun, InitAcc}) ->
+lookup(_Fd, _Pos, [], {_FoldFun, InitAcc}) ->
     {ok, InitAcc};
 % Only a single bounding box. No bounds given. If bounding box is flipped,
 % throw an error.
@@ -246,7 +246,7 @@ bboxes_within(Mbr, [Bbox|Tail]) ->
         bboxes_within(Mbr, Tail)
     end.
 
-split_bbox_if_flipped({W, S, E, N}=Bbox, {BW, BS, BE, BN}=Bounds) ->
+split_bbox_if_flipped({W, S, E, N}=Bbox, {BW, BS, BE, BN}=_Bounds) ->
     case bbox_is_flipped(Bbox) of
     {flipped, Direction} ->
         Bboxes = case Direction of
@@ -471,8 +471,8 @@ insert(Fd, RootPos, NewNodeId,
     end,
     case {Inserted, CallDepth} of
         % Root node needs to be split => new root node
-        {{splitted, NewRootMbr, {SplittedNode1Mbr, SplittedNode1},
-          {SplittedNode2Mbr, SplittedNode2}, TreeHeight2}, 0} ->
+        {{splitted, NewRootMbr, {_SplittedNode1Mbr, SplittedNode1},
+          {_SplittedNode2Mbr, SplittedNode2}, TreeHeight2}, 0} ->
             %io:format("Creating new root node~n", []),
             NewRoot = {NewRootMbr, #node{type=inner},
                            [SplittedNode1, SplittedNode2]},

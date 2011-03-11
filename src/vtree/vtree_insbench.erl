@@ -13,7 +13,7 @@
 -module(vtree_insbench).
 -export([start/0]).
 
--export([test_insertion/0]).
+-export([test_insertion/0, profile_insertion/0]).
 
 -define(FILENAME, "/tmp/vtree_huge.bin").
 
@@ -47,7 +47,7 @@ test_insertion() ->
             %end, -1, lists:seq(1,60000)),
         io:format("Tree: ~p~n", [Tree]),
         ok;
-    {error, Reason} ->
+    {error, _Reason} ->
         io:format("ERROR: Couldn't open file (~s) for tree storage~n",
                   [?FILENAME])
     end.

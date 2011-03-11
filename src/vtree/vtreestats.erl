@@ -58,7 +58,7 @@ stats(Fd, RootPos) ->
 
 stats(Fd, RootPos, Depth, Stats) ->
     {ok, Parent} = couch_file:pread_term(Fd, RootPos),
-    {ParentMbr, ParentMeta, EntriesPos} = Parent,
+    {_ParentMbr, _ParentMeta, EntriesPos} = Parent,
 
     if
     % leaf node
@@ -68,7 +68,7 @@ stats(Fd, RootPos, Depth, Stats) ->
     % inner node
     true ->
         Stats4 = lists:foldl(fun(EntryPos, Stats2) ->
-            Stats3 = stats(Fd, EntryPos, Depth+1, Stats2)
+            stats(Fd, EntryPos, Depth+1, Stats2)
         end, Stats, EntriesPos),
         Stats4#stats{numinner=[length(EntriesPos)|Stats4#stats.numinner]}
     end.

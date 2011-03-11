@@ -25,6 +25,7 @@
 % for output (couch_http_spatial, couch_http_spatial_list)
 -export([geocouch_to_geojsongeom/1]).
 
+
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
 
@@ -324,9 +325,6 @@ extract_bbox(Type, Coords, InitBbox) ->
             bbox(hd(Polygon), CurBbox)
         end, InitBbox, Coords)
     end.
-
-bbox(Coords) ->
-    bbox(Coords, nil).
 
 bbox([], {Min, Max}) ->
     Min ++ Max;

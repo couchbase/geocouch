@@ -18,7 +18,7 @@
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
     gc_test_util:init_code_path(),
-    etap:plan(31),
+    etap:plan(28),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -30,7 +30,6 @@ main(_) ->
 
 test() ->
     test_bbox(),
-    test_bbox_nil(),
     test_bbox_initbbox(),
     test_extract_bbox(),
     test_process_result_geometrycollection(),
@@ -53,25 +52,8 @@ test() ->
     type=leaf}).
 
 
-
-
-
-
 % The tests are based on the examples of the GeoJSON format specification
 test_bbox() ->
-    etap:is(?MOD:bbox([[100.0, 0.0], [101.0, 1.0]]),
-        [100.0, 0.0, 101.0, 1.0],
-        "Bounding box of LineString with 2 points"),
-    etap:is(?MOD:bbox([[100.0, 0.0], [101.0, 0.0], [101.0, 1.0], [100.0, 1.0],
-            [100.0, 0.0]]),
-        [100.0, 0.0, 101.0, 1.0],
-        "Bounding box of LineString with 4 points"),
-    etap:is(?MOD:bbox([[-10.0, 0.0, 50.4, 58.69], [101.0, -1.0, -72.8, 9.5]]),
-        [-10.0, -1.0, -72.8, 9.5, 101.0, 0.0, 50.4, 58.69],
-        "Bounding box of LineString with 4 dimensional coordinates").
-
-
-test_bbox_nil() ->
     etap:is(?MOD:bbox([[100.0, 0.0], [101.0, 1.0]], nil),
         [100.0, 0.0, 101.0, 1.0],
         "Bounding box of LineString with 2 points (initial bbox==nil)"),

@@ -32,7 +32,7 @@
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
     gc_test_util:init_code_path(),
-    etap:plan(106),
+    etap:plan(99),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -47,7 +47,6 @@ main(_) ->
 test() ->
     test_bulk_load(),
     test_bulk_load_regression(),
-    test_chunk_list(),
     test_omt_load(),
     test_omt_write_tree(),
     test_omt_sort_nodes(),
@@ -177,25 +176,6 @@ test_bulk_load_regression() ->
     LeafDepths2 = vtreestats:leaf_depths(Fd, Pos2),
     etap:is(LeafDepths2, [3],
         "Tree depth is equal and correct (bulk_load_regression)").
-
-
-% XXX vmx: tests with function (check_list/6) are missing
-test_chunk_list() ->
-    List1 = [1,2,3,4,5],
-    Chunked1 = ?MOD:chunk_list(List1, 2),
-    etap:is(Chunked1, [[1,2],[3,4],[5]], "List was chunked correcty (a)"),
-    Chunked2 = ?MOD:chunk_list(List1, 3),
-    etap:is(Chunked2, [[1,2,3],[4,5]], "List was chunked correcty (b)"),
-    Chunked3 = ?MOD:chunk_list(List1, 4),
-    etap:is(Chunked3, [[1,2,3,4],[5]], "List was chunked correcty (c)"),
-    Chunked4 = ?MOD:chunk_list(List1, 5),
-    etap:is(Chunked4, [[1,2,3,4,5]], "List was chunked correcty (d)"),
-    Chunked5 = ?MOD:chunk_list(List1, 6),
-    etap:is(Chunked5, [[1,2,3,4,5]], "List was chunked correcty (f)"),
-    Chunked6 = ?MOD:chunk_list(List1, 0),
-    etap:is(Chunked6, [[1,2,3,4,5]], "List was chunked correcty (g)"),
-    Chunked7 = ?MOD:chunk_list(List1, 1),
-    etap:is(Chunked7, [[1],[2],[3],[4],[5]], "List was chunked correcty (h)").
 
 
 test_omt_load() ->

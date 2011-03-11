@@ -64,10 +64,10 @@
         TargetTreeHeight::integer(), Nodes::[vtree_node()]) ->
         {ok, integer(), integer()}.
 % No nodes to load
-bulk_load(Fd, RootPos, TargetTreeHeight, []) ->
+bulk_load(_Fd, RootPos, TargetTreeHeight, []) ->
     {ok, RootPos, TargetTreeHeight};
 % Tree is empty
-bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) when TargetTreeHeight==0 ->
+bulk_load(Fd, _RootPos, TargetTreeHeight, Nodes) when TargetTreeHeight==0 ->
     % Tree is empty => bulk load it
     {Omt, TreeHeight} = omt_load(Nodes, ?MAX_FILLED),
     {ok, MbrAndPosList} = omt_write_tree(Fd, Omt),
@@ -158,8 +158,7 @@ insert_outliers(Fd, TargetPos, TargetMbr, TargetHeight, Nodes) ->
             NewChildren = [{Mbr, #node{type=inner}, Pos} || {Mbr, Pos} <-
                     [{TargetMbr, TargetPos}|MbrAndPosList]],
             NodeToSplit = {MergedMbr, #node{type=inner}, NewChildren},
-            {SplittedMbr, {Node1Mbr, _, _}=Node1, {Node2Mbr, _, _}=Node2} =
-                    vtree:split_node(NodeToSplit),
+            {_SplittedMbr, Node1, Node2} = vtree:split_node(NodeToSplit),
             {ok, NewOmtPos} = write_parent(Fd, [Node1|[Node2]]),
             {NewOmtPos, TargetHeight+2}
         end;
@@ -244,7 +243,7 @@ omt_write_tree(Fd, Tree) ->
 omt_write_tree(_Fd, [], _Depth, Acc) ->
     {no_siblings, Acc};
 % leaf node
-omt_write_tree(Fd, [H|_T]=Leafs, Depth, _Acc) when is_tuple(H) ->
+omt_write_tree(Fd, [H|_T]=Leafs, _Depth, _Acc) when is_tuple(H) ->
     % Don't write leafs nodes to disk now, they will be written later on.
     % Instead return a list of of tuples with the node's MBR and the node
     % itself
@@ -409,13 +408,12 @@ seedtree_write(Fd, Seedtree, InsertHeight) ->
     Outliers ->
         % insert outliers by creating a temporary root node...
         {ok, TmpRootPos} = write_parent(Fd, RootNodes),
-        {ok, TmpRootNode} = couch_file:pread_term(Fd, TmpRootPos),
         {TmpRootPos2, TmpHeight} = lists:foldl(fun(Outlier, {CurPos, _}) ->
             {Mbr, Meta, {DocId, {Geom, Value}}} = Outlier,
             {ok, _NewMbr, CurPos2, TreeHeight} = vtree:insert(
                     Fd, CurPos, DocId, {Mbr, Meta, Geom, Value}),
             {CurPos2, TreeHeight}
-        end, {TmpRootPos, 0}, Seedtree#seedtree_root.outliers),
+        end, {TmpRootPos, 0}, Outliers),
 
         {ok, OldRoot} = couch_file:pread_term(Fd, TmpRootPos2),
         % ...and get the original children back again
@@ -430,7 +428,7 @@ seedtree_write(Fd, Seedtree, InsertHeight) ->
 -spec seedtree_write(Fd::file:io_device(), Seetree::seedtree_root(),
         InsertHeight::integer(), Acc::[vtree_node()]) ->
         {ok, [vtree_node()], integer(), integer()}.
-seedtree_write(_Fd, [], InsertHeight, Acc) ->
+seedtree_write(_Fd, [], _InsertHeight, Acc) ->
     {no_more_siblings, Acc};
 % No new nodes to insert
 seedtree_write(_Fd, #seedtree_leaf{orig=Orig, new=[]}, _InsertHeight, _Acc) ->
@@ -440,7 +438,7 @@ seedtree_write(_Fd, #seedtree_leaf{orig=Orig, new=[]}, _InsertHeight, _Acc) ->
 % rewritten due to repacking. The MBR doesn't change (that's the nature of
 % this algorithm).
 seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
-        InsertHeight, Acc) ->
+        InsertHeight, _Acc) ->
     NewNum = length(New),
     OmtHeight = log_n_ceil(?MAX_FILLED, NewNum),
     HeightDiff = InsertHeight - (OmtHeight - 1),
@@ -450,7 +448,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
     %?debugMsg("insert as is"),
         {OmtTree, OmtHeight} = omt_load(New, ?MAX_FILLED),
         NewChildren = seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight),
-        MbrAndPos = seedtree_write_finish(NewChildren);
+        _MbrAndPos = seedtree_write_finish(NewChildren);
     % insert tree is too small => expand seedtree
     HeightDiff > 0 ->
     %?debugMsg("insert is too small"),
@@ -458,7 +456,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         % HeightDiff+1 as we like to load the level of the children
         Seedtree = seedtree_init(Fd, ParentPos, HeightDiff+1),
         Seedtree2 = seedtree_insert_list(Seedtree, New),
-        {ok, NodesList, NewHeight, NewHeightDiff} = seedtree_write(
+        {ok, NodesList, _NewHeight, NewHeightDiff} = seedtree_write(
                 Fd, Seedtree2, InsertHeight-Seedtree2#seedtree_root.height+1),
         % NOTE vmx (2011-01-04) This makes one test fail. I have to admit I
         %     can't see the point of this code atm. The calculation of the
@@ -476,7 +474,7 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
                 load_nodes(Fd, PosList)
             end, NodesList, lists:seq(1, NewHeightDiff))
         end,
-        MbrAndPos = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList2];
+        _MbrAndPos = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList2];
         %MbrAndPos = [{Mbr, Pos} || {Mbr, _, Pos} <- NodesList];
     % insert tree is too high => use its children
     HeightDiff < 0 ->
@@ -492,10 +490,10 @@ seedtree_write(Fd, #seedtree_leaf{orig=Orig, new=New, pos=ParentPos},
         MbrAndPos2 = seedtree_write_insert(Fd, Orig, OmtTrees,
                 (OmtHeight + HeightDiff)),
         {NewMbrs, NewPos} = lists:unzip(MbrAndPos2),
-        MbrAndPos = seedtree_write_finish(lists:zip(NewMbrs, NewPos))
+        _MbrAndPos = seedtree_write_finish(lists:zip(NewMbrs, NewPos))
     end,
     {new_leaf, NewChildrenPos2};
-seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
+seedtree_write(Fd, [{Mbr, Meta, Children}|T], InsertHeight, Acc) ->
     {ok, Acc2} = case seedtree_write(Fd, Children, InsertHeight, []) of
     {no_more_siblings, Siblings} ->
        {ok, Siblings};
@@ -536,7 +534,7 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
         end, Acc, Level3),
         {ok, Parents}
     end,
-    {Info, Acc3} = seedtree_write(Fd, T, InsertHeight, Acc2),
+    {_, Acc3} = seedtree_write(Fd, T, InsertHeight, Acc2),
     {level_done, Acc3}.
 
 % @doc Writes new nodes into the existing tree. The nodes, resp. the
@@ -550,7 +548,7 @@ seedtree_write(Fd, [{Mbr, Meta, Children}=H|T], InsertHeight, Acc) ->
         OmtTree::omt_node(), OmtHeight::integer()) -> [{mbr(), integer()}].
 % Leaf node. We won't do the repacking dance, as we are on the lowest
 % level already. Thus we just insert the new nodes
-seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) when is_tuple(hd(Orig)) ->
+seedtree_write_insert(_Fd, Orig, OmtTree, OmtHeight) when is_tuple(hd(Orig)) ->
     OmtTree2 = if
     OmtHeight > 1 ->
         % Lets's try to flatten the list in case it is too deep
@@ -565,7 +563,7 @@ seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) when is_tuple(hd(Orig)) ->
     % create a list with tuples consisting of MBR and the actual node
     [{Mbr, Node} || {Mbr, _, _}=Node <- NewNodes];
 % Inner node, do some repacking.
-seedtree_write_insert(Fd, Orig, OmtTree, OmtHeight) ->
+seedtree_write_insert(Fd, Orig, OmtTree, _OmtHeight) ->
     % Write the OmtTree to to disk.
     % The tree might contain more than the maximum
     % number of allowed nodes per node. This overflow will be solved
@@ -732,18 +730,6 @@ write_parent(Fd, Nodes) ->
          Fd, {ParentMbr, #node{type=inner}, ChildrenPos}),
     {ok, ParentPos}.
 
-
-% @doc Create a new root node for a list of tuples containing MBR and postion
-% in the file. Returns the new enclosing MBR and position in the file.
--spec write_root(Fd::file:io_device(),
-        MbrAndPos::[{mbr(), integer()}]) -> {mbr(), integer()}.
-write_root(Fd, MbrAndPos) ->
-    {Mbrs, PosList} = lists:unzip(MbrAndPos),
-    ParentMbr = vtree:calc_mbr(Mbrs),
-    {ok, ParentPos} = couch_file:append_term(
-         Fd, {ParentMbr, #node{type=inner}, PosList}),
-    {ParentMbr, ParentPos}.
-
 % XXX vmx: insert_subtree and potentially other functions should be moved
 %     from the vtree_bulk to the vtree module
 % @doc inserts a subtree into an vtree at a specific level. Returns the
@@ -754,7 +740,7 @@ write_root(Fd, MbrAndPos) ->
         {ok, mbr(), integer(), integer()}.
 insert_subtree(Fd, RootPos, Subtree, Level) ->
     case insert_subtree(Fd, RootPos, Subtree, Level, 0) of
-    {splitted, NodeMbr, {Node1Mbr, NodePos1}, {Node2Mbr, NodePos2}, Inc} ->
+    {splitted, NodeMbr, {_Node1Mbr, NodePos1}, {_Node2Mbr, NodePos2}, Inc} ->
         Parent = {NodeMbr, #node{type=inner}, [NodePos1, NodePos2]},
         {ok, Pos} = couch_file:append_term(Fd, Parent),
         {ok, NodeMbr, Pos, Inc+1};
@@ -816,7 +802,7 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
     {ParentMbr, _ParentMeta, EntriesPos} = Parent,
     {{_LeastMbr, LeastPos}, LeastRest} = least_expansion(
             Fd, SubtreeMbr, EntriesPos),
-    LeastRestPos = [Pos || {Mbr, Pos} <- LeastRest],
+    LeastRestPos = [Pos || {_Mbr, Pos} <- LeastRest],
     case insert_subtree(Fd, LeastPos, Subtree, Level, Depth+1) of
     {ok, NewMbr, NewPos, Inc} ->
         MergedMbr = vtree:merge_mbr(ParentMbr, NewMbr),
@@ -825,7 +811,7 @@ insert_subtree(Fd, RootPos, Subtree, Level, Depth) ->
         {ok, NewMbr, Pos, Inc};
     {splitted, ChildMbr, {Child1Mbr, ChildPos1}, {Child2Mbr, ChildPos2}, Inc} ->
         MergedMbr = vtree:merge_mbr(ParentMbr, ChildMbr),
-        LeastRestPos = [Pos || {Mbr, Pos} <- LeastRest],
+        LeastRestPos = [Pos || {_Mbr, Pos} <- LeastRest],
         if
         % Both nodes of the split fit in the current inner node
         %length(EntriesPos)+2 =< ?MAX_FILLED ->
@@ -866,7 +852,7 @@ least_expansion(Fd, NewMbr, PosList) ->
     MbrAndPos = [{Mbr, Pos} || {{Mbr, _, _}, Pos} <- NodesAndPos],
 
     % Find node that matches best (least expansion of MBR)
-    {_, _, Nth} = lists:foldl(fun({Mbr, Pos}, {MinExp, Nth2, Cnt}) ->
+    {_, _, Nth} = lists:foldl(fun({Mbr, _Pos}, {MinExp, Nth2, Cnt}) ->
         MergedMbr = vtree:merge_mbr(NewMbr, Mbr),
         % if there is a element which need less expansion, put the info
         % into the accumulator
@@ -887,7 +873,7 @@ least_expansion(Fd, NewMbr, PosList) ->
 
 % @doc Returns the ceiling of log_N(X). Returns 1 for X==1.
 -spec log_n_ceil(N::integer(), X::integer()) -> integer().
-log_n_ceil(N, 1) ->
+log_n_ceil(_N, 1) ->
     1;
 log_n_ceil(N, X) ->
     ceiling(math:log(X) / math:log(N)).
@@ -913,22 +899,6 @@ floor(X) when X < 0 ->
     end;
 floor(X) ->
     trunc(X).
-
-% @doc split a list of elements into equally sized chunks (last element might
-%     contain less elements)
--spec chunk_list(List::list(), Size::integer()) -> [list()].
-chunk_list(List, Size) when Size == 0 ->
-    [List];
-chunk_list(List, Size) ->
-    chunk_list(List, Size, 0, [], []).
-chunk_list([], _Size, _Cnt, Chunk, Result) when length(Chunk) > 0 ->
-    lists:reverse([lists:reverse(Chunk)|Result]);
-chunk_list([], _Size, _Cnt, _Chunk, Result) ->
-    lists:reverse(Result);
-chunk_list([H|T], Size, Cnt, Chunk, Result) when Cnt < Size ->
-    chunk_list(T, Size, Cnt+1, [H|Chunk], Result);
-chunk_list([H|T], Size, _Cnt, Chunk, Result) ->
-    chunk_list(T, Size, 1, [H], [lists:reverse(Chunk)|Result]).
 
 % @doc split a list of elements into equally sized chunks (last element might
 %     contain less elements). Applies Fun to every chunk and inserts the
