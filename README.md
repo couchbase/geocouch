@@ -198,7 +198,7 @@ Other supported query arguments
 -------------------------------
 
 ### stale ###
-`stale=ok` is supported. The spatial index won't be rebuild even if
+`stale=ok` is supported. The spatial index won't be rebuilt even if
 new Documents were added. It works for normal spatial queries as well
 as for the spatial List functions.
 
@@ -219,7 +219,7 @@ Views. Compaction of spatial indexes is per Design Document, thus:
 
     curl -X POST 'http://localhost:5984/places/_design/main/_spatial/_compact' -H 'Content-Type: application/json'
 
-To cleanup spatial indexes that are now longer in use (this is per database):
+To cleanup spatial indexes that are no longer in use (this is per database):
 
     curl -X POST 'http://localhost:5984/places/_spatial_cleanup' -H 'Content-Type: application/json'
 
