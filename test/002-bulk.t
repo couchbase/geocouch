@@ -375,15 +375,15 @@ test_seedtree_insert() ->
     SeedTree2Tree = SeedTree2#seedtree_root.tree,
     etap:is(SeedTree2Tree, {{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],
                 [{{66,132,252,718},{node,leaf},
                     {<<"Node718132">>,
                         {{linestring,[[66,132],[252,718]]},
-                        <<"Value718132">>}}}],11362}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],[],9931}}]},
+                        <<"Value718132">>}}}],6975}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],[],6046}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
         "Seed tree is correct (seedtree_insert) (a)"),
 
     NodeNotInTree3 = {{2,3,4,5}, NodeMeta,
@@ -417,32 +417,32 @@ test_seedtree_insert() ->
     etap:is(SeedTree6Tree,
         {{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],[],11362}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],[],6975}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],
                 [{{342,456,959,513},{node,leaf},
                     {<<"intree01">>,
-                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],9931}}]},
+                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],6046}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
         "Seed tree is correct (b)"),
     SeedTree7 = ?MOD:seedtree_insert(SeedTree2, Node6),
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
     etap:is(SeedTree7Tree,
         {{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],
                 [{{66,132,252,718},{node,leaf},
                     {<<"Node718132">>,
                         {{linestring,[[66,132],[252,718]]},
-                        <<"Value718132">>}}}],11362}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],
+                        <<"Value718132">>}}}],6975}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],
                 [{{342,456,959,513},{node,leaf},
                     {<<"intree01">>,
-                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],9931}}]},
+                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],6046}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
         "Seed tree is correct (seedtree_insert) (b)").
 
 
@@ -457,15 +457,15 @@ test_seedtree_insert_list() ->
     etap:is(SeedTree2Tree,
         {{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],
                 [{{66,132,252,718},{node,leaf},
                     {<<"Node718132">>,
                         {{linestring,[[66,132],[252,718]]},
-                        <<"Value718132">>}}}],11362}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],[],9931}}]},
+                        <<"Value718132">>}}}],6975}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],[],6046}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
         "Seed tree is correct (seedtree_insert_list) (a)"),
 
     NodeNotInTree3 = {{2,3,4,5}, NodeMeta,
@@ -488,18 +488,18 @@ test_seedtree_insert_list() ->
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
     etap:is(SeedTree7Tree, {{4,43,980,986},{node,inner},[
         {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],
+            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],
                 [{{66,132,252,718},{node,leaf},
                     {<<"Node718132">>,
                         {{linestring,[[66,132],[252,718]]},
-                        <<"Value718132">>}}}],11362}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],
+                        <<"Value718132">>}}}],6975}},
+            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],
                 [{{342,456,959,513},{node,leaf},
                     {<<"intree01">>,
-                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],9931}}]},
+                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],6046}}]},
         {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
+            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
+            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
         "Seed tree is correct (seedtree_insert_list) (b)").
 
 test_seedtree_init() ->
@@ -508,18 +508,18 @@ test_seedtree_init() ->
     SeedTree1 = ?MOD:seedtree_init(Fd, RootPos, 2),
     etap:is(SeedTree1,
         {seedtree_root, {{4,43,980,986}, {node,inner},
-        [{{4,43,980,960}, {node,inner},{seedtree_leaf,[11362,9931],[],11423}},
-         {{27,163,597,986},{node,inner},{seedtree_leaf,[9258,8480],[],9426}}]},
+        [{{4,43,980,960}, {node,inner},{seedtree_leaf,[6975,6046],[],7036}},
+         {{27,163,597,986},{node,inner},{seedtree_leaf,[5566,5081],[],5734}}]},
          [], 2},
         "Seed tree is correct (seedtree_init) (a)"),
     SeedTree2 = ?MOD:seedtree_init(Fd, RootPos, 3),
     etap:is(SeedTree2, {seedtree_root, {{4,43,980,986}, {node,inner},
         [{{4,43,980,960}, {node,inner},
-            [{{4,43,865,787},{node,inner},{seedtree_leaf,[10099,10719,11088],[],11362}},
-             {{220,45,980,960},{node,inner},{seedtree_leaf,[9538,5338],[],9931}}]},
+            [{{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],[],6975}},
+             {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],[],6046}}]},
          {{27,163,597,986}, {node,inner},
-            [{{37,163,597,911},{node,inner},{seedtree_leaf,[5786,8592],[],9258}},
-             {{27,984,226,986},{node,inner},{seedtree_leaf,[7761],[],8480}}]}]},
+            [{{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
+             {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
          [], 3},
         "Seed tree os cprrect (seedtree_init) (b)"),
 
@@ -550,7 +550,7 @@ test_seedtree_write_single() ->
     {ok, Result1, Height1, _HeightDiff1} = ?MOD:seedtree_write(
             Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     etap:is(Height1, 2, "Height is correct (seedtree_write_single)"),
-    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
+    {ok, ResultPos1, _} = couch_file:append_term(Fd, hd(Result1)),
     {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 8,
         "Number of nodes is correct (seedtree_write_single)"),
@@ -582,7 +582,7 @@ test_seedtree_write_case1() ->
     {ok, Result1, Height1, _HeightDiff1} = ?MOD:seedtree_write(
             Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     etap:is(Height1, 4, "Height is correct (seedtree_write_case1)"),
-    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
+    {ok, ResultPos1, _} = couch_file:append_term(Fd, hd(Result1)),
     {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 45,
         "Number of nodes is correct (seedtree_write_case1)"),
@@ -603,7 +603,7 @@ test_seedtree_write_case1() ->
             TargetTreeHeight2 - Seedtree2_2#seedtree_root.height),
     etap:is(Height2, 3,
         "Height is correct (seedtree_write_case1) (height==1)"),
-    {ok, ResultPos2} = ?MOD:write_parent(Fd2, Result2),
+    {ok, ResultPos2, _} = ?MOD:write_parent(Fd2, Result2),
     {ok, Lookup2} = gc_test_util:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
     etap:is(length(Lookup2), 76,
         "Number of nodes is correct (seedtree_write_case1) (height==1)"),
@@ -624,7 +624,7 @@ test_seedtree_write_case1() ->
             TargetTreeHeight3 - Seedtree3_2#seedtree_root.height),
     etap:is(Height3, 4,
         "Height is correct (seedtree_write_case1) (height==2)"),
-    {ok, ResultPos3} = ?MOD:write_parent(Fd3, Result3),
+    {ok, ResultPos3, _} = ?MOD:write_parent(Fd3, Result3),
     {ok, Lookup3} = gc_test_util:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
     etap:is(length(Lookup3), 208,
         "Number of nodes is correct (seedtree_write_case1) (height==2)"),
@@ -644,7 +644,7 @@ test_seedtree_write_case1() ->
             TargetTreeHeight4 - Seedtree4_2#seedtree_root.height),
     etap:is(Height4, 5,
         "Height is correct (seedtree_write_case1) (height==3)"),
-    {ok, ResultPos4} = ?MOD:write_parent(Fd4, Result4),
+    {ok, ResultPos4, _} = ?MOD:write_parent(Fd4, Result4),
     {ok, Lookup4} = gc_test_util:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
     etap:is(length(Lookup4), 914,
         "Number of nodes is correct (seedtree_write_case1) (height==3)"),
@@ -665,7 +665,7 @@ test_seedtree_write_case1() ->
     etap:is(Height5, 5,
         "Height is correct (seedtree_write_case1) (height==1) "
         "(new data height==4)"),
-    {ok, ResultPos5} = ?MOD:write_parent(Fd5, Result5),
+    {ok, ResultPos5, _} = ?MOD:write_parent(Fd5, Result5),
     {ok, Lookup5} = gc_test_util:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     etap:is(length(Lookup5), 1051,
         "Number of nodes is correct (seedtree_write_case1) (height==1) "
@@ -695,7 +695,7 @@ test_seedtree_write_case2() ->
     {ok, Result1, Height1, _HeightDiff1} = ?MOD:seedtree_write(
             Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     etap:is(Height1, 4, "Height is correct (seedtree_write_case2)"),
-    {ok, ResultPos1} = ?MOD:write_parent(Fd, Result1),
+    {ok, ResultPos1, _} = ?MOD:write_parent(Fd, Result1),
     {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 105,
         "Number of nodes is correct (seedtree_write_case2)"),
@@ -716,7 +716,7 @@ test_seedtree_write_case2() ->
             Fd, Seedtree2_2,
             TargetTreeHeight - Seedtree2_2#seedtree_root.height),
     etap:is(Height2, 5, "Height is correct (seedtree_write_case2) (2 levels)"),
-    {ok, ResultPos2} = ?MOD:write_parent(Fd, Result2),
+    {ok, ResultPos2, _} = ?MOD:write_parent(Fd, Result2),
     {ok, Lookup2} = gc_test_util:lookup(Fd, ResultPos2, {0,0,1001,1001}),
     etap:is(length(Lookup2), 325,
         "Number of nodes is correct (seedtree_write_case2) (2 levels)"),
@@ -737,7 +737,7 @@ test_seedtree_write_case2() ->
             Fd3, Seedtree3_2,
             TargetTreeHeight3 - Seedtree3_2#seedtree_root.height),
     etap:is(Height3, 3, "Height is correct (seedtree_write_case2) (1 level)"),
-    {ok, ResultPos3} = ?MOD:write_parent(Fd3, Result3),
+    {ok, ResultPos3, _} = ?MOD:write_parent(Fd3, Result3),
     {ok, Lookup3} = gc_test_util:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
     etap:is(length(Lookup3), 114,
         "Number of nodes is correct (seedtree_write_case2) (1 level)"),
@@ -760,7 +760,7 @@ test_seedtree_write_case2() ->
     etap:is(Height4, 4,
         "Height is correct (seedtree_write_case2) "
         "(input tree 1 level too high)"),
-    {ok, ResultPos4} = ?MOD:write_parent(Fd4, Result4),
+    {ok, ResultPos4, _} = ?MOD:write_parent(Fd4, Result4),
     {ok, Lookup4} = gc_test_util:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
     etap:is(length(Lookup4), 246,
         "Number of nodes is correct (seedtree_write_case2) "
@@ -785,7 +785,7 @@ test_seedtree_write_case2() ->
     etap:is(Height5, 4,
         "Height is correct (seedtree_write_case2) "
         "(input tree 2 levels too high)"),
-    {ok, ResultPos5} = ?MOD:write_parent(Fd5, Result5),
+    {ok, ResultPos5, _} = ?MOD:write_parent(Fd5, Result5),
     {ok, Lookup5} = gc_test_util:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     etap:is(length(Lookup5), 296,
         "Number of nodes is correct (seedtree_write_case2) "
@@ -809,7 +809,7 @@ test_seedtree_write_case2() ->
     etap:is(Height6, 4,
         "Height is correct (seedtree_write_case2) "
         "(input tree 2 levels too high, massive overflow)"),
-    {ok, ResultPos6} = ?MOD:write_parent(Fd6, Result6),
+    {ok, ResultPos6, _} = ?MOD:write_parent(Fd6, Result6),
     {ok, Lookup6} = gc_test_util:lookup(Fd6, ResultPos6, {0,0,1001,1001}),
     etap:is(length(Lookup6), 220,
         "Number of nodes is correct (seedtree_write_case2) "
@@ -838,7 +838,7 @@ test_seedtree_write_case3() ->
     {ok, Result1, Height1, _HeightDiff1} = ?MOD:seedtree_write(
             Fd, Seedtree2, TargetTreeHeight - Seedtree2#seedtree_root.height),
     etap:is(Height1, 4, "Height is correct (seedtree_write_case3)"),
-    {ok, ResultPos1} = couch_file:append_term(Fd, hd(Result1)),
+    {ok, ResultPos1, _} = couch_file:append_term(Fd, hd(Result1)),
     {ok, Lookup1} = gc_test_util:lookup(Fd, ResultPos1, {0,0,1001,1001}),
     etap:is(length(Lookup1), 37,
         "Number of nodes is correct (seedtree_write_case3)"),
@@ -868,7 +868,7 @@ test_seedtree_write_case3() ->
     etap:is(Height2, 5,
         "Height is correct (seedtree_write_case3) "
         "(input tree 2 levels too small)"),
-    {ok, ResultPos2} = ?MOD:write_parent(Fd2, Result2),
+    {ok, ResultPos2, _} = ?MOD:write_parent(Fd2, Result2),
     {ok, Lookup2_1} = gc_test_util:lookup(Fd2, ResultPos2, {0,0,1001,1001}),
     etap:is(length(Lookup2_1), 92,
         "Number of nodes is correct (seedtree_write_case3) "
@@ -894,7 +894,7 @@ test_seedtree_write_case3() ->
         "Height is correct (seedtree_write_case3) "
         "(input tree 1 level too small, seed tree height==1))"),
     % Several parents => create new root node
-    {ok, ResultPos3} = ?MOD:write_parent(Fd3, Result3),
+    {ok, ResultPos3, _} = ?MOD:write_parent(Fd3, Result3),
     {ok, Lookup3} = gc_test_util:lookup(Fd3, ResultPos3, {0,0,1001,1001}),
     etap:is(length(Lookup3), 68,
         "Number of nodes is correct (seedtree_write_case3) "
@@ -918,7 +918,7 @@ test_seedtree_write_case3() ->
     etap:is(Height4, 4,
         "Height is correct (seedtree_write_case3) "
         "(input tree 1 level too small, seed tree height==2)"),
-    {ok, ResultPos4} = ?MOD:write_parent(Fd4, Result4),
+    {ok, ResultPos4, _} = ?MOD:write_parent(Fd4, Result4),
     {ok, Lookup4} = gc_test_util:lookup(Fd4, ResultPos4, {0,0,1001,1001}),
     etap:is(length(Lookup4), 200,
         "Number of nodes is correct (seedtree_write_case3) "
@@ -942,7 +942,7 @@ test_seedtree_write_case3() ->
     etap:is(Height5, 5,
         "Height is correct (seedtree_write_case3) "
         "(input tree 2 levels too small, seed tree height==2)"),
-    {ok, ResultPos5} = couch_file:append_term(Fd5, hd(Result5)),
+    {ok, ResultPos5, _} = couch_file:append_term(Fd5, hd(Result5)),
     {ok, Lookup5} = gc_test_util:lookup(Fd5, ResultPos5, {0,0,1001,1001}),
     etap:is(length(Lookup5), 772,
         "Number of nodes is correct (seedtree_write_case3) "
@@ -1185,7 +1185,8 @@ test_seedtree_write_insert() ->
     % This test will lead to an OMT tree with several nodes. There was a bug
     % that couldn't handle it.
     {OmtTree1, OmtHeight1} = ?MOD:omt_load(Nodes2, ?MAX_FILLED),
-    {ok, Pos1} = couch_file:append_term(Fd, {Mbr1, #node{type=leaf}, Nodes1}),
+    {ok, Pos1, _} = couch_file:append_term(Fd, {Mbr1, #node{type=leaf},
+        Nodes1}),
     Result1 = ?MOD:seedtree_write_insert(Fd, [Pos1], OmtTree1, OmtHeight1),
     etap:is( length(Result1), 3, "Multiple root nodes"),
 
@@ -1224,7 +1225,8 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
     {ok, MbrAndPosList} = ?MOD:omt_write_tree(Fd, Omt),
     {Mbrs, Poss} = lists:unzip(MbrAndPosList),
     Mbr = vtree:calc_mbr(Mbrs),
-    {ok, RootPos} = couch_file:append_term(Fd, {Mbr, #node{type=inner}, Poss}),
+    {ok, RootPos, _} = couch_file:append_term(Fd, {Mbr, #node{type=inner},
+        Poss}),
 
     Nodes = lists:foldl(fun(I, Acc) ->
         Node = {{200+I,250+I,300+I,350+I}, #node{type=leaf},

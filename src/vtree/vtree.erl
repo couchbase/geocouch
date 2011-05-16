@@ -339,7 +339,7 @@ split_node({_Mbr, Meta, _Entries}=Node) ->
 %                     {MBR_of_node2, position_in_file_node2}}
 insert(Fd, nil, Id, {Mbr, Meta, Geom, Value}) ->
     InitialTree = {Mbr, #node{type=leaf}, [{Mbr, Meta, {Id, {Geom, Value}}}]},
-    {ok, Pos} = couch_file:append_term(Fd, InitialTree),
+    {ok, Pos, _} = couch_file:append_term(Fd, InitialTree),
     {ok, Mbr, Pos, 1};
 
 insert(Fd, RootPos, Id, Node) ->
@@ -371,15 +371,15 @@ insert(Fd, RootPos, NewNodeId,
         if
         EntryNum < ?MAX_FILLED ->
             %io:format("There's plenty of space (leaf node)~n", []),
-            {ok, Pos} = couch_file:append_term(Fd, LeafNode),
+            {ok, Pos, _} = couch_file:append_term(Fd, LeafNode),
             {ok, LeafNodeMbr, Pos, CallDepth};
         % do the fancy split algorithm
         true ->
             %io:format("We need to split (leaf node)~n~p~n", [LeafNode]),
             {SplittedMbr, {Node1Mbr, _, _}=Node1, {Node2Mbr, _, _}=Node2}
                     = split_node(LeafNode),
-            {ok, Pos1} = couch_file:append_term(Fd, Node1),
-            {ok, Pos2} = couch_file:append_term(Fd, Node2),
+            {ok, Pos1, _} = couch_file:append_term(Fd, Node1),
+            {ok, Pos2, _} = couch_file:append_term(Fd, Node2),
             {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2},
              CallDepth}
         end;
@@ -417,7 +417,7 @@ insert(Fd, RootPos, NewNodeId,
             %     could remove the old node and append the new one at the
             %     end of the list.
             NewNode2 = {NewMbr, #node{type=inner}, A ++ [ChildPos] ++ tl(B)},
-            {ok, Pos} = couch_file:append_term(Fd, NewNode2),
+            {ok, Pos, _} = couch_file:append_term(Fd, NewNode2),
             {ok, NewMbr, Pos, TreeHeight};
         {splitted, ChildMbr, {Child1Mbr, ChildPos1}, {Child2Mbr, ChildPos2},
          TreeHeight} ->
@@ -429,7 +429,7 @@ insert(Fd, RootPos, NewNodeId,
                 {A, B} = lists:split(MinPos-1, EntriesPos),
                 NewNode2 = {NewMbr, #node{type=inner},
                             A ++ [ChildPos1, ChildPos2] ++ tl(B)},
-                {ok, Pos} = couch_file:append_term(Fd, NewNode2),
+                {ok, Pos, _} = couch_file:append_term(Fd, NewNode2),
                 {ok, NewMbr, Pos, TreeHeight};
             % We need to split the inner node
             true ->
@@ -444,8 +444,8 @@ insert(Fd, RootPos, NewNodeId,
                 {SplittedMbr, {Node1Mbr, _, _}=Node1, {Node2Mbr, _, _}=Node2}
                         = split_node({NewMbr, #node{type=inner},
                                       A ++ [Child1, Child2] ++ tl(B)}),
-                {ok, Pos1} = couch_file:append_term(Fd, Node1),
-                {ok, Pos2} = couch_file:append_term(Fd, Node2),
+                {ok, Pos1, _} = couch_file:append_term(Fd, Node1),
+                {ok, Pos2, _} = couch_file:append_term(Fd, Node2),
                 {splitted, SplittedMbr, {Node1Mbr, Pos1}, {Node2Mbr, Pos2},
                  TreeHeight}
             end
@@ -458,7 +458,7 @@ insert(Fd, RootPos, NewNodeId,
             %io:format("Creating new root node~n", []),
             NewRoot = {NewRootMbr, #node{type=inner},
                            [SplittedNode1, SplittedNode2]},
-            {ok, NewRootPos} = couch_file:append_term(Fd, NewRoot),
+            {ok, NewRootPos, _} = couch_file:append_term(Fd, NewRoot),
             {ok, NewRootMbr, NewRootPos, TreeHeight2+1};
         _ ->
             Inserted
@@ -693,7 +693,7 @@ delete(Fd, DeleteId, DeleteMbr, [NodePos|NodePosTail]) ->
                     {empty, NodePos};
                 _ ->
                     NodeMbrNew = calc_nodes_mbr(EntriesNew),
-                    {ok, NodeNewPos} = couch_file:append_term(Fd,
+                    {ok, NodeNewPos, _} = couch_file:append_term(Fd,
                                           {NodeMbrNew, NodeMeta, EntriesNew}),
                     % NodePos is the old position in file
                     {ok, NodeNewPos, NodePos}
@@ -711,7 +711,7 @@ delete(Fd, DeleteId, DeleteMbr, [NodePos|NodePosTail]) ->
 rebuild_node(Fd, NodeMeta, EntriesPos) ->
     Entries = pos_to_data(Fd, EntriesPos),
     Mbr = calc_nodes_mbr(Entries),
-    {ok, NodePos} = couch_file:append_term(Fd, {Mbr, NodeMeta, EntriesPos}),
+    {ok, NodePos, _} = couch_file:append_term(Fd, {Mbr, NodeMeta, EntriesPos}),
     NodePos.
 
 % It's a bit like lists:keytake/3, but uses a function that returns a key

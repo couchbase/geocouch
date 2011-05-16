@@ -14,7 +14,7 @@ builddir:
 buildandtest: all test
 
 runtests:
-	ERL_FLAGS="-pa ${COUCH_SRC}" prove ./test/*.t
+	ERL_FLAGS="-pa ${COUCH_SRC} -pa ${COUCH_SRC}/../snappy" prove ./test/*.t
 
 check: clean builddir compileforcheck runtests
 	rm -rf build
