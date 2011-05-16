@@ -479,7 +479,8 @@ area(Mbr) ->
 merge_mbr(Mbr1, Mbr2) ->
     {W1, S1, E1, N1} = Mbr1,
     {W2, S2, E2, N2} = Mbr2,
-    {min(W1, W2), min(S1, S2), max(E1, E2), max(N1, N2)}.
+    {erlang:min(W1, W2), erlang:min(S1, S2),
+     erlang:max(E1, E2), erlang:max(N1, N2)}.
 
 
 find_area_min_nth([H|T]) ->
@@ -567,8 +568,8 @@ best_split({PartW, PartS, PartE, PartN}) ->
     MbrE = calc_nodes_mbr(PartE),
     MbrS = calc_nodes_mbr(PartS),
     MbrN = calc_nodes_mbr(PartN),
-    MaxWE = max(length(PartW), length(PartE)),
-    MaxSN = max(length(PartS), length(PartN)),
+    MaxWE = erlang:max(length(PartW), length(PartE)),
+    MaxSN = erlang:max(length(PartS), length(PartN)),
     if
         MaxWE < MaxSN ->
             [{MbrW, PartW}, {MbrE, PartE}];
@@ -635,7 +636,8 @@ calc_overlap(Mbr1, Mbr2) ->
         not IsDisjoint ->
             {W1, S1, E1, N1} = Mbr1,
             {W2, S2, E2, N2} = Mbr2,
-            {max(W1, W2), max(S1, S2), min(E1, E2), min(N1, N2)};
+            {erlang:max(W1, W2), erlang:max(S1, S2),
+             erlang:min(E1, E2), erlang:min(N1, N2)};
         true ->
             {0, 0, 0, 0}
     end.
@@ -748,10 +750,3 @@ pos_to_data(_Fd, [], DataList) ->
 pos_to_data(Fd, [H|T], DataList) ->
     {ok, Data} = couch_file:pread_term(Fd, H),
     pos_to_data(Fd, T, DataList ++ [Data]).
-
-min(A, B) ->
-    if A > B -> B ; true -> A end.
-
-
-max(A, B) ->
-    if A > B -> A ; true -> B end.
