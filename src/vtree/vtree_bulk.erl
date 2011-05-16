@@ -75,12 +75,10 @@ bulk_load(Fd, _RootPos, TargetTreeHeight, Nodes) when TargetTreeHeight==0 ->
     {_Mbrs, PosList} = lists:unzip(MbrAndPosList),
     NewNodes = load_nodes(Fd, PosList),
     {ok, NewPos, _} = case length(NewNodes) of
-    % single node as root
-    1 ->
-        couch_file:append_term(Fd, hd(NewNodes));
-    % multiple nodes
-    _ ->
-        write_parent(Fd, NewNodes)
+        % single node as root
+        1 -> couch_file:append_term(Fd, hd(NewNodes));
+        % multiple nodes
+        _ -> write_parent(Fd, NewNodes)
     end,
     {ok, NewPos, TreeHeight};
 bulk_load(Fd, RootPos, TargetTreeHeight, Nodes) ->
