@@ -330,7 +330,7 @@ reply_all(#group_state{waiting_list=WaitList}=State, Reply) ->
 open_db_group(DbName, DDocId) ->
     case couch_db:open_int(DbName, []) of
     {ok, Db} ->
-        case couch_db:open_doc(Db, DDocId) of
+        case couch_db:open_doc(Db, DDocId, [ejson_body]) of
         {ok, Doc} ->
             {ok, Db, design_doc_to_spatial_group(Doc)};
         Else ->
