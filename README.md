@@ -16,7 +16,7 @@ Installation
 
 ### Get GeoCouch:
 
-    git clone https://github.com/couchone/geocouch.git
+    git clone https://github.com/couchbase/geocouch.git
     cd geocouch
 
 ### Compilation
