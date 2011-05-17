@@ -57,7 +57,7 @@ over (from `<geocouch>/share/www/script/test` to
 
     cp <geocouch>/share/www/script/test/* <vanilla-couch>/share/www/script/test/
 
-Add the test to `<vanilla-couch>/share/www/script/test/couch_tests.js`
+Add the test to `<vanilla-couch>/share/www/script/couch_tests.js`
 
     loadTest("spatial.js");
     loadTest("list_spatial.js");
