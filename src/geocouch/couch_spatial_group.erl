@@ -342,7 +342,8 @@ open_db_group(DbName, DDocId) ->
     end.
 
 
-design_doc_to_spatial_group(#doc{id=Id,body={Fields}}) ->
+design_doc_to_spatial_group(Doc) ->
+    #doc{id=Id, body={Fields}} = couch_doc:with_ejson_body(Doc),
     Language = couch_util:get_value(<<"language">>, Fields, <<"javascript">>),
     {DesignOptions} = couch_util:get_value(<<"options">>, Fields, {[]}),
     {RawIndexes} = couch_util:get_value(<<"spatial">>, Fields, {[]}),
