@@ -417,8 +417,13 @@ prepare_group({RootDir, DbName, #spatial_group{sig=Sig}=Group}, ForceReset)->
 
 get_index_header_data(#spatial_group{current_seq=Seq, purge_seq=PurgeSeq,
             id_btree=IdBtree,indexes=Indexes}) ->
+    % Fill out an empty record with the information we need to persist on disk
     IndexStates = [
-        {I#spatial.treepos, I#spatial.update_seq, I#spatial.purge_seq} ||
+        #spatial{
+             treepos=I#spatial.treepos,
+             treeheight=I#spatial.treeheight,
+             update_seq=I#spatial.update_seq,
+             purge_seq=I#spatial.purge_seq} ||
         I <- Indexes
     ],
     #spatial_index_header{
@@ -499,17 +504,22 @@ reset_file(Db, Fd, DbName, #spatial_group{sig=Sig,name=Name} = Group) ->
 init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group, nil) ->
     init_group(Db, Fd, Group,
         #spatial_index_header{seq=0, purge_seq=couch_db:get_purge_seq(Db),
-            id_btree_state=nil, index_states=[{nil, 0, 0} || _ <- Indexes]});
-init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group,
-           IndexHeader) ->
-    #spatial_index_header{seq=Seq, purge_seq=PurgeSeq,
-            id_btree_state=IdBtreeState, index_states=IndexStates} = IndexHeader,
+            id_btree_state=nil, index_states=[#spatial{} || _ <- Indexes]});
+init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group, IndexHeader) ->
+    #spatial_index_header{
+        seq=Seq,
+        purge_seq=PurgeSeq,
+        id_btree_state=IdBtreeState,
+        index_states=IndexStates
+    } = IndexHeader,
     {ok, IdBtree} = couch_btree:open(IdBtreeState, Fd),
     Indexes2 = lists:zipwith(
-        fun({IndexTreePos, USeq, PSeq}, Index) ->
-            %{ok, Btree} = couch_btree:open(BtreeState, Fd),
+       fun(State, Index) ->
             Index#spatial{
-                treepos=IndexTreePos, update_seq=USeq, purge_seq=PSeq}
+                treepos=State#spatial.treepos,
+                treeheight=State#spatial.treeheight,
+                update_seq=State#spatial.update_seq,
+                purge_seq=State#spatial.purge_seq}
         end,
         IndexStates, Indexes),
     Group#spatial_group{db=Db, fd=Fd, current_seq=Seq, purge_seq=PurgeSeq,

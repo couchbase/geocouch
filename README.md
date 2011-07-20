@@ -55,6 +55,7 @@ Add the test to `<vanilla-couch>/share/www/script/test/couch_tests.js`
     loadTest("multiple_spatial_rows.js");
     loadTest("spatial_compaction.js");
     loadTest("spatial_design_docs.js");
+    loadTest("spatial_bugfixes.js");
 
 ### Run CouchDB with GeoCouch
 
