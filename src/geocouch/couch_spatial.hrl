@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--define(LATEST_SPATIAL_DISK_VERSION, 1).
+-define(LATEST_SPATIAL_DISK_VERSION, 2).
 
 % The counterpart to #spatial_group in the view server is #group
 -record(spatial_group, {
@@ -48,7 +48,10 @@
     seq=0,
     purge_seq=0,
     id_btree_state=nil, % pointer/position in file to back-index
-    index_states=nil, % pointers/positions to the indexes
+    % One #spatial record for every index that is stripped by the information
+    % that can be retrieved from a Design Document or during runtime.
+    % Only the fields that need to persisted will have sane values
+    index_states=nil,
     disk_version = ?LATEST_SPATIAL_DISK_VERSION
 }).
 
