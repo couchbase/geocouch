@@ -4,3 +4,5 @@
 *.rej
 erl_crash.dump
 coverage
+*.tar.gz
+tmp
