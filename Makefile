@@ -1,4 +1,5 @@
 ERL = erl -boot start_clean
+VERSION=$(shell git describe)
 
 all: builddir compile
 
@@ -32,11 +33,9 @@ cover: compile
 clean:	
 	rm -rf build
 	rm -f test/*.beam
+	rm *.tar.gz
 
-dist:
-	mkdir -p tmp/geocouch-`git describe`
-	rm -rf tmp/geocouch-`git describe`/*
-	cp Emakefile Makefile README.md tmp/geocouch-`git describe`/
-	cp -R etc share src test tmp/geocouch-`git describe`/
-	find tmp/geocouch-`git describe` -name '*.beam' | xargs rm -f
-	tar -C tmp -czf geocouch-`git describe`.tar.gz geocouch-`git describe`
+geocouch-$(VERSION).tar.gz:
+	git archive --prefix=geocouch-$(VERSION)/ --format tar HEAD | gzip -9vc > $@
+
+dist: geocouch-$(VERSION).tar.gz
