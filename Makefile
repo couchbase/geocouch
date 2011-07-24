@@ -30,10 +30,10 @@ cover: compile
 	@mkdir -p coverage
 	erl -noshell -pa build -pa ${COUCH_SRC} -eval 'cover:compile("src/vtree/vtree_bulk", [{i, "'${COUCH_SRC}'"}]),vtree_bulk:test(),cover:analyse_to_file(vtree_bulk, "coverage/vtree_bulk_coverage.html", [html]).' -s init stop;
 
-clean:	
+clean:
 	rm -rf build
 	rm -f test/*.beam
-	rm *.tar.gz
+	rm -f *.tar.gz
 
 geocouch-$(VERSION).tar.gz:
 	git archive --prefix=geocouch-$(VERSION)/ --format tar HEAD | gzip -9vc > $@
