@@ -110,5 +110,6 @@ compact_spatial(OldFd, NewFd, Index, EmptyIndex) ->
         NewFd, TreePos3, TreeHeight3, Uncopied),
     EmptyIndex#spatial{
         treepos = NewTreePos,
-        treeheight = NewTreeHeight
+        treeheight = NewTreeHeight,
+        fd = NewFd
     }.

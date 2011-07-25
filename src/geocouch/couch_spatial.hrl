@@ -40,7 +40,10 @@
     index_names=[],
     id_num=0, % comes from couch_spatial_group requirements
     update_seq=0, % comes from couch_spatial_group requirements
-    purge_seq=0 % comes from couch_spatial_group requirements
+    purge_seq=0, % comes from couch_spatial_group requirements
+    % Store the FD from the group within the index as well, so we don't have
+    % to pass on the group when we only want the FD to write to/read from
+    fd=nil
 }).
 
 % The counterpart to #spatial_index_header in the view server is #index_header
