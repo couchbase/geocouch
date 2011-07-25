@@ -519,7 +519,8 @@ init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group, IndexHeader) ->
                 treepos=State#spatial.treepos,
                 treeheight=State#spatial.treeheight,
                 update_seq=State#spatial.update_seq,
-                purge_seq=State#spatial.purge_seq}
+                purge_seq=State#spatial.purge_seq,
+                fd=Fd}
         end,
         IndexStates, Indexes),
     Group#spatial_group{db=Db, fd=Fd, current_seq=Seq, purge_seq=PurgeSeq,
