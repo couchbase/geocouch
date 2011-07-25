@@ -93,7 +93,7 @@ output_list(Req, Db, DDoc, LName, Index, QueryArgs, Etag, Group) ->
         SendRowFun = make_spatial_get_row_fun(QServer, Resp),
         FoldAccInit = {undefined, ""},
         {ok, {_Resp, Go}} = couch_spatial:fold(
-            Group, Index, SendRowFun, FoldAccInit, Bbox, Bounds),
+            Index, SendRowFun, FoldAccInit, Bbox, Bounds),
         case Go of
         [] ->
             {Proc, _DDocId} = QServer,

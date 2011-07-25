@@ -130,7 +130,7 @@ output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
         % might be undefined) and the actual accumulator we only care
         % about in spatiallist functions)
         {ok, {Resp, _Acc}} = couch_spatial:fold(
-            Group, Index, FoldFun, FoldAccInit, Bbox, Bounds),
+            Index, FoldFun, FoldAccInit, Bbox, Bounds),
         finish_spatial_fold(Req, Resp)
     end).
 
