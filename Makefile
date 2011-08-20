@@ -1,13 +1,13 @@
-ERL = erl -boot start_clean
+ERL=erl
 VERSION=$(shell git describe)
 
 all: builddir compile
 
 compile:
-	@$(ERL) -pa build -noinput +B -eval 'case make:all([{i, "'${COUCH_SRC}'"}]) of up_to_date -> halt(0); error -> halt(1) end.'
+	@$(ERL) -boot start_clean -pa build -noinput +B -eval 'case make:all([{i, "'${COUCH_SRC}'"}]) of up_to_date -> halt(0); error -> halt(1) end.'
 
 compileforcheck:
-	@$(ERL) -pa build -noinput +B -eval 'case make:all([{i, "'${COUCH_SRC}'"}, {d, makecheck}]) of up_to_date -> halt(0); error -> halt(1) end.'
+	@$(ERL) -boot start_clean -pa build -noinput +B -eval 'case make:all([{i, "'${COUCH_SRC}'"}, {d, makecheck}]) of up_to_date -> halt(0); error -> halt(1) end.'
 
 builddir:
 	@mkdir -p build
