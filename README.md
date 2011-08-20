@@ -44,10 +44,10 @@ Run "make" in your <geocouch> directory
     make
 
 Copy the configuration file for GeoCouch from
-`<geocouch>/etc/couchdb/local.d/` to
-`<vanilla-couch>/etc/couchdb/local.d/`
+`<geocouch>/etc/couchdb/default.d/` to
+`<vanilla-couch>/etc/couchdb/default.d/`
 
-    cp <geocouch>/etc/couchdb/local.d/geocouch.ini <vanilla-couch>/etc/couchdb/local.d/
+    cp <geocouch>/etc/couchdb/default.d/geocouch.ini <vanilla-couch>/etc/couchdb/default.d/
 
 ### Futon tests
 
