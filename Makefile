@@ -1,6 +1,6 @@
 ERL = erl -boot start_clean
 
-all: builddir compile 
+all: builddir compile
 
 compile:
 	@$(ERL) -pa build -noinput +B -eval 'case make:all([{i, "'${COUCH_SRC}'"}]) of up_to_date -> halt(0); error -> halt(1) end.'
