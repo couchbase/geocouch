@@ -31,59 +31,16 @@
 }).
 
 
-% From couch_query_servers.erl
 start_doc_map(Lang, Functions, Lib) ->
-    Proc = get_os_process(Lang),
-    case Lib of
-    {[]} -> ok;
-    Lib ->
-        true = couch_query_servers:proc_prompt(Proc, [<<"add_lib">>, Lib])
-    end,
-    lists:foreach(fun(FunctionSource) ->
-        true = couch_query_servers:proc_prompt(
-            Proc, [<<"add_fun">>, FunctionSource])
-    end, Functions),
-    {ok, Proc}.
-% Needed for start_doc_map/3
-get_os_process(Lang) ->
-    case gen_server:call(couch_query_servers, {get_proc, Lang}) of
-    {ok, Proc, {QueryConfig}} ->
-        case (catch couch_query_servers:proc_prompt(Proc, [<<"reset">>, {QueryConfig}])) of
-        true ->
-            Timeout = case couch_util:get_value(<<"timeout">>, QueryConfig) of
-                undefined ->
-                    % This happens in CouchDB 1.0.x. Default to OS process timeout.
-                    list_to_integer(couch_config:get(
-                                    "couchdb", "os_process_timeout", "5000"));
-                FoundTimeout ->
-                    FoundTimeout
-            end,
-            proc_set_timeout(Proc, Timeout),
-            link(Proc#proc.pid),
-            gen_server:call(couch_query_servers, {unlink_proc, Proc#proc.pid}),
-            Proc;
-        _ ->
-            catch proc_stop(Proc),
-            get_os_process(Lang)
-        end;
-    Error ->
-        throw(Error)
-    end.
-% Needed for get_os_process/1
-proc_set_timeout(Proc, Timeout) ->
-    {Mod, Func} = Proc#proc.set_timeout_fun,
-    apply(Mod, Func, [Proc#proc.pid, Timeout]).
-% Needed for get_os_process/1
-proc_stop(Proc) ->
-    {Mod, Func} = Proc#proc.stop_fun,
-    apply(Mod, Func, [Proc#proc.pid]).
+    ?LOG_INFO("start_doc_map: ~p", [Functions]),
+    couch_view_server:get_server(Lang, Functions, []).
 
 
 % From couch_httpd_show
 start_list_resp(QServer, LName, Req, Db, Head, Etag) ->
     JsonReq = couch_httpd_external:json_req_obj(Req, Db),
-    [<<"start">>,Chunks,JsonResp] = couch_query_servers:ddoc_proc_prompt(QServer,
-        [<<"lists">>, LName], [Head, JsonReq]),
+    {ok, Chunks, JsonResp} =
+        couch_app_server:list_start(QServer, Req, Db, LName, Head),
     JsonResp2 = apply_etag(JsonResp, Etag),
     #extern_resp_args{
         code = Code,

@@ -85,21 +85,18 @@ output_list(Req, Db, DDoc, LName, Index, QueryArgs, Etag, Group) ->
         bounds = Bounds
     } = QueryArgs,
 
-    couch_query_servers:with_ddoc_proc(DDoc, fun(QServer) ->
+    couch_app_server:list_view(DDoc, fun(QServer) ->
         StartListRespFun = make_spatial_start_resp_fun(QServer, Db, LName),
         CurrentSeq = Group#spatial_group.current_seq,
         {ok, Resp, BeginBody} = StartListRespFun(Req, Etag, [], CurrentSeq),
         geocouch_duplicates:send_non_empty_chunk(Resp, BeginBody),
-        SendRowFun = make_spatial_get_row_fun(QServer, Resp),
+        SendRowFun = make_spatial_get_row_fun(QServer, Resp, Db),
         FoldAccInit = {undefined, ""},
         {ok, {_Resp, Go}} = couch_spatial:fold(
             Index, SendRowFun, FoldAccInit, Bbox, Bounds),
         case Go of
         [] ->
-            {Proc, _DDocId} = QServer,
-            [<<"end">>, Chunks] = couch_query_servers:proc_prompt(
-                                      Proc, [<<"list_end">>]),
-%            Chunk = BeginBody ++ ?b2l(?l2b(Chunks)),
+            {ok, Chunks} = couch_app_server:list_end(QServer),
             Chunk = ?b2l(?l2b(Chunks)),
             geocouch_duplicates:send_non_empty_chunk(Resp, Chunk);
         stop ->
@@ -114,19 +111,18 @@ make_spatial_start_resp_fun(QueryServer, Db, LName) ->
     fun(Req, Etag, _Acc, UpdateSeq) ->
         Head = {[{<<"update_seq">>, UpdateSeq}]},
         geocouch_duplicates:start_list_resp(QueryServer, LName, Req, Db, Head, Etag)
-%        couch_httpd_show:start_list_resp(QueryServer, LName, Req, Db, Head, Etag)
     end.
 
 % Counterpart to make_map_send_row_fun/1 in couch_http_show.
-make_spatial_get_row_fun(QueryServer, Resp) ->
+make_spatial_get_row_fun(QueryServer, Resp, Db) ->
     fun({{_Bbox, _DocId}, {_Geom, _Value}}=Row, _Acc) ->
-        {State, Result} = send_list_row(Resp, QueryServer, Row),
+        {State, Result} = send_list_row(Resp, QueryServer, Db, Row),
         {State, {Resp, Result}}
     end.
 
-send_list_row(Resp, QueryServer, Row) ->
+send_list_row(Resp, QueryServer, Row, Db) ->
     try
-        [Go, Chunks] = prompt_list_row(QueryServer, Row),
+        {Go, Chunks} = couch_app_server:list_row(QueryServer, Db, Row, false, false),
         Chunk = ?b2l(?l2b(Chunks)),
         geocouch_duplicates:send_non_empty_chunk(Resp, Chunk),
         case Go of
@@ -140,8 +136,3 @@ send_list_row(Resp, QueryServer, Row) ->
             send_chunked_error(Resp, Error),
             throw({already_sent, Resp, Error})
     end.
-
-prompt_list_row({Proc, _DDocId}, {{Bbox, DocId}, {Geom, Value}}) ->
-    JsonRow = {[{id, DocId}, {value, Value}, {bbox, tuple_to_list(Bbox)},
-        {geometry, couch_spatial_updater:geocouch_to_geojsongeom(Geom)}]},
-    couch_query_servers:proc_prompt(Proc, [<<"list_row">>, JsonRow]).

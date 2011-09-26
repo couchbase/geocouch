@@ -67,7 +67,7 @@ update(Owner, Group) ->
             %?LOG_DEBUG("enum_doc_since: ~p", [Acc]),
             {ok, {ChangesProcessed+1, process_doc(Db, Owner, DocInfo, Acc)}}
         end, {0, {[], Group, IndexEmptyKVs, []}}, []),
-     %?LOG_DEBUG("enum_doc_since results: ~p~n~p~n~p", [UncomputedDocs, ViewKVsToAdd, DocIdViewIdKeys]),
+    %?LOG_DEBUG("enum_doc_since results: ~p~n~p~n~p", [UncomputedDocs, ViewKVsToAdd, DocIdViewIdKeys]),
     couch_task_status:set_update_frequency(0),
     couch_task_status:update("Finishing."),
     {Group4, Results} = spatial_compute(Group3, UncomputedDocs),
@@ -75,7 +75,7 @@ update(Owner, Group) ->
     %?LOG_DEBUG("spatial_compute results: ~p", [Results]),
     {ViewKVsToAdd2, DocIdViewIdKeys2} = view_insert_query_results(
             UncomputedDocs, Results, ViewKVsToAdd, DocIdViewIdKeys),
-    couch_query_servers:stop_doc_map(Group4#spatial_group.query_server),
+    couch_view_server:ret_server(Group#spatial_group.query_server),
     NewSeq = couch_db:get_update_seq(Db),
 ?LOG_DEBUG("new seq num: ~p", [NewSeq]),
     {ok, Group5} = write_changes(Group4, ViewKVsToAdd2, DocIdViewIdKeys2,
@@ -138,16 +138,14 @@ spatial_compute(#spatial_group{def_lang=DefLang, lib=Lib, query_server=QueryServ
     {ok, Results} = spatial_docs(QueryServer, Docs),
     {Group#spatial_group{query_server=QueryServer}, Results}.
 
-% Pendant to couch_query_servers:map_docs/2
 spatial_docs(Proc, Docs) ->
     % send the documents
     Results = lists:map(
         fun(Doc) ->
-            Json = couch_doc:to_json_obj(Doc, []),
-
             % NOTE vmx: perhaps should map_doc renamed to something more
             % general as it can be used for most indexers
-            FunsResults = couch_query_servers:proc_prompt(Proc, [<<"map_doc">>, Json]),
+            {ok, FunsResults} = couch_view_server:map(Proc, [Doc]),
+
             % the results are a json array of function map yields like this:
             % [FunResults1, FunResults2 ...]
             % where funresults is are json arrays of key value pairs:
@@ -265,7 +263,6 @@ geojson_get_bbox(Geo) ->
     {Bbox, _, nil} = process_result([Geo|[nil]]),
     Bbox.
 
-
 process_results(Results) ->
     % NOTE vmx (2011-02-01): the ordering of the results doesn't matter
     %     therefore we don't need to reverse the list.
@@ -273,7 +270,7 @@ process_results(Results) ->
         [process_result(Result)|Acc]
     end, [], Results).
 
-process_result([{Geo}|[Value]]) ->
+process_result([{{Geo}, Value}]) ->
     Type = proplists:get_value(<<"type">>, Geo),
     Bbox = case Type of
     <<"GeometryCollection">> ->
