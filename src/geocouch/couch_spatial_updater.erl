@@ -36,7 +36,6 @@ update(Owner, Group) ->
         current_seq = Seq
         %purge_seq = PurgeSeq
     } = Group,
-    couch_task_status:add_task(<<"Spatial Group Indexer">>, <<DbName/binary," ",GroupName/binary>>, <<"Starting index update">>),
     % XXX vmx: what are purges? when do they happen?
     %DbPurgeSeq = couch_db:get_purge_seq(Db),
     %Group2 =
@@ -57,19 +56,28 @@ update(Owner, Group) ->
     IndexEmptyKVs = [{Index, []} || Index <- Group#spatial_group.indexes],
     % compute on all docs modified since we last computed.
     TotalChanges = couch_db:count_changes_since(Db, Seq),
-    % update status every half second
+    couch_task_status:add_task([
+        {type, indexer},
+        {database, DbName},
+        {design_document, GroupName},
+        {progress, 0},
+        {changes_done, 0},
+        {total_changes, TotalChanges}
+    ]),
     couch_task_status:set_update_frequency(500),
+
     {ok, _, {_,{UncomputedDocs, Group3, ViewKVsToAdd, DocIdViewIdKeys}}}
         = couch_db:enum_docs_since(Db, Seq,
         fun(DocInfo, _, {ChangesProcessed, Acc}) ->
-                couch_task_status:update("Processed ~p of ~p changes (~p%)",
-                        [ChangesProcessed, TotalChanges, (ChangesProcessed*100) div TotalChanges]),
+            Progress = (ChangesProcessed*100) div TotalChanges,
+            couch_task_status:update([
+                {progress, Progress},
+                {changes_done, ChangesProcessed}
+            ]),
             %?LOG_DEBUG("enum_doc_since: ~p", [Acc]),
             {ok, {ChangesProcessed+1, process_doc(Db, Owner, DocInfo, Acc)}}
         end, {0, {[], Group, IndexEmptyKVs, []}}, []),
      %?LOG_DEBUG("enum_doc_since results: ~p~n~p~n~p", [UncomputedDocs, ViewKVsToAdd, DocIdViewIdKeys]),
-    couch_task_status:set_update_frequency(0),
-    couch_task_status:update("Finishing."),
     {Group4, Results} = spatial_compute(Group3, UncomputedDocs),
     % Output is way to huge
     %?LOG_DEBUG("spatial_compute results: ~p", [Results]),
