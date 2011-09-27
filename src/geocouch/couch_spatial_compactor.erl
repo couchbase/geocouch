@@ -77,7 +77,11 @@ compact_group(Group, EmptyGroup) ->
     {ok, NewIdBtree} = couch_btree:add(Bt3, lists:reverse(Uncopied)),
 
     NewIndexes = lists:map(fun({Index, EmptyIndex}) ->
-        compact_spatial(Fd, EmptyFd, Index, EmptyIndex)
+        case Index#spatial.treepos of
+            % Tree is empty, just grab the the FD
+            nil -> EmptyIndex#spatial{fd = EmptyFd};
+            _ -> compact_spatial(Fd, EmptyFd, Index, EmptyIndex)
+        end
     end, lists:zip(Indexes, EmptyIndexes)),
 
     NewGroup = EmptyGroup#spatial_group{
