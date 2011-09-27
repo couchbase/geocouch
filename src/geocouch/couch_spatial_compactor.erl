@@ -49,19 +49,23 @@ compact_group(Group, EmptyGroup) ->
     {ok, DbReduce} = couch_btree:full_reduce(Db#db.fulldocinfo_by_id_btree),
     Count = element(1, DbReduce),
 
-    <<"_design", ShortName/binary>> = GroupId,
     DbName = couch_db:name(Db),
-    TaskName = <<DbName/binary, ShortName/binary>>,
-    couch_task_status:add_task(
-            <<"Spatial Group Compaction">>, TaskName, <<"">>),
 
+    % Use "view_compaction" for now, that it shows up in Futons active tasks
+    % screen. Think about a more generic way for the future.
+    couch_task_status:add_task([
+        {type, view_compaction},
+        {database, DbName},
+        {design_document, GroupId},
+        {progress, 0}
+    ]),
     % Create a new version of the lookup tree (the ID B-tree)
     Fun = fun({DocId, _IndexIdKeys} = KV, {Bt, Acc, TotalCopied, _LastId}) ->
         % NOTE vmx (2011-01-18): use the same value as for view compaction,
         %     though wondering why a value of 10000 is hard-coded
         if TotalCopied rem 10000 =:= 0 ->
-            couch_task_status:update("Copied ~p of ~p Ids (~p%)",
-                [TotalCopied, Count, (TotalCopied*100) div Count]),
+            couch_task_status:update([
+                {progress, (TotalCopied*100) div Count}]),
             {ok, Bt2} = couch_btree:add(Bt, lists:reverse([KV|Acc])),
             {ok, {Bt2, [], TotalCopied+1, DocId}};
         true ->
@@ -91,10 +95,8 @@ compact_spatial(OldFd, NewFd, Index, EmptyIndex) ->
 
     Fun = fun(Node, {TreePos, TreeHeight, Acc, TotalCopied}) ->
         if TotalCopied rem 10000 =:= 0 ->
-            couch_task_status:update(
-                "Spatial index #~p: copied ~p of ~p KVs (~p%)",
-                [Index#spatial.id_num, TotalCopied, Count,
-                    (TotalCopied*100) div Count]),
+            couch_task_status:update([
+                {progress, (TotalCopied*100) div Count}]),
             {ok, TreePos2, TreeHeight2} = vtree_bulk:bulk_load(
                 NewFd, TreePos, TreeHeight, [Node|Acc]),
             {TreePos2, TreeHeight2, [], TotalCopied + 1};
