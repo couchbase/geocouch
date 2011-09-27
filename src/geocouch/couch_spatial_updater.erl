@@ -144,7 +144,7 @@ spatial_docs(Proc, Docs) ->
         fun(Doc) ->
             % NOTE vmx: perhaps should map_doc renamed to something more
             % general as it can be used for most indexers
-            {ok, FunsResults} = couch_view_server:map(Proc, [Doc]),
+            {ok, [FunsResults]} = couch_view_server:map(Proc, [Doc]),
 
             % the results are a json array of function map yields like this:
             % [FunResults1, FunResults2 ...]
@@ -270,7 +270,7 @@ process_results(Results) ->
         [process_result(Result)|Acc]
     end, [], Results).
 
-process_result([{{Geo}, Value}]) ->
+process_result({{Geo}, Value}) ->
     Type = proplists:get_value(<<"type">>, Geo),
     Bbox = case Type of
     <<"GeometryCollection">> ->
