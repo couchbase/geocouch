@@ -73,12 +73,12 @@ Add the test to `<vanilla-couch>/share/www/script/couch_tests.js`
 The compiled beam files from GeoCouch need to be in Erlang's path,
 which can be set with the `ERL_FLAGS` environment variable:
 
-    export ERL_FLAGS="-pa <geocouch>/build"
+    export ERL_FLAGS="-pa <geocouch>/ebin"
 
 If you run a dev instance with CouchDB's `./utils/run` you can also
 define it on startup:
 
-    ERL_FLAGS="-pa <geocouch>/build" <vanilla-couch>/utils/run
+    ERL_FLAGS="-pa <geocouch>/ebin" <vanilla-couch>/utils/run
 
 
 Using GeoCouch
