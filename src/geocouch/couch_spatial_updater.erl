@@ -271,7 +271,7 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
 % Return the bounding box of a GeoJSON geometry. "Geo" is wrapped in
 % brackets ({}) as returned from proplists:get_value()
 geojson_get_bbox(Geo) ->
-    {Bbox, _, nil} = process_result([Geo|[nil]]),
+    {Bbox, {_, nil}} = process_result([Geo|[nil]]),
     Bbox.
 
 
