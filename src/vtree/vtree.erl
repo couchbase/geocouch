@@ -60,7 +60,7 @@ add_remove(Fd, Pos, TargetTreeHeight, AddKeyValues, KeysToRemove) ->
         nil -> 0;
         _ -> TargetTreeHeight
     end,
-    T1 = get_timestamp(),
+    T1 = now(),
 
 %    {NewPos2, TreeHeight} = lists:foldl(fun({{Mbr, DocId}, Value}, {CurPos, _}) ->
 %        %io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
@@ -81,16 +81,10 @@ add_remove(Fd, Pos, TargetTreeHeight, AddKeyValues, KeysToRemove) ->
     end, [], AddKeyValues),
     {ok, NewPos2, TreeHeight} = vtree_bulk:bulk_load(
             Fd, NewPos, NewTargetTreeHeight, AddKeyValues2),
-    T2 = get_timestamp(),
-    ?LOG_DEBUG("It took: ~ps~n", [T2-T1]),
+    ?LOG_DEBUG("It took: ~ps~n", [timer:now_diff(now(), T1)/1000000]),
     ?LOG_DEBUG("Tree height: ~p~n", [TreeHeight]),
     {ok, NewPos2, TreeHeight}.
     %{ok, 0}.
-
-% Based on http://snipplr.com/view/23910/how-to-get-a-timestamp-in-milliseconds-from-erlang/ (2010-10-22)
-get_timestamp() ->
-    {Mega,Sec,Micro} = erlang:now(),
-    ((Mega*1000000+Sec)*1000000+Micro)/1000000.
 
 % Returns only the number of matching geometries
 count_lookup(Fd, Pos, Bbox) ->
