@@ -25,6 +25,8 @@
 % for output (couch_http_spatial, couch_http_spatial_list)
 -export([geocouch_to_geojsongeom/1]).
 
+% for polygon search
+-export([extract_bbox/2, geojsongeom_to_geocouch/1]).
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
@@ -85,7 +87,6 @@ update(Owner, Group) ->
             UncomputedDocs, Results, ViewKVsToAdd, DocIdViewIdKeys),
     couch_query_servers:stop_doc_map(Group4#spatial_group.query_server),
     NewSeq = couch_db:get_update_seq(Db),
-?LOG_DEBUG("new seq num: ~p", [NewSeq]),
     {ok, Group5} = write_changes(Group4, ViewKVsToAdd2, DocIdViewIdKeys2,
                 NewSeq),
     exit({new_group, Group5#spatial_group{query_server=nil}}).
@@ -282,12 +283,13 @@ process_results(Results) ->
     end, [], Results).
 
 process_result([{Geo}|[Value]]) ->
-    Type = proplists:get_value(<<"type">>, Geo),
+    Type = binary_to_atom(proplists:get_value(<<"type">>, Geo), utf8),
     Bbox = case Type of
-    <<"GeometryCollection">> ->
+    'GeometryCollection' ->
         Geometries = proplists:get_value(<<"geometries">>, Geo),
         lists:foldl(fun({Geometry}, CurBbox) ->
-            Type2 = proplists:get_value(<<"type">>, Geometry),
+            Type2 = binary_to_atom(
+                proplists:get_value(<<"type">>, Geometry), utf8),
             Coords = proplists:get_value(<<"coordinates">>, Geometry),
             case proplists:get_value(<<"bbox">>, Geo) of
             undefined ->
@@ -315,20 +317,20 @@ extract_bbox(Type, Coords) ->
 
 extract_bbox(Type, Coords, InitBbox) ->
     case Type of
-    <<"Point">> ->
+    'Point' ->
         bbox([Coords], InitBbox);
-    <<"LineString">> ->
+    'LineString' ->
         bbox(Coords, InitBbox);
-    <<"Polygon">> ->
+    'Polygon' ->
         % holes don't matter for the bounding box
         bbox(hd(Coords), InitBbox);
-    <<"MultiPoint">> ->
+    'MultiPoint' ->
         bbox(Coords, InitBbox);
-    <<"MultiLineString">> ->
+    'MultiLineString' ->
         lists:foldl(fun(Linestring, CurBbox) ->
             bbox(Linestring, CurBbox)
         end, InitBbox, Coords);
-    <<"MultiPolygon">> ->
+    'MultiPolygon' ->
         lists:foldl(fun(Polygon, CurBbox) ->
             bbox(hd(Polygon), CurBbox)
         end, InitBbox, Coords)
@@ -358,7 +360,7 @@ geojsongeom_to_geocouch(Geom) ->
     _ ->
         proplists:get_value(<<"coordinates">>, Geom)
     end,
-    {binary_to_atom(Type, latin1), Coords}.
+    {binary_to_atom(Type, utf8), Coords}.
 
 % @doc Transforms internal structure to a GeoJSON geometry (as Erlang terms)
 geocouch_to_geojsongeom({Type, Coords}) ->
