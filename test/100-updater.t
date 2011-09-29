@@ -80,25 +80,25 @@ test_bbox_initbbox() ->
         "Bounding box with initial bounding box (b)").
 
 test_extract_bbox() ->
-    etap:is(?MOD:extract_bbox(<<"Point">>, [100.0, 0.0]),
+    etap:is(?MOD:extract_bbox('Point', [100.0, 0.0]),
          [100.0, 0.0, 100.0, 0.0],
          "Extract bounding box of a Point"),
-    etap:is(?MOD:extract_bbox(<<"LineString">>, [[100.0, 0.0], [101.0, 1.0]]),
+    etap:is(?MOD:extract_bbox('LineString', [[100.0, 0.0], [101.0, 1.0]]),
          [100.0, 0.0, 101.0, 1.0],
          "Extract bounding box of a LineString"),
-    etap:is(?MOD:extract_bbox(<<"Polygon">>, [
+    etap:is(?MOD:extract_bbox('Polygon', [
         [[100.0, 0.0], [101.0, 0.0], [101.0, 1.0], [100.0, 1.0], [100.0, 0.0]],
         [[100.2, 0.2], [100.8, 0.2], [100.8, 0.8], [100.2, 0.8], [100.2, 0.2]]
             ]),
         [100.0, 0.0, 101.0, 1.0],
          "Extract bounding box of a Polygon"),
-    etap:is(?MOD:extract_bbox(<<"MultiLineString">>, [
+    etap:is(?MOD:extract_bbox('MultiLineString', [
             [[100.0, 0.0], [101.0, 1.0]],
             [[102.0, 2.0], [103.0, 3.0]]
             ]),
         [100.0, 0.0, 103.0, 3.0],
          "Extract bounding box of a Polygon"),
-    etap:is(?MOD:extract_bbox(<<"MultiPolygon">>, [
+    etap:is(?MOD:extract_bbox('MultiPolygon', [
             [[[102.0, 2.0], [103.0, 2.0], [103.0, 3.0], [102.0, 3.0],
              [102.0, 2.0]]],
             [[[100.0, 0.0], [101.0, 0.0], [101.0, 1.0], [100.0, 1.0],
