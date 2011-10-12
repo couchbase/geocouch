@@ -102,13 +102,30 @@ load_index(Req, Db, {DesignId, SpatialName}) ->
         throw({not_found, Reason})
     end.
 
-%output_spatial_index(Req, Index, Group, Db,
-%                     QueryArgs#spatial_query_args{count=true}) ->
-output_spatial_index(Req, Index, Group, _Db, QueryArgs) when
-        QueryArgs#spatial_query_args.count == true ->
-    Count = vtree:count_lookup(Group#spatial_group.fd,
-                               Index#spatial.treepos,
-                               QueryArgs#spatial_query_args.bbox),
+output_spatial_index(Req, Index, Group, _Db,
+        #spatial_query_args{count=true}=QueryArgs) ->
+    #spatial_query_args{
+        bbox = Bbox,
+        geometry = QueryGeom
+    } = QueryArgs,
+
+    FoldFun = case QueryGeom of
+    % simple bounding box comparison
+    nil ->
+        fun(_Item, Acc) ->
+            {ok, Acc+1}
+        end;
+    % full intersection on geometry level
+    _ ->
+        QueryGeom2 = erlgeom:to_geom(QueryGeom),
+        fun({{_DocId, _Bbox}, {Geom, _Value}}, Acc) ->
+            case condition_disjoint(QueryGeom2, Geom) of
+                true -> {ok, Acc+1};
+                false -> {ok, Acc}
+            end
+        end
+    end,
+    {ok, Count} = couch_spatial:fold(Index, FoldFun, 0, Bbox, nil),
     send_json(Req, {[{"count",Count}]});
 
 % counterpart in couch_httpd_view is output_map_view/6
@@ -138,32 +155,59 @@ output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
     end).
 
 % counterpart in couch_httpd_view is make_view_fold/7
-make_spatial_fold_funs(Req, _QueryArgs, Etag, _Db, UpdateSeq, HelperFuns) ->
+make_spatial_fold_funs(Req, #spatial_query_args{geometry=QueryGeom}, Etag, _Db,
+        UpdateSeq, HelperFuns) ->
     #spatial_fold_helper_funs{
         start_response = StartRespFun,
         send_row = SendRowFun
     } = HelperFuns,
+
+    % The condition function is always the same for all cases (normal output
+    % and list functions), hence it's not passed in through the
+    % #spatial_fold_helper_funs{} record, but computed here
+    {ConditionFun, QueryGeom2} = case QueryGeom of
+    % simple bounding box comparison
+    nil ->
+        {
+            fun(_, _) -> true end,
+            QueryGeom
+        };
+    % full intersection on geometry level
+    _ ->
+        {
+            fun condition_disjoint/2,
+            erlgeom:to_geom(QueryGeom)
+        }
+    end,
+
     % The Acc is there to output characters that belong to the previous line,
     % but only if one line follows (think of a comma separated list which
     % doesn't have a comma at the last item)
     fun({{Bbox, DocId}, {Geom, Value}}, {AccLimit, AccSkip, Resp, Acc}) ->
-        case {AccLimit, AccSkip, Resp} of
-        {0, _, _} ->
-            % we've done "limit" rows, stop foldling
-            {stop, {0, 0, Resp, Acc}};
-        {_, AccSkip, _} when AccSkip > 0 ->
-            % just keep skipping
-            {ok, {AccLimit, AccSkip - 1, Resp, Acc}};
-        {_, _, undefined} ->
-            % rendering the first row, first we start the response
-            {ok, Resp2, BeginBody} = StartRespFun(Req, Etag, UpdateSeq),
-            {Go, Acc2} = SendRowFun(
-                Resp2, {{Bbox, DocId}, {Geom, Value}}, BeginBody),
-            {Go, {AccLimit - 1, 0, Resp2, Acc2}};
-        {AccLimit, _, Resp} when (AccLimit > 0) ->
-            % rendering all other rows
-            {Go, Acc2} = SendRowFun(Resp, {{Bbox, DocId}, {Geom, Value}}, Acc),
-            {Go, {AccLimit - 1, 0, Resp, Acc2}}
+        % If the condition function returns true the geometry will be part of
+        % the result, else it will be dropped
+        case ConditionFun(QueryGeom2, Geom) of
+        true ->
+            case {AccLimit, AccSkip, Resp} of
+            {0, _, _} ->
+                % we've done "limit" rows, stop foldling
+                {stop, {0, 0, Resp, Acc}};
+            {_, AccSkip, _} when AccSkip > 0 ->
+                % just keep skipping
+                {ok, {AccLimit, AccSkip - 1, Resp, Acc}};
+            {_, _, undefined} ->
+                % rendering the first row, first we start the response
+                {ok, Resp2, BeginBody} = StartRespFun(Req, Etag, UpdateSeq),
+                {Go, Acc2} = SendRowFun(
+                    Resp2, {{Bbox, DocId}, {Geom, Value}}, BeginBody),
+                {Go, {AccLimit - 1, 0, Resp2, Acc2}};
+            {AccLimit, _, Resp} when (AccLimit > 0) ->
+                % rendering all other rows
+                {Go, Acc2} = SendRowFun(Resp, {{Bbox, DocId}, {Geom, Value}}, Acc),
+                {Go, {AccLimit - 1, 0, Resp, Acc2}}
+            end;
+        false ->
+            {ok, {AccLimit, AccSkip, Resp, Acc}}
         end
     end.
 
@@ -196,6 +240,16 @@ send_json_spatial_row(Resp, {{Bbox, DocId}, {Geom, Value}}, RowFront) ->
     send_chunk(Resp, RowFront ++  ?JSON_ENCODE(JsonObj)),
     {ok, ",\r\n"}.
 
+% @doc Include the geometries (hence return true) if they are not disjoint
+% The `QueryGeom` is already converted to an Erlgeom geometry. The `Geom` is
+% still an Erlang term
+condition_disjoint(QueryGeom, Geom) ->
+    Geom2 = erlgeom:to_geom(Geom),
+    case erlgeom:disjoint(QueryGeom, Geom2) of
+        false -> true;
+        true -> false
+    end.
+
 % counterpart in couch_httpd_view is view_group_etag/3 resp. /4
 spatial_etag(Db, Group, Index) ->
     spatial_etag(Db, Group, Index, nil).
@@ -214,7 +268,8 @@ parse_spatial_params(Req) ->
 
     #spatial_query_args{
         bbox = Bbox,
-        bounds = Bounds
+        bounds = Bounds,
+        geometry = QueryGeom
     } = QueryArgs,
     case {Bbox, Bounds} of
     % Coordinates of the bounding box are flipped and no bounds for the
@@ -225,8 +280,23 @@ parse_spatial_params(Req) ->
                 "(use the `plane_bounds` parameter)">>,
         throw({query_parse_error, Msg});
     _ ->
-        QueryArgs
-    end.
+        ok
+    end,
+    case {Bbox, QueryGeom} of
+    {Bbox, nil} ->
+        QueryArgs;
+    {nil, {GeomType, GeomCoords}} ->
+        % Set the bounding to the bounds of the geometry
+        QueryArgs#spatial_query_args{
+            bbox = erlang:list_to_tuple(couch_spatial_updater:extract_bbox(
+                GeomType, GeomCoords
+            ))
+        };
+    {Bbox, QueryGeom} ->
+        Msg2 = <<"A bounding box *and* a geometry were specified."
+                " Please use either of them.">>,
+        throw({query_parse_error, Msg2})
+     end.
 
 parse_spatial_param("bbox", Bbox) ->
     [{bbox, list_to_tuple(?JSON_DECODE("[" ++ Bbox ++ "]"))}];
@@ -247,6 +317,8 @@ parse_spatial_param("limit", Value) ->
     [{limit, geocouch_duplicates:parse_positive_int_param(Value)}];
 parse_spatial_param("skip", Value) ->
     [{skip, geocouch_duplicates:parse_int_param(Value)}];
+parse_spatial_param("geometry", Geometry) ->
+    [{geometry, wkt:parse(Geometry)}];
 parse_spatial_param(Key, Value) ->
     [{extra, {Key, Value}}].
 
@@ -266,5 +338,7 @@ validate_spatial_query(limit, Value, Args) ->
     Args#spatial_query_args{limit=Value};
 validate_spatial_query(skip, Value, Args) ->
     Args#spatial_query_args{skip=Value};
+validate_spatial_query(geometry, Value, Args) ->
+    Args#spatial_query_args{geometry=Value};
 validate_spatial_query(extra, _Value, Args) ->
     Args.

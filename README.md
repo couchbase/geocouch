@@ -68,6 +68,7 @@ Add the test to `<vanilla-couch>/share/www/script/couch_tests.js`
     loadTest("spatial_bugfixes.js");
     loadTest("spatial_merging.js");
     loadTest("spatial_offsets.js");
+    loadTest("spatial_opensearch.js");
 
 ### Run CouchDB with GeoCouch
 
@@ -206,6 +207,26 @@ ID in parenthesis:
     curl -X GET 'http://localhost:5984/places/_design/listfunonly/_spatial/_list/wkt/main/points?bbox=-180,-90,180,90'
 
 
+Geometry search
+---------------
+
+The most common geometry search is probably polygon search, though all
+geometries as specified in the OpenSearch Geo (Draft 2) Specification [1]
+((Multi)Point, (Multi)LineString, (Multi)Polygon) are supported.
+
+Here's an example request with a polygon, spaces are encoded as "+".
+
+    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?geometry=POLYGON((-21.0+58.9,+21.0+-61.1,+113.9+-54.3,+150.4+72.289067198883,+-21.0+58.9))'
+
+    {"update_seq":8,"rows":[
+    {"id":"augsburg","bbox":[10.898333,48.371667,10.898333,48.371667],"geometry":{"type":"Point","coordinates":[10.898333,48.371667]},"value":["augsburg",[10.898333,48.371667]]},
+    {"id":"namibia","bbox":[17.15,-22.566667,17.15,-22.566667],"geometry":{"type":"Point","coordinates":[17.15,-22.566667]},"value":["namibia",[17.15,-22.566667]]}
+    ]}
+
+If you want to make a polygon request over the date line or poles, split it
+and make it a MultiPolygon.
+
+
 Other supported query arguments
 -------------------------------
 
@@ -259,3 +280,9 @@ To get information about the spatial indexes of a certain Design
 Document use the the `_info` handler:
 
     curl -X GET 'http://localhost:5984/places/_design/main/_spatial/_info'
+
+
+References
+----------
+
+[1] http://www.opensearch.org/Specifications/OpenSearch/Extensions/Geo/1.0/Draft_2
