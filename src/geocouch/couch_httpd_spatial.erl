@@ -16,7 +16,7 @@
 
 -export([handle_spatial_req/3, spatial_etag/3, spatial_etag/4,
          load_index/3, handle_compact_req/3, handle_design_info_req/3,
-         handle_spatial_cleanup_req/2]).
+         handle_spatial_cleanup_req/2, parse_spatial_params/1]).
 
 -import(couch_httpd,
         [send_json/2, send_json/3, send_method_not_allowed/2, send_chunk/2,
