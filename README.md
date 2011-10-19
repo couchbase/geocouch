@@ -64,11 +64,16 @@ which can be set with the `ERL_FLAGS` environment variable:
 
     export ERL_FLAGS="-pa <geocouch>/build"
 
+Or if you start CouchDB with `launchctl`, add the following lines to
+your `~/Library/LaunchAgents/org.apache.couchdb.plist`'s `EnvironmentVariables` dictionary:
+
+    <key>ERL_FLAGS</key>
+    <string>-pa <geocouch>/build</string>
+
 If you run a dev instance with CouchDB's `./utils/run` you can also
 define it on startup:
 
     ERL_FLAGS="-pa <geocouch>/build" <vanilla-couch>/utils/run
-
 
 Using GeoCouch
 --------------
