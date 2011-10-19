@@ -161,7 +161,7 @@ get_spatial_index(Db, GroupId, Name, Stale) ->
     end.
 
 get_spatial_index0(_Name, []) ->
-    {not_found, missing_named_view};
+    {not_found, missing_named_index};
 get_spatial_index0(Name, [#spatial{index_names=IndexNames}=Index|Rest]) ->
 ?LOG_DEBUG("Name: ~p, IndexNames: ~p", [Name, IndexNames]),
     % NOTE vmx: I don't understand why need lists:member and recursion
