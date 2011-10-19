@@ -53,30 +53,39 @@ delete_from_ets(Pid, DbName, Sig) ->
     true = ets:delete(spatial_group_servers_by_sig, {DbName, Sig}),
     true = ets:delete_object(couch_spatial_groups_by_db, {DbName, Sig}).
 
-
-get_group_server(DbName, DDocName) ->
-    % get signature for group
-    case couch_spatial_group:open_db_group(DbName, DDocName) of
-    % do we need to close this db?
-    {ok, _Db, Group} ->
-?LOG_DEBUG("get_group_server: ~p", [DDocName]),
-        case gen_server:call(couch_spatial, {get_group_server, DbName, Group}) of
-        {ok, Pid} ->
-            Pid;
-        Error ->
-            throw(Error)
-        end;
+get_group_server(DbName, GroupId) when is_binary(GroupId) ->
+    Group = open_db_group(DbName, GroupId),
+    get_group_server(DbName, Group);
+get_group_server(DbName, Group) ->
+    case gen_server:call(couch_spatial, {get_group_server, DbName, Group}, infinity) of
+    {ok, Pid} ->
+        Pid;
     Error ->
         throw(Error)
     end.
 
+open_db_group(DbName, GroupId) ->
+    case couch_spatial_group:open_db_group(DbName, GroupId) of
+    {ok, Group} ->
+        Group;
+    Error ->
+        throw(Error)
+    end.
+
+get_group(Db, {GroupDb, GroupId}, Stale) ->
+    DbGroup = open_db_group(couch_db:name(GroupDb), GroupId),
+    do_get_group(Db, DbGroup, Stale);
 get_group(Db, GroupId, Stale) ->
+    DbGroup = open_db_group(couch_db:name(Db), GroupId),
+    do_get_group(Db, DbGroup, Stale).
+
+
+do_get_group(Db, GroupId, Stale) ->
     MinUpdateSeq = case Stale of
     ok -> 0;
     update_after -> 0;
     _Else -> couch_db:get_update_seq(Db)
     end,
-?LOG_DEBUG("get_group: MinUpdateSeq: ~p (stale? ~p)", [MinUpdateSeq, Stale]),
     GroupPid = get_group_server(couch_db:name(Db), GroupId),
     Result = couch_spatial_group:request_group(GroupPid, MinUpdateSeq),
     case Stale of
@@ -147,7 +156,6 @@ do_reset_indexes(DbName, Root) ->
 
 % counterpart in couch_view is get_map_view/4
 get_spatial_index(Db, GroupId, Name, Stale) ->
-?LOG_DEBUG("get_spatial_index: ~p", [Name]),
     case get_group(Db, GroupId, Stale) of
     {ok, #spatial_group{indexes=Indexes}=Group} ->
         case get_spatial_index0(Name, Indexes) of
@@ -163,7 +171,6 @@ get_spatial_index(Db, GroupId, Name, Stale) ->
 get_spatial_index0(_Name, []) ->
     {not_found, missing_named_index};
 get_spatial_index0(Name, [#spatial{index_names=IndexNames}=Index|Rest]) ->
-?LOG_DEBUG("Name: ~p, IndexNames: ~p", [Name, IndexNames]),
     % NOTE vmx: I don't understand why need lists:member and recursion
     case lists:member(Name, IndexNames) of
         true -> {ok, Index};

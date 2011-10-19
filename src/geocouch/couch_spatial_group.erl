@@ -327,12 +327,13 @@ reply_all(#group_state{waiting_list=WaitList}=State, Reply) ->
     [catch gen_server:reply(Pid, Reply) || {Pid, _} <- WaitList],
     State#group_state{waiting_list=[]}.
 
-open_db_group(DbName, DDocId) ->
+open_db_group(DbName, GroupId) ->
     case couch_db:open_int(DbName, []) of
     {ok, Db} ->
-        case couch_db:open_doc(Db, DDocId, [ejson_body]) of
+        case couch_db:open_doc(Db, GroupId, [ejson_body]) of
         {ok, Doc} ->
-            {ok, Db, design_doc_to_spatial_group(Doc)};
+            couch_db:close(Db),
+            {ok, design_doc_to_spatial_group(Doc)};
         Else ->
             couch_db:close(Db),
             Else
