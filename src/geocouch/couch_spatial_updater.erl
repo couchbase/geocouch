@@ -139,7 +139,7 @@ spatial_compute(#spatial_group{def_lang=DefLang, lib=Lib, query_server=QueryServ
     case QueryServerIn of
     nil -> % spatial funs not started
         Functions = [Index#spatial.def || Index <- Group#spatial_group.indexes],
-        geocouch_duplicates:start_doc_map(DefLang, Functions, Lib);
+        couch_query_servers:start_doc_map(DefLang, Functions, Lib);
     _ ->
         {ok, QueryServerIn}
     end,
