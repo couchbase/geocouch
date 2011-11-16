@@ -373,17 +373,8 @@ test_seedtree_insert() ->
     Node = {NodeMbr, NodeMeta, {NodeId, {NodeGeom, NodeData}}},
     SeedTree2 = ?MOD:seedtree_insert(SeedTree, Node),
     SeedTree2Tree = SeedTree2#seedtree_root.tree,
-    etap:is(SeedTree2Tree, {{4,43,980,986},{node,inner},[
-        {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],
-                [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,
-                        {{linestring,[[66,132],[252,718]]},
-                        <<"Value718132">>}}}],6975}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],[],6046}}]},
-        {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
+    SeedTree2Inserted = get_seedtree_children(SeedTree2Tree),
+    etap:is(SeedTree2Inserted, [[Node], [], [], []],
         "Seed tree is correct (seedtree_insert) (a)"),
 
     NodeNotInTree3 = {{2,3,4,5}, NodeMeta,
@@ -414,36 +405,14 @@ test_seedtree_insert() ->
     SeedTree6 = ?MOD:seedtree_insert(SeedTree, Node6),
 
     SeedTree6Tree = SeedTree6#seedtree_root.tree,
-    etap:is(SeedTree6Tree,
-        {{4,43,980,986},{node,inner},[
-        {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],[],6975}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],
-                [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>,
-                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],6046}}]},
-        {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
-        "Seed tree is correct (b)"),
+    SeedTree6Inserted = get_seedtree_children(SeedTree6Tree),
+    etap:is(SeedTree6Inserted, [[], [Node6], [], []],
+        "Seed tree is correct (seedtree_insert) (b)"),
     SeedTree7 = ?MOD:seedtree_insert(SeedTree2, Node6),
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
-    etap:is(SeedTree7Tree,
-        {{4,43,980,986},{node,inner},[
-        {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],
-                [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,
-                        {{linestring,[[66,132],[252,718]]},
-                        <<"Value718132">>}}}],6975}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],
-                [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>,
-                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],6046}}]},
-        {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
-        "Seed tree is correct (seedtree_insert) (b)").
+    SeedTree7Inserted = get_seedtree_children(SeedTree7Tree),
+    etap:is(SeedTree7Inserted, [[Node], [Node6], [], []],
+        "Seed tree is correct (seedtree_insert) (c)").
 
 
 test_seedtree_insert_list() ->
@@ -454,18 +423,8 @@ test_seedtree_insert_list() ->
     Node = {NodeMbr, NodeMeta, {NodeId, {NodeGeom, NodeData}}},
     SeedTree2 = ?MOD:seedtree_insert(SeedTree, Node),
     SeedTree2Tree = SeedTree2#seedtree_root.tree,
-    etap:is(SeedTree2Tree,
-        {{4,43,980,986},{node,inner},[
-        {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],
-                [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,
-                        {{linestring,[[66,132],[252,718]]},
-                        <<"Value718132">>}}}],6975}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],[],6046}}]},
-        {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
+    SeedTree2Inserted = get_seedtree_children(SeedTree2Tree),
+    etap:is(SeedTree2Inserted, [[Node], [], [], []],
         "Seed tree is correct (seedtree_insert_list) (a)"),
 
     NodeNotInTree3 = {{2,3,4,5}, NodeMeta,
@@ -486,42 +445,21 @@ test_seedtree_insert_list() ->
         {<<"intree01">>, {{linestring,[[342,456],[959,513]]}, datafoo3}}},
     SeedTree7 = ?MOD:seedtree_insert_list(SeedTree, [Node, Node6]),
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
-    etap:is(SeedTree7Tree, {{4,43,980,986},{node,inner},[
-        {{4,43,980,960},{node,inner},[
-            {{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],
-                [{{66,132,252,718},{node,leaf},
-                    {<<"Node718132">>,
-                        {{linestring,[[66,132],[252,718]]},
-                        <<"Value718132">>}}}],6975}},
-            {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],
-                [{{342,456,959,513},{node,leaf},
-                    {<<"intree01">>,
-                        {{linestring,[[342,456],[959,513]]}, datafoo3}}}],6046}}]},
-        {{27,163,597,986},{node,inner},[
-            {{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
-            {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
-        "Seed tree is correct (seedtree_insert_list) (b)").
+    SeedTree7Inserted = get_seedtree_children(SeedTree7Tree),
+    etap:is(SeedTree7Inserted, [[Node], [Node6], [], []],
+        "Seed tree is correct (seedtree_insert_list) (a)").
 
 test_seedtree_init() ->
     {ok, {Fd, {RootPos, _}}} = gc_test_util:build_random_tree(
             "/tmp/randtree.bin", 20),
     SeedTree1 = ?MOD:seedtree_init(Fd, RootPos, 2),
-    etap:is(SeedTree1,
-        {seedtree_root, {{4,43,980,986}, {node,inner},
-        [{{4,43,980,960}, {node,inner},{seedtree_leaf,[6975,6046],[],7036}},
-         {{27,163,597,986},{node,inner},{seedtree_leaf,[5566,5081],[],5734}}]},
-         [], 2},
+    SeedTree1Inserted = get_seedtree_children(SeedTree1#seedtree_root.tree),
+    etap:is(length(SeedTree1Inserted), 2,
         "Seed tree is correct (seedtree_init) (a)"),
     SeedTree2 = ?MOD:seedtree_init(Fd, RootPos, 3),
-    etap:is(SeedTree2, {seedtree_root, {{4,43,980,986}, {node,inner},
-        [{{4,43,980,960}, {node,inner},
-            [{{4,43,865,787},{node,inner},{seedtree_leaf,[6214,6610,6814],[],6975}},
-             {{220,45,980,960},{node,inner},{seedtree_leaf,[5846,3128],[],6046}}]},
-         {{27,163,597,986}, {node,inner},
-            [{{37,163,597,911},{node,inner},{seedtree_leaf,[3465,5193],[],5566}},
-             {{27,984,226,986},{node,inner},{seedtree_leaf,[4667],[],5081}}]}]},
-         [], 3},
-        "Seed tree os cprrect (seedtree_init) (b)"),
+    SeedTree2Inserted = get_seedtree_children(SeedTree2#seedtree_root.tree),
+    etap:is(length(SeedTree2Inserted), 4,
+        "Seed tree is correct (seedtree_init) (b)"),
 
     % If you init a seedtree with MaxDepth bigger than the height of the
     % original tree, use the lowest level
@@ -1237,3 +1175,18 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
     end, [], lists:seq(1, NodesNum)),
 
     {Nodes, Fd, RootPos}.
+
+% @doc Returns the children of the seedtree leafs. It's a list where every
+%     element contains the list of children of one seedtree leaf.
+-spec get_seedtree_children(Seedtree::tuple()) -> [tuple()].
+get_seedtree_children({_Mbr, _NodeMeta, Children}=_SeedTree) ->
+    get_seedtree_children(Children, []).
+
+-spec get_seedtree_children(Children::[tuple()], Acc::list()) -> [tuple()].
+get_seedtree_children([], Acc) ->
+    Acc;
+get_seedtree_children([{_, _, Children}|T], Acc) when is_list(Children) ->
+    Acc2 = get_seedtree_children(Children, Acc),
+    get_seedtree_children(T, Acc2);
+get_seedtree_children([{_, _, {seedtree_leaf, _, Children, _}}|T], Acc) ->
+    get_seedtree_children(T, Acc ++ [Children]).
