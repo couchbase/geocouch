@@ -47,11 +47,6 @@ test() ->
     test_geocouch_to_geojsongeom_nested_geometrycollection(),
     ok.
 
--record(node, {
-    % type = inner | leaf
-    type=leaf}).
-
-
 % The tests are based on the examples of the GeoJSON format specification
 test_bbox() ->
     etap:is(?MOD:bbox([[100.0, 0.0], [101.0, 1.0]], nil),
