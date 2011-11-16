@@ -203,7 +203,7 @@ couchTests.list_spatial = function(debug) {
   // standard get
   xhr = CouchDB.request("GET", url_pre + "basicBasic/basicIndex" + url_bbox);
   T(xhr.status == 200, "standard get should be 200");
-  T(/head9876543210tail/.test(xhr.responseText));
+  T(/head\d{10}tail/.test(xhr.responseText));
 
   // test that etags are available
   etag = xhr.getResponseHeader("etag");
@@ -219,9 +219,11 @@ couchTests.list_spatial = function(debug) {
   TEquals(11, resp.head.update_seq);
 
   T(resp.rows.length == 10);
-  TEquals("9", resp.rows[0].id);
-  TEquals([-10,33,-10,33], resp.rows[0].bbox);
-  TEquals("9", resp.rows[0].value);
+  T(/"id":"9"/.test(xhr.responseText));
+  T(/"value":"9"/.test(xhr.responseText));
+  T(/"bbox":\[-10,33,-10,33\]/.test(xhr.responseText));
+  T(/"geometry":\{"type":"Point","coordinates":\[-10,33\]\}/.test(
+    xhr.responseText));
 
 
   TEquals(resp.req.info.db_name, "test_suite_db");
@@ -289,14 +291,14 @@ couchTests.list_spatial = function(debug) {
 
   xhr = CouchDB.request("GET", url_pre + "stopIter/basicIndex" + url_bbox);
   // T(xhr.getResponseHeader("Content-Type") == "text/plain");
-  T(xhr.responseText.match(/^head 0 1 2 tail$/) && "basic stop");
+  T(xhr.responseText.match(/^head \d \d \d tail$/) && "basic stop");
 
   xhr = CouchDB.request("GET", url_pre + "stopIter2/basicIndex" + url_bbox, {
     headers : {
       "Accept" : "text/html"
     }
   });
-  T(xhr.responseText.match(/^head 0 1 2 tail$/) && "stop 2");
+  T(xhr.responseText.match(/^head \d \d \d tail$/) && "stop 2");
 
   // with accept headers for HTML
   xhr = CouchDB.request("GET", url_pre + "acceptSwitch/basicIndex" + url_bbox, {
@@ -328,9 +330,9 @@ couchTests.list_spatial = function(debug) {
   var url = url_pre + "simpleForm/indexes/basicIndex" + url_bbox;
   xhr = CouchDB.request("GET", url);
   T(xhr.status == 200, "multiple design docs.");
-  T((/Bbox: -10,29,-10,29/.test(xhr.responseText)));
-  T(/FirstBbox: -10,33,-10,33/.test(xhr.responseText));
-  T(/LastBbox: -21,26,-21,26/.test(xhr.responseText));
+  T(/-10,29,-10,29/.test(xhr.responseText));
+  T(/-10,33,-10,33/.test(xhr.responseText));
+  T(/-21,26,-21,26/.test(xhr.responseText));
 
   var erlViewTest = function() {
     T(db.save(erlListDoc).ok);
@@ -340,9 +342,9 @@ couchTests.list_spatial = function(debug) {
     T(xhr.status == 200, "multiple languages in design docs.");
     var list = JSON.parse(xhr.responseText);
     T(list.length == 11);
-    TEquals([-10, 21, -10, 21], list[6]);
-    TEquals([-10, 31, -10, 31], list[1]);
-    TEquals([-21, 26, -21, 26], list[10]);
+    T(/-10,21,-10,21/.test(xhr.responseText));
+    T(/-10,31,-10,31/.test(xhr.responseText));
+    T(/-21,26,-21,26/.test(xhr.responseText));
   };
 
   run_on_modified_server([{
@@ -365,7 +367,7 @@ couchTests.list_spatial = function(debug) {
   xhr = CouchDB.request("GET", url_pre + "properties/basicIndex" + url_bbox);
   T(xhr.status == 200, "properties");
   resp = JSON.parse(xhr.responseText);
-  TEquals([-10, 33, -10, 33], resp.bbox);
+  TEquals(4, resp.bbox.length);
   TEquals("Point", resp.geometry.type);
-  TEquals([-10, 33], resp.geometry.coordinates);
+  TEquals(2, resp.geometry.coordinates.length);
 };
