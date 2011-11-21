@@ -1,15 +1,25 @@
 Welcome to the world of GeoCouch
 ================================
 
-GeoCouch is a spatial extension for Apache CouchDB.
+GeoCouch is a spatial extension for Apache CouchDB and Couchbase.
 
 Prerequisites
 -------------
 
 A working installation of CouchDB with corresponding source
-code. GeoCouch works best with the latest stable releases of CouchDB
-(must be >= 1.0.2).
+code. GeoCouch works best with Couchbase and the latest stable releases of
+CouchDB (should be >= 1.1.0).
 
+### Understanding the branches:
+
+This repository contains several branches, please make sure you use
+the correct one:
+
+ - master: works with the CouchDB master branch from Couchbase's repo
+   (https://github.com/couchbase/couchdb)
+ - couchdb1.1.x: works with Apache CouchDB 1.1.x
+ - coucudb1.2.x: should work with the current Apache CouchDB trunk version,
+   but currently doesn't.
 
 Installation
 ------------
