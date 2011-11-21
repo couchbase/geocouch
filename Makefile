@@ -1,4 +1,5 @@
 ERL = erl -boot start_clean
+VERSION=$(shell git describe)
 
 all: builddir compile 
 
@@ -14,7 +15,7 @@ builddir:
 buildandtest: all test
 
 runtests:
-	ERL_FLAGS="-pa ${COUCH_SRC}" prove ./test/*.t
+	ERL_FLAGS="-pa ${COUCH_SRC} -pa ${COUCH_SRC}/../etap -pa ${COUCH_SRC}/../snappy" prove ./test/*.t
 
 check: clean builddir compileforcheck runtests
 	rm -rf build
@@ -32,3 +33,9 @@ cover: compile
 clean:	
 	rm -rf build
 	rm -f test/*.beam
+	rm -f *.tar.gz
+
+geocouch-$(VERSION).tar.gz:
+	git archive --prefix=geocouch-$(VERSION)/ --format tar HEAD | gzip -9vc > $@
+
+dist: geocouch-$(VERSION).tar.gz
