@@ -16,7 +16,8 @@
 
 -export([handle_spatial_req/3, spatial_etag/3, spatial_etag/4,
          load_index/3, handle_compact_req/3, handle_design_info_req/3,
-         handle_spatial_cleanup_req/2, parse_spatial_params/1]).
+         handle_spatial_cleanup_req/2, parse_spatial_params/1,
+         make_spatial_fold_funs/6]).
 
 -import(couch_httpd,
         [send_json/2, send_json/3, send_method_not_allowed/2, send_chunk/2,
@@ -114,7 +115,9 @@ output_spatial_index(Req, Index, Group, _Db, QueryArgs) when
 output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
     #spatial_query_args{
         bbox = Bbox,
-        bounds = Bounds
+        bounds = Bounds,
+        limit = Limit,
+        skip = SkipCount
     } = QueryArgs,
     CurrentEtag = spatial_etag(Db, Group, Index),
     HelperFuns = #spatial_fold_helper_funs{
@@ -125,11 +128,11 @@ output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
         FoldFun = make_spatial_fold_funs(
                     Req, QueryArgs, CurrentEtag, Db,
                     Group#spatial_group.current_seq, HelperFuns),
-        FoldAccInit = {undefined, ""},
+        FoldAccInit = {Limit, SkipCount, undefined, ""},
         % In this case the accumulator consists of the response (which
         % might be undefined) and the actual accumulator we only care
         % about in spatiallist functions)
-        {ok, {Resp, _Acc}} = couch_spatial:fold(
+        {ok, {_, _, Resp, _}} = couch_spatial:fold(
             Index, FoldFun, FoldAccInit, Bbox, Bounds),
         finish_spatial_fold(Req, Resp)
     end).
@@ -143,16 +146,24 @@ make_spatial_fold_funs(Req, _QueryArgs, Etag, _Db, UpdateSeq, HelperFuns) ->
     % The Acc is there to output characters that belong to the previous line,
     % but only if one line follows (think of a comma separated list which
     % doesn't have a comma at the last item)
-    fun({{Bbox, DocId}, {Geom, Value}}, {Resp, Acc}) ->
-        case Resp of
-        undefined ->
-            {ok, NewResp, BeginBody} = StartRespFun(Req, Etag, UpdateSeq),
-            {ok, Acc2} = SendRowFun(
-                NewResp, {{Bbox, DocId}, {Geom, Value}}, BeginBody),
-            {ok, {NewResp, Acc2}};
-        Resp ->
-            {ok, Acc2} = SendRowFun(Resp, {{Bbox, DocId}, {Geom, Value}}, Acc),
-            {ok, {Resp, Acc2}}
+    fun({{Bbox, DocId}, {Geom, Value}}, {AccLimit, AccSkip, Resp, Acc}) ->
+        case {AccLimit, AccSkip, Resp} of
+        {0, _, _} ->
+            % we've done "limit" rows, stop foldling
+            {stop, {0, 0, Resp, Acc}};
+        {_, AccSkip, _} when AccSkip > 0 ->
+            % just keep skipping
+            {ok, {AccLimit, AccSkip - 1, Resp, Acc}};
+        {_, _, undefined} ->
+            % rendering the first row, first we start the response
+            {ok, Resp2, BeginBody} = StartRespFun(Req, Etag, UpdateSeq),
+            {Go, Acc2} = SendRowFun(
+                Resp2, {{Bbox, DocId}, {Geom, Value}}, BeginBody),
+            {Go, {AccLimit - 1, 0, Resp2, Acc2}};
+        {AccLimit, _, Resp} when (AccLimit > 0) ->
+            % rendering all other rows
+            {Go, Acc2} = SendRowFun(Resp, {{Bbox, DocId}, {Geom, Value}}, Acc),
+            {Go, {AccLimit - 1, 0, Resp, Acc2}}
         end
     end.
 
@@ -232,6 +243,10 @@ parse_spatial_param("count", _Value) ->
     throw({query_parse_error, <<"count only available as count=true">>});
 parse_spatial_param("plane_bounds", Bounds) ->
     [{bounds, list_to_tuple(?JSON_DECODE("[" ++ Bounds ++ "]"))}];
+parse_spatial_param("limit", Value) ->
+    [{limit, geocouch_duplicates:parse_positive_int_param(Value)}];
+parse_spatial_param("skip", Value) ->
+    [{skip, geocouch_duplicates:parse_int_param(Value)}];
 parse_spatial_param(Key, Value) ->
     [{extra, {Key, Value}}].
 
@@ -247,5 +262,9 @@ validate_spatial_query(count, true, Args) ->
     Args#spatial_query_args{count=true};
 validate_spatial_query(bounds, Value, Args) ->
     Args#spatial_query_args{bounds=Value};
+validate_spatial_query(limit, Value, Args) ->
+    Args#spatial_query_args{limit=Value};
+validate_spatial_query(skip, Value, Args) ->
+    Args#spatial_query_args{skip=Value};
 validate_spatial_query(extra, _Value, Args) ->
     Args.
