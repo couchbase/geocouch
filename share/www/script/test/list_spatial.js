@@ -260,6 +260,37 @@ couchTests.list_spatial = function(debug) {
   T(xhr.status == 200, "tooManyGetRows");
   T(/after row: null/.test(xhr.responseText));
 
+
+  // limit and skip tests
+  url = url_pre + "basicBasic/basicIndex" + url_bbox;
+    xhr = CouchDB.request("GET", url + '&skip=3');
+  TEquals(15, xhr.responseText.length, "skip 3");
+
+  xhr = CouchDB.request("GET", url + '&limit=5');
+  TEquals(13, xhr.responseText.length, "limit 5");
+
+  xhr = CouchDB.request("GET", url + '&skip=4&limit=3');
+  TEquals(11, xhr.responseText.length, "skip 4, limit 3");
+
+  xhr = CouchDB.request("GET", url + '&skip=4&limit=31');
+  TEquals(14, xhr.responseText.length, "skip 4, limit > total");
+
+  xhr = CouchDB.request("GET", url + "&skip=1&limit=4");
+  // remove "tail"
+  resp = xhr.responseText.substring(0,xhr.responseText.length-4);
+  TEquals(8, resp.length, "skip 1, limit is 4");
+  xhr = CouchDB.request("GET", url + "&skip=5&limit=3");
+  var oldResp = resp;
+  // remove "head"
+  resp = xhr.responseText.substring(4);
+  TEquals(7, resp.length, "skip 5, limit is 3");
+  var concatenated = oldResp + resp;
+  xhr = CouchDB.request("GET", url + "&skip=1&limit=7");
+  TEquals(15, xhr.responseText.length, "skip 1, limit is 7");
+  TEquals(true, xhr.responseText===concatenated,
+    "two concatenated requests are the same as a single one");
+
+
   // test that etags are available
   xhr = CouchDB.request("GET", url_pre + "basicBasic/basicIndex" + url_bbox);
   etag = xhr.getResponseHeader("etag");

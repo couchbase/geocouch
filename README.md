@@ -66,6 +66,7 @@ Add the test to `<vanilla-couch>/share/www/script/couch_tests.js`
     loadTest("spatial_compaction.js");
     loadTest("spatial_design_docs.js");
     loadTest("spatial_bugfixes.js");
+    loadTest("spatial_offsets.js");
 
 ### Run CouchDB with GeoCouch
 
@@ -219,6 +220,26 @@ the query will return, not the geometry themselves.
     curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=0,0,180,90&count=true'
 
     {"count":1}
+
+### limit ###
+With `limit` you can limit the number of rows that should be returned.
+
+    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=-180,-90,180,90&limit=2'
+
+    {"update_seq":8,"rows":[
+    {"id":"augsburg","bbox":[10.898333,48.371667,10.898333,48.371667],"geometry":{"type":"Point","coordinates":[10.898333,48.371667]},"value":["augsburg",[10.898333,48.371667]]},
+    {"id":"oakland","bbox":[-122.270833,37.804444,-122.270833,37.804444],"geometry":{"type":"Point","coordinates":[-122.270833,37.804444]},"value":["oakland",[-122.270833,37.804444]]}
+    ]}
+
+### skip ###
+With `skip` you start to return the results at a certain offset.
+
+    curl -X GET 'http://localhost:5984/places/_design/main/_spatial/points?bbox=-180,-90,180,90&skip=3'
+
+    {"update_seq":8,"rows":[
+    {"id":"australia","bbox":[135,-25,135,-25],"geometry":{"type":"Point","coordinates":[135,-25]},"value":["australia",[135,-25]]},
+    {"id":"brasilia","bbox":[-52.95,-10.65,-52.95,-10.65],"geometry":{"type":"Point","coordinates":[-52.95,-10.65]},"value":["brasilia",[-52.95,-10.65]]}
+    ]}
 
 
 Compaction, cleanup and info

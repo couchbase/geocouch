@@ -18,7 +18,8 @@
 
 -include("couch_db.hrl").
 -export([start_list_resp/6, send_non_empty_chunk/2, sort_lib/1,
-    list_index_files/1, make_arity_3_fun/1]).
+    list_index_files/1, make_arity_3_fun/1, parse_int_param/1,
+    parse_positive_int_param/1]).
 
 % From couch_httpd_show
 start_list_resp(QServer, LName, Req, Db, Head, Etag) ->
@@ -88,4 +89,25 @@ make_arity_3_fun(SpecStr) ->
 	fun(Arg1, Arg2, Arg3) -> Mod:Fun(Arg1, Arg2, Arg3, SpecArg) end;
     {ok, {Mod, Fun}} ->
 	fun(Arg1, Arg2, Arg3) -> Mod:Fun(Arg1, Arg2, Arg3) end
+    end.
+
+% From couch_httpd_view
+parse_int_param(Val) ->
+    case (catch list_to_integer(Val)) of
+    IntVal when is_integer(IntVal) ->
+        IntVal;
+    _ ->
+        Msg = io_lib:format("Invalid value for integer parameter: ~p", [Val]),
+        throw({query_parse_error, ?l2b(Msg)})
+    end.
+
+% From couch_httpd_view
+parse_positive_int_param(Val) ->
+    case parse_int_param(Val) of
+    IntVal when IntVal >= 0 ->
+        IntVal;
+    _ ->
+        Fmt = "Invalid value for positive integer parameter: ~p",
+        Msg = io_lib:format(Fmt, [Val]),
+        throw({query_parse_error, ?l2b(Msg)})
     end.
