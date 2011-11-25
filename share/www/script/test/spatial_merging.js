@@ -58,7 +58,7 @@ couchTests.spatial_merging = function(debug) {
     }
   }
 
-  function mergedQuery(dbs, spatialName, options) {
+  function mergedQuery(dbs, spatialName, options, sort) {
     var body = {
       "spatial": {}
     };
@@ -102,7 +102,9 @@ couchTests.spatial_merging = function(debug) {
 
     var resp = JSON.parse(xhr.responseText);
     // results from a spatial request are not sorted, sort them client sided
-    resp.rows = resp.rows.sort(sortById);
+    if (sort!==false) {
+      resp.rows = resp.rows.sort(sortById);
+    }
     return resp;
   }
 
@@ -364,133 +366,108 @@ couchTests.spatial_merging = function(debug) {
 
   compareSpatialResults(resp, resp2);
 
-// skip is not implemented yet
-/*
+
   // test skip=N query parameter
-  resp = mergedQuery(dbs, "test/mapview1", {"skip": 2});
+  resp = mergedQuery(dbs, "test/fun1", {"skip": 2});
   TEquals("object", typeof resp);
-  TEquals(50, resp.total_rows);
   TEquals("object", typeof resp.rows);
   TEquals(48, resp.rows.length);
-  TEquals(3, resp.rows[0].key);
-  TEquals("3", resp.rows[0].id);
-  TEquals(4, resp.rows[1].key);
-  TEquals("4", resp.rows[1].id);
-
-  testKeysSorted(resp);
 
   // same, but with remote dbs
   resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE], "test/fun1",
     {"skip": 2});
 
   compareSpatialResults(resp, resp2);
-console.log("this is one is supposed to fail (skip)");
+
   resp = mergedQuery(dbs, "test/fun1", {"skip": 49});
   TEquals("object", typeof resp);
-  TEquals(50, resp.total_rows);
   TEquals("object", typeof resp.rows);
   TEquals(1, resp.rows.length);
-  TEquals(50, resp.rows[0].key);
-  TEquals("50", resp.rows[0].id);
 
-  testKeysSorted(resp);
-
-console.log("this is one is supposed to fail (skip) (b)");
   // same, but with remote dbs
   resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE], "test/fun1",
     {"skip": 49});
 
-  compareViewResults(resp, resp2);
+  compareSpatialResults(resp, resp2);
 
   resp = mergedQuery(dbs, "test/fun1", {"skip": 0});
   TEquals("object", typeof resp);
-  TEquals(50, resp.total_rows);
   TEquals("object", typeof resp.rows);
   TEquals(50, resp.rows.length);
-  TEquals(1, resp.rows[0].key);
-  TEquals("1", resp.rows[0].id);
-
-  testKeysSorted(resp);
 
   // same, but with remote dbs
   resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE], "test/fun1",
     {"skip": 0});
 
-// limit is not implemented yet
-  compareViewResults(resp, resp2);
-console.log("this is one is supposed to fail (limit)");
+  compareSpatialResults(resp, resp2);
+
   // test limit=N query parameter
   resp = mergedQuery(dbs, "test/fun1", {"limit": 1});
   TEquals("object", typeof resp);
-  TEquals(50, resp.total_rows);
   TEquals("object", typeof resp.rows);
   TEquals(1, resp.rows.length);
-  TEquals(1, resp.rows[0].key);
-  TEquals("1", resp.rows[0].id);
 
-console.log("this is one is supposed to fail (limit) (b)");
   // same, but with remote dbs
   resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE], "test/fun1",
     {"limit": 1});
 
-  compareViewResults(resp, resp2);
+  compareSpatialResults(resp, resp2);
 
-  resp = mergedQuery(dbs, "test/mapview1", {"limit": 10});
+  resp = mergedQuery(dbs, "test/fun1", {"limit": 10});
   TEquals("object", typeof resp);
-  TEquals(50, resp.total_rows);
   TEquals("object", typeof resp.rows);
   TEquals(10, resp.rows.length);
-  TEquals(1, resp.rows[0].key);
-  TEquals("1", resp.rows[0].id);
-  TEquals(10, resp.rows[9].key);
-  TEquals("10", resp.rows[9].id);
-
-  testKeysSorted(resp);
 
   // same, but with remote dbs
   resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE], "test/fun1",
     {"limit": 10});
 
-  compareViewResults(resp, resp2);
+  compareSpatialResults(resp, resp2);
 
   resp = mergedQuery(dbs, "test/fun1", {"limit": 1000});
   TEquals("object", typeof resp);
-  TEquals(50, resp.total_rows);
   TEquals("object", typeof resp.rows);
   TEquals(50, resp.rows.length);
-  TEquals(1, resp.rows[0].key);
-  TEquals("1", resp.rows[0].id);
-  TEquals(50, resp.rows[49].key);
-  TEquals("50", resp.rows[49].id);
-
-  testKeysSorted(resp);
 
   // same, but with remote dbs
   resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE], "test/fun1",
     {"limit": 1000});
 
-  compareViewResults(resp, resp2);
+  compareSpatialResults(resp, resp2);
 
   // test skip=N with limit=N query parameters
-  resp = mergedQuery(dbs, "test/fun1", {"limit": 10, "skip": 10});
+  // We don't know anything specific what the results look like,
+  // but the results are deterministic, this means that two separate
+  // subsequent limit+skip requests return the same as one big one.
+  resp = mergedQuery(dbs, "test/fun1", {"limit": 17, "skip": 12}, false);
   TEquals("object", typeof resp);
-  TEquals(50, resp.total_rows);
   TEquals("object", typeof resp.rows);
-  TEquals(10, resp.rows.length);
-  TEquals(11, resp.rows[0].key);
-  TEquals("11", resp.rows[0].id);
-  TEquals(20, resp.rows[9].key);
-  TEquals("20", resp.rows[9].id);
+  TEquals(17, resp.rows.length);
 
-  testKeysSorted(resp);
+  var respA = mergedQuery(dbs, "test/fun1", {"limit": 9, "skip": 12}, false);
+  TEquals("object", typeof respA);
+  TEquals("object", typeof respA.rows);
+  TEquals(9, respA.rows.length);
+
+  var respB = mergedQuery(dbs, "test/fun1", {"limit": 8, "skip": 21}, false);
+  TEquals("object", typeof respB);
+  TEquals("object", typeof respB.rows);
+  TEquals(8, respB.rows.length);
+
+  respA.rows = respA.rows.concat(respB.rows);
+  compareSpatialResults(resp, respA);
 
   // same, but with remote dbs
-  resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE], "test/fun1",
-    {"limit": 10, "skip": 10});
+  resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE],
+    "test/fun1", {"limit": 17, "skip": 12}, false);
+  var resp2A = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE],
+    "test/fun1", {"limit": 9, "skip": 12}, false);
+  var resp2B = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE],
+    "test/fun1", {"limit": 8, "skip": 21}, false);
+  resp2A.rows = resp2A.rows.concat(resp2B.rows);
+  compareSpatialResults(resp2, resp2A);
 
-  compareViewResults(resp, resp2);
-*/
-
+  compareSpatialResults(resp, resp2);
 
 /* not supported by GeoCouch, but hopefully in the future
   // test include_docs query parameter

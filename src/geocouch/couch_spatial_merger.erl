@@ -28,7 +28,7 @@ parse_http_params(Req, _DDoc, _IndexName, _Extra) ->
 
 % callback!
 make_funs(_DDoc, _IndexName, _IndexMergeParams) ->
-    {nil,
+    {fun spatial_less_fun/2,
     fun spatial_folder/6,
     fun merge_spatial/1,
     fun(NumFolders, Callback, UserAcc) ->
@@ -40,10 +40,8 @@ make_funs(_DDoc, _IndexName, _IndexMergeParams) ->
     nil}.
 
 % callback!
-get_skip_and_limit(_SpatialArgs) ->
-    % GeoCouch doesn't currently neither support skip, nor limit
-    Defaults = #merge_params{},
-    {Defaults#merge_params.skip, Defaults#merge_params.limit}.
+get_skip_and_limit(#spatial_query_args{skip=Skip, limit=Limit}) ->
+    {Skip, Limit}.
 
 % callback!
 make_event_fun(_SpatialArgs, Queue) ->
@@ -103,6 +101,9 @@ spatial_row_obj({{Bbox, DocId}, {Geom, Value}}) ->
     {[{id, DocId}, {bbox, tuple_to_list(Bbox)}, {geometry, {[Geom]}},
         {value, Value}]}.
 
+spatial_less_fun(A, B) ->
+    A < B.
+
 % Counterpart to map_view_folder/6 in couch_view_merger
 spatial_folder(Db, SpatialSpec, MergeParams, _UserCtx, DDoc, Queue) ->
     #simple_index_spec{
@@ -124,7 +125,7 @@ spatial_folder(Db, SpatialSpec, MergeParams, _UserCtx, DDoc, Queue) ->
         % we don't need a proper row_count (but we need it in the queue to
         % make the index merging work correctly)
         ok = couch_view_merger_queue:queue(Queue, {row_count, 0}),
-        couch_spatial:fold(Index, FoldlFun, {undefined, ""}, Bbox, Bounds);
+        couch_spatial:fold(Index, FoldlFun, nil, Bbox, Bounds);
     false ->
         ok = couch_view_merger_queue:queue(Queue, revision_mismatch)
     end,
@@ -196,6 +197,7 @@ http_view_fold_queue_error({Props}, Queue) ->
     ok = couch_view_merger_queue:queue(Queue, {error, From, Reason}).
 
 % Counterpart to http_view_fold_queue_row/2 in couch_view_merger
+% Used for merges of remote DBs
 http_spatial_fold_queue_row({Props}, Queue) ->
     Id = couch_util:get_value(<<"id">>, Props, nil),
     Bbox = couch_util:get_value(<<"bbox">>, Props, null),
@@ -222,6 +224,7 @@ http_spatial_fold_queue_row({Props}, Queue) ->
 
 
 % Counterpart to make_map_fold_fun/4 in couch_view_merger
+% Used for merges of local DBs
 make_spatial_fold_fun(Queue) ->
     fun({{_Bbox, _DocId}, {_Geom, _Value}}=Row, Acc) ->
         ok = couch_view_merger_queue:queue(Queue, Row),
