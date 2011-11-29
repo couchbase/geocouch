@@ -18,8 +18,7 @@
 
 -include("couch_db.hrl").
 -export([start_list_resp/6, send_non_empty_chunk/2, sort_lib/1,
-    list_index_files/1, make_arity_3_fun/1, parse_int_param/1,
-    parse_positive_int_param/1]).
+    make_arity_3_fun/1, parse_int_param/1, parse_positive_int_param/1]).
 
 % From couch_httpd_show
 start_list_resp(QServer, LName, Req, Db, Head, Etag) ->
@@ -75,12 +74,6 @@ sort_lib([{LName, {LObj}}|Rest], LAcc) ->
     sort_lib(Rest, [{LName, LSorted}|LAcc]);
 sort_lib([{LName, LCode}|Rest], LAcc) ->
     sort_lib(Rest, [{LName, LCode}|LAcc]).
-
-% From couch_view
-list_index_files(Db) ->
-    % call server to fetch the index files
-    RootDir = couch_config:get("couchdb", "view_index_dir"),
-    filelib:wildcard(RootDir ++ "/." ++ ?b2l(couch_db:name(Db)) ++ "_design"++"/*").
 
 % From couch_httpd (will be exported from 1.1.x on)
 make_arity_3_fun(SpecStr) ->

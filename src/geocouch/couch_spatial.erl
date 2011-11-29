@@ -115,12 +115,7 @@ cleanup_index_files(Db) ->
         {ok, Info} = get_group_info(Db, GroupId),
         ?b2l(couch_util:get_value(signature, Info))
     end, [DD||DD <- DesignDocs, DD#doc.deleted == false]),
-
-    % It's ok to use a clone of couch_view:list_index_files, as
-    % spatial indexes and view indexes are in the same
-    % directory (view_index_dir setting)
-    FileList = geocouch_duplicates:list_index_files(Db),
-
+    FileList = list_index_files(Db),
     % regex that matches all ddocs
     RegExp = "("++ string:join(Sigs, "|") ++")",
 
@@ -137,6 +132,11 @@ cleanup_index_files(Db) ->
 delete_index_dir(RootDir, DbName) ->
     couch_view:nuke_dir(RootDir ++ "/." ++ ?b2l(DbName) ++ "_design").
 
+list_index_files(Db) ->
+    % call server to fetch the index files
+    RootDir = couch_config:get("couchdb", "view_index_dir"),
+    filelib:wildcard(RootDir ++ "/." ++ ?b2l(couch_db:name(Db)) ++
+        "_design"++"/*.spatial").
 
 % XXX NOTE vmx: I don't know when this case happens
 do_reset_indexes(DbName, Root) ->
