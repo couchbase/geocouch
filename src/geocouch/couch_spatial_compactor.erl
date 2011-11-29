@@ -46,7 +46,7 @@ compact_group(Group, EmptyGroup) ->
         fd = EmptyFd
     } = EmptyGroup,
 
-    {ok, DbReduce} = couch_btree:full_reduce(Db#db.fulldocinfo_by_id_btree),
+    {ok, DbReduce} = couch_btree:full_reduce(Db#db.docinfo_by_id_btree),
     Count = element(1, DbReduce),
 
     DbName = couch_db:name(Db),

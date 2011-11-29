@@ -180,7 +180,7 @@ spatial_docs(Proc, Docs) ->
 % This is from an old revision (796805) of couch_view_updater
 process_doc(Db, Owner, DocInfo, {Docs, Group, IndexKVs, DocIdIndexIdKeys}) ->
     #spatial_group{ design_options = DesignOptions } = Group,
-    #doc_info{id=DocId, revs=[#rev_info{deleted=Deleted}|_]} = DocInfo,
+    #doc_info{id=DocId, deleted=Deleted} = DocInfo,
     LocalSeq = proplists:get_value(<<"local_seq">>,
         DesignOptions, false),
     DocOpts = case LocalSeq of
@@ -208,7 +208,7 @@ process_doc(Db, Owner, DocInfo, {Docs, Group, IndexKVs, DocIdIndexIdKeys}) ->
             {ViewKVs3, DocIdViewIdKeys3} = view_insert_query_results(Docs2,
                 Results, IndexKVs, DocIdIndexIdKeys2),
             {ok, Group2} = write_changes(Group1, ViewKVs3, DocIdViewIdKeys3,
-                DocInfo#doc_info.high_seq),
+                DocInfo#doc_info.local_seq),
             if is_pid(Owner) ->
                 ok = gen_server:cast(Owner, {partial_update, self(), Group2});
             true -> ok end,
