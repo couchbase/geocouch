@@ -147,14 +147,14 @@ lookup(Fd, Pos, Bboxes, {FoldFun, InitAcc}) ->
     {ParentMbr, ParentMeta, NodesPos} = Parent,
     case ParentMeta#node.type of
     inner ->
-        foldl_stop(fun(EntryPos, Acc) ->
-            case bboxes_not_disjoint(ParentMbr, Bboxes) of
-            true ->
-                lookup(Fd, EntryPos, Bboxes, {FoldFun, Acc});
-            false ->
-                {ok, Acc}
-            end
-        end, InitAcc, NodesPos);
+        case bboxes_not_disjoint(ParentMbr, Bboxes) of
+        true ->
+            foldl_stop(fun(EntryPos, Acc) ->
+                lookup(Fd, EntryPos, Bboxes, {FoldFun, Acc})
+            end, InitAcc, NodesPos);
+        false ->
+            {ok, InitAcc}
+        end;
     leaf ->
         case bboxes_within(ParentMbr, Bboxes) of
         % all children are within the bbox we search with
