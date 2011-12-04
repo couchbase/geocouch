@@ -175,8 +175,6 @@ lookup(Fd, Pos, Bboxes, {FoldFun, InitAcc}) ->
         end
     end.
 
-lookup(Fd, Pos, Bbox, FoldFunAndAcc, nil) when is_list(Bbox) ->
-    lookup(Fd, Pos, Bbox, FoldFunAndAcc);
 lookup(Fd, Pos, Bbox, FoldFunAndAcc, nil) ->
     lookup(Fd, Pos, Bbox, FoldFunAndAcc);
 % Only a single bounding box. It may be split if it covers the data line
