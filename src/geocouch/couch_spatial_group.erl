@@ -146,7 +146,7 @@ handle_cast({start_compact, CompactFun}, #group_state{compactor_pid=nil}
     {ok, Db} = couch_db:open_int(DbName, []),
     {ok, Fd} = open_index_file(compact, RootDir, DbName, GroupSig),
     NewGroup = reset_file(Db, Fd, DbName, Group),
-    Pid = spawn_link(fun() -> CompactFun(Group, NewGroup) end),
+    Pid = spawn_link(fun() -> CompactFun(Group, NewGroup, DbName) end),
     {noreply, State#group_state{compactor_pid = Pid}};
 handle_cast({start_compact, _}, State) ->
     %% compact already running, this is a no-op

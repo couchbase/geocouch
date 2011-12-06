@@ -53,6 +53,15 @@ delete_from_ets(Pid, DbName, Sig) ->
     true = ets:delete(spatial_group_servers_by_sig, {DbName, Sig}),
     true = ets:delete_object(couch_spatial_groups_by_db, {DbName, Sig}).
 
+% For foreign Design Documents (stored in a different DB)
+get_group_server({DbName, GroupDbName}, GroupId) when is_binary(GroupId) ->
+    DbGroup = case GroupId of
+    <<?DESIGN_DOC_PREFIX, _/binary>> ->
+        open_db_group(GroupDbName, GroupId);
+    _ ->
+        open_db_group(GroupDbName, <<?DESIGN_DOC_PREFIX, GroupId/binary>>)
+    end,
+    get_group_server(DbName, DbGroup);
 get_group_server(DbName, GroupId) when is_binary(GroupId) ->
     Group = open_db_group(DbName, GroupId),
     get_group_server(DbName, Group);
@@ -100,9 +109,14 @@ do_get_group(Db, GroupId, Stale) ->
     end,
     Result.
 
-get_group_info(Db, GroupId) ->
-    couch_view_group:request_group_info(
-        get_group_server(couch_db:name(Db), GroupId)).
+get_group_info({DbName, GroupDbName}, GroupId) ->
+    GroupPid = get_group_server({DbName, GroupDbName}, GroupId),
+    couch_view_group:request_group_info(GroupPid);
+get_group_info(#db{name = DbName}, GroupId) ->
+    get_group_info(DbName, GroupId);
+get_group_info(DbName, GroupId) ->
+    couch_view_group:request_group_info(get_group_server(DbName, GroupId)).
+
 
 % The only reason why couch_view:cleanup_index_files can't be used is the
 % call to get_group_info

@@ -17,20 +17,35 @@
 
 -export([start_compact/2]).
 
-%% @spec start_compact(DbName::binary(), GroupId:binary()) -> ok
+%% @spec start_compact(
+%%     DbName::binary()|{DbName::binary(), GroupDbName::binary()},
+%%     GroupId::binary()) -> ok
 %% @doc Compacts the spatial indexes.  GroupId must not include the _design/
 %% prefix
+% For foreign Design Document
+start_compact({DbName, GroupDbName}, GroupId) ->
+    Pid = couch_spatial:get_group_server({DbName, GroupDbName}, GroupId),
+    CompactFun = fun(Group, EmptyGroup, _) ->
+        compact_group(Group, EmptyGroup, {DbName, GroupDbName})
+    end,
+    gen_server:cast(Pid, {start_compact, CompactFun});
 start_compact(DbName, GroupId) ->
     Pid = couch_spatial:get_group_server(
         DbName, <<"_design/",GroupId/binary>>),
-    gen_server:cast(Pid, {start_compact, fun compact_group/2}).
+    gen_server:cast(Pid, {start_compact, fun compact_group/3}).
 
 %%=============================================================================
 %% internal functions
 %%=============================================================================
 
+% For foreign Design Documents (stored in a different DB)
+docs_db_name({DocsDbName, _DDocDbName}) ->
+    DocsDbName;
+docs_db_name(DbName) when is_binary(DbName) ->
+    DbName.
+
 %% @spec compact_group(Group, NewGroup) -> ok
-compact_group(Group, EmptyGroup) ->
+compact_group(Group, EmptyGroup, DbName) ->
     #spatial_group{
         current_seq = Seq,
         id_btree = IdBtree,
@@ -46,16 +61,16 @@ compact_group(Group, EmptyGroup) ->
         fd = EmptyFd
     } = EmptyGroup,
 
+    DbName1 = docs_db_name(DbName),
+    {ok, Db} = couch_db:open_int(DbName1, []),
     {ok, DbReduce} = couch_btree:full_reduce(Db#db.docinfo_by_id_btree),
     Count = element(1, DbReduce),
-
-    DbName = couch_db:name(Db),
 
     % Use "view_compaction" for now, that it shows up in Futons active tasks
     % screen. Think about a more generic way for the future.
     couch_task_status:add_task([
         {type, view_compaction},
-        {database, DbName},
+        {database, DbName1},
         {design_document, GroupId},
         {progress, 0}
     ]),
