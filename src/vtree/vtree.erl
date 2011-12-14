@@ -131,6 +131,20 @@ lookup(_Fd, nil, _Bbox, {_FoldFun, InitAcc}) ->
     {ok, InitAcc};
 lookup(_Fd, _Pos, [], {_FoldFun, InitAcc}) ->
     {ok, InitAcc};
+% No bounding box given. Return all the data.
+lookup(Fd, Pos, nil, {FoldFun, InitAcc}) ->
+    {ok, Parent} = couch_file:pread_term(Fd, Pos),
+    {_ParentMbr, ParentMeta, NodesPos} = Parent,
+    case ParentMeta#node.type of
+    inner ->
+        foldl_stop(fun(EntryPos, Acc) ->
+            lookup(Fd, EntryPos, nil, {FoldFun, Acc})
+        end, InitAcc, NodesPos);
+    leaf ->
+        foldl_stop(fun({Mbr, _Meta, {Id, {Geom, Value}}}, Acc) ->
+            FoldFun({{Mbr, Id}, {Geom, Value}}, Acc)
+        end, InitAcc, NodesPos)
+    end;
 % Only a single bounding box. No bounds given. If bounding box is flipped,
 % throw an error.
 lookup(Fd, Pos, Bbox, FoldFunAndAcc) when not is_list(Bbox) ->

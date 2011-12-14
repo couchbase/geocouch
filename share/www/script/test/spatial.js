@@ -186,6 +186,10 @@ couchTests.spatial = function(debug) {
   TEquals(['2'], extract_ids(xhr.responseText),
           "bbox collapsed to a point should return the geometries there");
 
+  xhr = CouchDB.request("GET", url_pre + "basicIndex");
+  TEquals(['0','1','2','3','4','5','6','7','8','9', 'stale1', 'stale2'],
+          extract_ids(xhr.responseText),
+          "no bounding box given should return all geometries");
 
   // count parameter tests
 
