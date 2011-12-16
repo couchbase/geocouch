@@ -13,20 +13,28 @@
 -module(gc_test_util).
 
 -export([init_code_path/0, random_node/0, random_node/1, build_random_tree/2,
-    lookup/3]).
+    lookup/3, root_dir/0, gc_config_file/0]).
 
 -record(node, {
     % type = inner | leaf
     type = inner
 }).
 
+% @doc The location of the GeoCouch config file relative to the root directory
+-spec gc_config_file() -> string().
+gc_config_file() ->
+    "etc/couchdb/default.d/geocouch.ini".
 
 init_code_path() ->
-    EscriptName = filename:split(escript:script_name()),
-    RootDir = lists:sublist(EscriptName, length(EscriptName)-2),
-    BuildDir = filename:join(RootDir ++ ["build"]),
+    BuildDir = filename:join(root_dir() ++ ["build"]),
     code:add_pathz(BuildDir).
 
+% @doc Returns the root directory of GeoCouch as a list. It makes the
+% assumptions that the currently running test is in <rootdir>/test/thetest.t
+-spec root_dir() -> [file:filename()].
+root_dir() ->
+    EscriptName = filename:split(filename:absname(escript:script_name())),
+    lists:sublist(EscriptName, length(EscriptName)-2).
 
 % @doc Create a random node. Return the ID of the node and the node itself.
 -spec random_node() -> {string(), tuple()}.

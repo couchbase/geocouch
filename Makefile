@@ -15,7 +15,7 @@ builddir:
 buildandtest: all test
 
 runtests:
-	ERL_FLAGS="-pa ${COUCH_SRC} -pa ${COUCH_SRC}/../etap -pa ${COUCH_SRC}/../snappy" prove ./test/*.t
+	ERL_FLAGS="-pa ${COUCH_SRC} -pa ${COUCH_SRC}/../etap -pa ${COUCH_SRC}/../snappy -pa ${COUCH_SRC}/../../test/etap -pa ${COUCH_SRC}/../couch_set_view/ebin -pa ${COUCH_SRC}/../mochiweb -pa ${COUCH_SRC}/../ibrowse -pa ${COUCH_SRC}/../erlang-oauth -pa ${COUCH_SRC}/../ejson" prove ./test/*.t
 
 check: clean builddir compileforcheck runtests
 	rm -rf build
