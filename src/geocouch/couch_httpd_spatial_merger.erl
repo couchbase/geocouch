@@ -38,7 +38,7 @@ handle_req(#httpd{method = 'GET'} = Req) ->
     },
     MergeParams1 = couch_httpd_view_merger:apply_http_config(
         Req, [], MergeParams0),
-    couch_index_merger:query_index(couch_spatial_merger, Req, MergeParams1);
+    couch_index_merger:query_index(couch_spatial_merger, MergeParams1, Req);
 
 handle_req(#httpd{method = 'POST'} = Req) ->
     couch_httpd:validate_ctype(Req, "application/json"),
@@ -52,7 +52,7 @@ handle_req(#httpd{method = 'POST'} = Req) ->
     },
     MergeParams1 = couch_httpd_view_merger:apply_http_config(
         Req, Props, MergeParams0),
-    couch_index_merger:query_index(couch_spatial_merger, Req, MergeParams1);
+    couch_index_merger:query_index(couch_spatial_merger, MergeParams1, Req);
 
 handle_req(Req) ->
     couch_httpd:send_method_not_allowed(Req, "GET,POST").

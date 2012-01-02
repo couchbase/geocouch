@@ -13,8 +13,8 @@
 -module(couch_spatial_merger).
 
 %-export([query_spatial/2]).
--export([parse_http_params/4, make_funs/5, get_skip_and_limit/1,
-    http_index_folder_req_details/4, make_event_fun/2]).
+-export([parse_http_params/4, make_funs/3, get_skip_and_limit/1,
+    http_index_folder_req_details/3, make_event_fun/2]).
 
 -include("couch_db.hrl").
 -include("couch_index_merger.hrl").
@@ -27,9 +27,9 @@ parse_http_params(Req, _DDoc, _IndexName, _Extra) ->
     couch_httpd_spatial:parse_spatial_params(Req).
 
 % callback!
-make_funs(_Req, _DDoc, _IndexName, _IndexArgs, _IndexMergeParams) ->
+make_funs(_DDoc, _IndexName, _IndexMergeParams) ->
     {nil,
-    fun spatial_folder/7,
+    fun spatial_folder/6,
     fun merge_spatial/1,
     fun(NumFolders, Callback, UserAcc) ->
         fun(Item) ->
@@ -52,10 +52,15 @@ make_event_fun(_SpatialArgs, Queue) ->
     end.
 
 % callback!
-http_index_folder_req_details(#merged_index_spec{
-        url = MergeUrl0, ejson_spec = {EJson}},
-        #index_merge{conn_timeout = Timeout} = MergeParams, SpatialArgs,
-        DDoc) ->
+http_index_folder_req_details(#merged_index_spec{} = Spec, MergeParams, DDoc) ->
+    #merged_index_spec{
+        url = MergeUrl0,
+        ejson_spec = {EJson}
+    } = Spec,
+    #index_merge{
+        conn_timeout = Timeout,
+        http_params = SpatialArgs
+    } = MergeParams,
     {ok, #httpdb{url = Url, ibrowse_options = Options} = Db} =
         couch_index_merger:open_db(MergeUrl0, nil, Timeout),
     MergeUrl = Url ++ spatial_qs(SpatialArgs),
@@ -74,9 +79,16 @@ http_index_folder_req_details(#merged_index_spec{
     put(from_url, Url),
     {MergeUrl, post, Headers, ?JSON_ENCODE(Body), Options};
 
-http_index_folder_req_details(#simple_index_spec{
-        database = DbUrl, ddoc_id = DDocId, index_name = SpatialName},
-        #index_merge{conn_timeout = Timeout}, SpatialArgs, _DDoc) ->
+http_index_folder_req_details(#simple_index_spec{} = Spec, MergeParams, _DDoc) ->
+    #simple_index_spec{
+        database = DbUrl,
+        ddoc_id = DDocId,
+        index_name = SpatialName
+    } = Spec,
+    #index_merge{
+        conn_timeout = Timeout,
+        http_params = SpatialArgs
+    } = MergeParams,
     {ok, #httpdb{url = Url, ibrowse_options = Options}} =
         couch_index_merger:open_db(DbUrl, nil, Timeout),
     SpatialUrl = Url ++ ?b2l(DDocId) ++ "/_spatial/" ++ ?b2l(SpatialName) ++
@@ -92,8 +104,7 @@ spatial_row_obj({{Bbox, DocId}, {Geom, Value}}) ->
         {value, Value}]}.
 
 % Counterpart to map_view_folder/6 in couch_view_merger
-spatial_folder(Db, SpatialSpec, MergeParams, _UserCtx, SpatialArgs, DDoc,
-        Queue) ->
+spatial_folder(Db, SpatialSpec, MergeParams, _UserCtx, DDoc, Queue) ->
     #simple_index_spec{
         ddoc_database = DDocDbName, ddoc_id = DDocId, index_name = SpatialName
     } = SpatialSpec,
@@ -101,7 +112,7 @@ spatial_folder(Db, SpatialSpec, MergeParams, _UserCtx, SpatialArgs, DDoc,
         bbox = Bbox,
         bounds = Bounds,
         stale = Stale
-    } = SpatialArgs,
+    } = MergeParams#index_merge.http_params,
     FoldlFun = make_spatial_fold_fun(Queue),
     {DDocDb, Index} = get_spatial_index(Db, DDocDbName, DDocId,
         SpatialName, Stale),

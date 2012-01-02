@@ -66,6 +66,7 @@ Add the test to `<vanilla-couch>/share/www/script/couch_tests.js`
     loadTest("spatial_compaction.js");
     loadTest("spatial_design_docs.js");
     loadTest("spatial_bugfixes.js");
+    loadTest("spatial_merging.js");
 
 ### Run CouchDB with GeoCouch
 
