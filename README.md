@@ -18,7 +18,7 @@ the correct one:
  - master: works with the CouchDB master branch from Couchbase's repo
    (https://github.com/couchbase/couchdb)
  - couchdb1.1.x: works with Apache CouchDB 1.1.x
- - coucudb1.2.x: works with Apache CouchDB 1.2.x
+ - couchdb1.2.x: works with Apache CouchDB 1.2.x
  - there is currently no branch for Apache CouchDB 1.3.x
 
 Installation
