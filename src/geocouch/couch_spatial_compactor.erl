@@ -88,7 +88,9 @@ compact_group(Group, EmptyGroup, DbName) ->
     end,
     {ok, _, {Bt3, Uncopied, _Total, _LastId}} = couch_btree:foldl(IdBtree, Fun,
         {EmptyIdBtree, [], 0, nil}),
+    couch_file:flush(Bt3#btree.fd),
     {ok, NewIdBtree} = couch_btree:add(Bt3, lists:reverse(Uncopied)),
+    couch_file:flush(NewIdBtree#btree.fd),
 
     NewIndexes = lists:map(fun({Index, EmptyIndex}) ->
         case Index#spatial.treepos of

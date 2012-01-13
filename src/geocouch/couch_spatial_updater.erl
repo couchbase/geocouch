@@ -257,6 +257,7 @@ write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
              Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight}
         end
     end, Group#spatial_group.indexes, IndexKeyValuesToAdd),
+    couch_file:flush(Fd),
     Group2 = Group#spatial_group{indexes=Indexes2, current_seq=NewSeq, id_btree=IdBtree2},
     lists:foreach(fun(Index) ->
         ?LOG_INFO("Position of the spatial index (~p) root node: ~p",
