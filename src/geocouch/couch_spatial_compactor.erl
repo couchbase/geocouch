@@ -55,7 +55,6 @@ compact_group(Group, EmptyGroup, DbName) ->
     } = Group,
 
     #spatial_group{
-        db = Db,
         id_btree = EmptyIdBtree,
         indexes = EmptyIndexes,
         fd = EmptyFd
