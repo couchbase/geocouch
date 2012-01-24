@@ -45,6 +45,7 @@ main(_) ->
 
 
 test() ->
+    couch_file_write_guard:sup_start_link(),
     test_bulk_load(),
     test_bulk_load_regression(),
     test_omt_load(),
@@ -147,7 +148,7 @@ test_bulk_load() ->
     etap:is(Results4_2,
         [{4,[3],47},{4,[3],64},{4,[3],72},{5,[4],136},{6,[5],236}],
         "Insertion was correct  (bulk_load) (b)"),
-    ok.
+    ok = couch_file:close(Fd).
 
 test_bulk_load_regression() ->
     Filename = "/tmp/bulk.bin",
@@ -175,7 +176,8 @@ test_bulk_load_regression() ->
         "Number of nodes is correct (bulk_load_regression)"),
     LeafDepths2 = vtreestats:leaf_depths(Fd, Pos2),
     etap:is(LeafDepths2, [3],
-        "Tree depth is equal and correct (bulk_load_regression)").
+        "Tree depth is equal and correct (bulk_load_regression)"),
+    ok = couch_file:close(Fd).
 
 
 test_omt_load() ->
@@ -337,8 +339,8 @@ test_omt_write_tree() ->
         [Node|Acc]
     end, [], LeafNodes1 ++ LeafNodes2),
     {Omt4, _OmtHeight4} = ?MOD:omt_load(LeafNodes3, 2),
-    etap:is(Omt4, Omt1, "Round-trip worked (omt_write_tree)").
-
+    etap:is(Omt4, Omt1, "Round-trip worked (omt_write_tree)"),
+    ok = couch_file:close(Fd).
 
 test_omt_sort_nodes() ->
     Nodes1 = lists:foldl(fun(I, Acc) ->
@@ -412,7 +414,8 @@ test_seedtree_insert() ->
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
     SeedTree7Inserted = get_seedtree_children(SeedTree7Tree),
     etap:is(SeedTree7Inserted, [[Node], [Node6], [], []],
-        "Seed tree is correct (seedtree_insert) (c)").
+        "Seed tree is correct (seedtree_insert) (c)"),
+    ok = couch_file:close(Fd).
 
 
 test_seedtree_insert_list() ->
@@ -447,7 +450,8 @@ test_seedtree_insert_list() ->
     SeedTree7Tree = SeedTree7#seedtree_root.tree,
     SeedTree7Inserted = get_seedtree_children(SeedTree7Tree),
     etap:is(SeedTree7Inserted, [[Node], [Node6], [], []],
-        "Seed tree is correct (seedtree_insert_list) (a)").
+        "Seed tree is correct (seedtree_insert_list) (a)"),
+    ok = couch_file:close(Fd).
 
 test_seedtree_init() ->
     {ok, {Fd, {RootPos, _}}} = gc_test_util:build_random_tree(
@@ -467,7 +471,8 @@ test_seedtree_init() ->
     SeedTree4 = ?MOD:seedtree_init(Fd, RootPos, 15),
     etap:is(SeedTree4#seedtree_root.tree,
         SeedTree3#seedtree_root.tree,
-        "Lowest level of the seed tree was used").
+        "Lowest level of the seed tree was used"),
+    ok = couch_file:close(Fd).
 
 
 test_seedtree_write_single() ->
@@ -494,7 +499,8 @@ test_seedtree_write_single() ->
         "Number of nodes is correct (seedtree_write_single)"),
     LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
     etap:is(LeafDepths1, [1],
-        "Tree depth is equal and correct (seedtree_write_single)").
+        "Tree depth is equal and correct (seedtree_write_single)"),
+    ok = couch_file:close(Fd).
 
 
 test_seedtree_write_case1() ->
@@ -527,6 +533,7 @@ test_seedtree_write_case1() ->
     LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
     etap:is(LeafDepths1, [3],
         "Tree depth is equal and correct (seedtree_write_case1)"),
+    ok = couch_file:close(Fd),
 
     % Test 1.2: input tree produces splits (seedtree height=1)
     TargetTreeNodeNum2 = 64,
@@ -548,6 +555,7 @@ test_seedtree_write_case1() ->
     LeafDepths2 = vtreestats:leaf_depths(Fd2, ResultPos2),
     etap:is(LeafDepths2, [3],
         "Tree depth is equal and correct (seedtree_write_case1) (height==1)"),
+    ok = couch_file:close(Fd2),
 
     % Test 1.3: input tree produces splits (recursively) (seedtree height=2)
     % It would create a root node with 5 nodes
@@ -569,6 +577,7 @@ test_seedtree_write_case1() ->
     LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
     etap:is(LeafDepths3, [4],
         "Tree depth is equal and correct (seedtree_write_case1) (height==2)"),
+    ok = couch_file:close(Fd3),
 
     % Test 1.4: input tree produces splits (recursively) (seedtree height=3)
     TargetTreeNodeNum4 = 900,
@@ -589,6 +598,7 @@ test_seedtree_write_case1() ->
     LeafDepths4 = vtreestats:leaf_depths(Fd4, ResultPos4),
     etap:is(LeafDepths4, [5],
         "Tree depth is equal and correct (seedtree_write_case1) (height==3)"),
+    ok = couch_file:close(Fd4),
 
     % Test 1.5: adding new data with height=4 (seedtree height=1)
     TargetTreeNodeNum5 = 800,
@@ -611,7 +621,8 @@ test_seedtree_write_case1() ->
     LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
     etap:is(LeafDepths5, [5],
         "Tree depth is equal and correct (seedtree_write_case1) (height==1) "
-        "(new data height==4)").
+        "(new data height==4)"),
+    ok = couch_file:close(Fd5).
 
 test_seedtree_write_case2() ->
     % Test "Case 2: input R-tree is not shorter than the level of the
@@ -661,6 +672,7 @@ test_seedtree_write_case2() ->
     LeafDepths2 = vtreestats:leaf_depths(Fd, ResultPos2),
     etap:is(LeafDepths2, [5],
         "Tree depth is equal and correct (seedtree_write_case2) (2 levels)"),
+    ok = couch_file:close(Fd),
 
     % Test 2.3: input tree is too high (1 level) and procudes split
     % (seedtree height=1)
@@ -682,6 +694,7 @@ test_seedtree_write_case2() ->
     LeafDepths3 = vtreestats:leaf_depths(Fd3, ResultPos3),
     etap:is(LeafDepths3, [3],
         "Tree depth is equal and correct (seedtree_write_case2) (1 level)"),
+    ok = couch_file:close(Fd3),
 
     % Test 2.4: input tree is too high (1 level) and produces multiple
     % splits (recusively) (seedtree height=2)
@@ -707,6 +720,7 @@ test_seedtree_write_case2() ->
     etap:is(LeafDepths4, [4],
         "Tree depth is equal and correct (seedtree_write_case2) "
         "(input tree 1 level too high)"),
+    ok = couch_file:close(Fd4),
 
     % Test 2.5: input tree is too high (2 levels) and produces multiple
     % splits (recusively) (seedtree height=2)
@@ -732,6 +746,7 @@ test_seedtree_write_case2() ->
     etap:is(LeafDepths5, [4],
         "Tree depth is equal and correct (seedtree_write_case2) "
         "(input tree 2 levels too high)"),
+    ok = couch_file:close(Fd5),
 
     % Test 2.6: input tree is too high (2 levels). Insert a OMT tree that
     % leads to massive overflow
@@ -755,7 +770,8 @@ test_seedtree_write_case2() ->
     LeafDepths6 = vtreestats:leaf_depths(Fd6, ResultPos6),
     etap:is(LeafDepths6, [4],
         "Tree depth is equal and correct (seedtree_write_case2) "
-        "(input tree 2 levels too high, massive overflow)").
+        "(input tree 2 levels too high, massive overflow)"),
+    ok = couch_file:close(Fd6).
 
 test_seedtree_write_case3() ->
     % Test "Case 3: input R-tree is shorter than the level of the child level of the target node" (chapter 6.3)
@@ -783,6 +799,7 @@ test_seedtree_write_case3() ->
     LeafDepths1 = vtreestats:leaf_depths(Fd, ResultPos1),
     etap:is(LeafDepths1, [3],
         "Tree depth is equal and correct (seedtree_write_case3)"),
+    ok = couch_file:close(Fd),
 
 
     % Test 3.2: input tree is too small (2 levels)
@@ -815,6 +832,7 @@ test_seedtree_write_case3() ->
     etap:is(LeafDepths2, [5],
         "Tree depth is equal and correct (seedtree_write_case3) "
         "(input tree 2 levels too small)"),
+    ok = couch_file:close(Fd2),
 
     % Test 3.3: input tree is too small (1 level) and procudes split
     % (seedtree height=1)
@@ -841,6 +859,7 @@ test_seedtree_write_case3() ->
     etap:is(LeafDepths3, [3],
         "Tree depth is equal and correct (seedtree_write_case3) "
         "(input tree 1 level too small, seed tree height==1))"),
+    ok = couch_file:close(Fd3),
 
     % Test 3.4: input tree is too small (1 level) and produces multiple
     % splits (recusively) (seedtree height=2)
@@ -865,6 +884,7 @@ test_seedtree_write_case3() ->
     etap:is(LeafDepths4, [4],
         "Tree depth is equal and correct (seedtree_write_case3) "
         "(input tree 1 level too small, seed tree height==2))"),
+    ok = couch_file:close(Fd4),
 
     % Test 3.5: input tree is too small (2 levels) and produces multiple
     % splits (recusively) (seedtree height=2)
@@ -888,7 +908,8 @@ test_seedtree_write_case3() ->
     LeafDepths5 = vtreestats:leaf_depths(Fd5, ResultPos5),
     etap:is(LeafDepths5, [4],
         "Tree depth is equal and correct (seedtree_write_case3) "
-        "(input tree 2 levels too small, seed tree height==2))").
+        "(input tree 2 levels too small, seed tree height==2))"),
+    ok = couch_file:close(Fd5).
 
 
 test_insert_subtree() ->
@@ -933,7 +954,8 @@ test_insert_subtree() ->
     etap:is(length(Lookup2), 270,
         "Number of nodes is correct (insert_subtree) (splitted root node)"),
     etap:is(LeafDepths2, [4],
-        "Tree depth is equal and correct (insert_subtree) (splitted root node)").
+        "Tree depth is equal and correct (insert_subtree) (splitted root node)"),
+    ok = couch_file:close(Fd).
 
 
 test_insert_outliers() ->
@@ -1092,7 +1114,8 @@ test_insert_outliers() ->
     LeafDepths6 = vtreestats:leaf_depths(Fd, ResultPos6),
     etap:is(LeafDepths6, [3],
         "Tree depth is equal and correct (insert_outliers) "
-        "(higher than target tree, doesn't fit into one node)").
+        "(higher than target tree, doesn't fit into one node)"),
+    ok = couch_file:close(Fd).
 
 
 test_seedtree_write_insert() ->
@@ -1132,7 +1155,9 @@ test_seedtree_write_insert() ->
     % single level target tree. There was a bug that couldn't handle it.
     Leafnode = {Mbr1, #node{type=leaf}, Nodes1},
     Result2 = ?MOD:seedtree_write_insert(Fd, [Leafnode], OmtTree1, OmtHeight1),
-    etap:is(length(Result2), 8 , "Multiple root nodes (single level target)").
+    etap:is(length(Result2), 8 , "Multiple root nodes (single level target)"),
+    ok = couch_file:close(Fd).
+
 
 
 %% Helpers %%
@@ -1175,6 +1200,7 @@ create_random_nodes_and_packed_tree(NodesNum, TreeNodeNum, MaxFilled) ->
     end, [], lists:seq(1, NodesNum)),
 
     {Nodes, Fd, RootPos}.
+
 
 % @doc Returns the children of the seedtree leafs. It's a list where every
 %     element contains the list of children of one seedtree leaf.

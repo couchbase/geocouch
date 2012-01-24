@@ -29,6 +29,7 @@ main(_) ->
     ok.
 
 test() ->
+    couch_file_write_guard:sup_start_link(),
     test_within(),
     test_intersect(),
     test_disjoint(),
@@ -128,7 +129,7 @@ test_insert() ->
                   [get_node(Fd, Pos5_1), get_node(Fd, Pos5_2)]}},
                   {ok, Tree1Node1_2_3_4_5},
             "Insert a nodes into a full leaf node (root node)"),
-    ok.
+    ok = couch_file:close(Fd).
 
 
 test_within() ->
@@ -254,7 +255,7 @@ test_lookup() ->
     etap:is(length(Lookup7), 3, "Query with multiple windows (2 windows)"),
     {ok, Lookup8} = gc_test_util:lookup(Fd, Pos5, [Bbox2, Bbox4, {-20,1,-9,15}]),
     etap:is(length(Lookup8), 4, "Query with multiple windows (3 windows)"),
-    ok.
+    ok = couch_file:close(Fd).
 
 
 test_multilookup() ->
@@ -318,7 +319,7 @@ test_multilookup() ->
     etap:is(Lookup5, [],
             "Don't find any nodes in tree (tree height=2) 2 bboxes (both "
             "outside of all nodes"),
-    ok.
+    ok = couch_file:close(Fd).
 
 test_split_bbox_if_flipped() ->
     %etap:plan(17),
@@ -812,7 +813,7 @@ test_delete() ->
     {ok, {Mbr, _, [Node14od]}} = get_node(Fd, Pos19C1),
 
     {empty, nil} = vtree:delete(Fd, <<"Node14">>, Mbr, Pos19),
-    ok.
+    ok = couch_file:close(Fd).
 
 test_delete_same_id() ->
     % Test what happens if multiple emits in one function happened
@@ -941,7 +942,7 @@ test_delete_same_id() ->
 
     etap:is(vtree:delete(Fd, <<"Node">>, Node5Mbr, Pos25_6), not_found,
             "Node can't be found (tree height=2) (same ID)"),
-    ok.
+    ok = couch_file:close(Fd).
 
 test_split_node() ->
     %etap:plan(3),
@@ -969,6 +970,7 @@ test_count_total() ->
         "/tmp/randtree.bin", 20),
     Count1 = vtree:count_total(Fd1, RootPos1),
     etap:is(Count1, 20, "Total number of geometries is correct (a)"),
+    ok = couch_file:close(Fd1),
 
     {ok, {Fd2, {RootPos2, _}}} = gc_test_util:build_random_tree(
         "/tmp/randtree.bin", 338),
@@ -978,7 +980,7 @@ test_count_total() ->
     Count3 = vtree:count_total(Fd2, nil),
     etap:is(Count3, 0,
             "Total number of geometries is correct (for empty tree)"),
-    ok.
+    ok = couch_file:close(Fd2).
 
 
 %% Helpers %%
