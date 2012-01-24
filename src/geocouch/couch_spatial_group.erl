@@ -146,7 +146,13 @@ handle_cast({start_compact, CompactFun}, #group_state{compactor_pid=nil}
     {ok, Db} = couch_db:open_int(DbName, []),
     {ok, Fd} = open_index_file(compact, RootDir, DbName, GroupSig),
     NewGroup = reset_file(Db, Fd, DbName, Group),
-    Pid = spawn_link(fun() -> CompactFun(Group, NewGroup, DbName) end),
+    CompactFd = NewGroup#spatial_group.fd,
+    unlink(CompactFd),
+    Pid = spawn_link(fun() ->
+        link(CompactFd),
+        CompactFun(Group, NewGroup, DbName),
+        unlink(CompactFd)
+    end),
     {noreply, State#group_state{compactor_pid = Pid}};
 handle_cast({start_compact, _}, State) ->
     %% compact already running, this is a no-op
@@ -162,18 +168,22 @@ handle_cast({compact_done, #spatial_group{current_seq=NewSeq} = NewGroup},
         ref_counter = RefCounter
     } = State,
 
+    if is_pid(UpdaterPid) ->
+        couch_util:shutdown_sync(UpdaterPid);
+    true ->
+        ok
+    end,
+
     ?LOG_INFO("Spatial index compaction complete for ~s ~s",
         [DbName, GroupId]),
     FileName = index_file_name(RootDir, DbName, GroupSig),
-    CompactName = index_file_name(compact, RootDir, DbName, GroupSig),
+    ok = couch_file:only_snapshot_reads(OldFd),
     ok = couch_file:delete(RootDir, FileName),
-    ok = file:rename(CompactName, FileName),
+    ok = couch_file:rename(NewGroup#spatial_group.fd, FileName),
 
     %% if an updater is running, kill it and start a new one
     NewUpdaterPid =
     if is_pid(UpdaterPid) ->
-        unlink(UpdaterPid),
-        exit(UpdaterPid, spatial_compaction_complete),
         Owner = self(),
         spawn_link(fun()-> couch_spatial_updater:update(Owner, NewGroup) end);
     true ->
