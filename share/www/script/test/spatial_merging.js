@@ -469,6 +469,24 @@ couchTests.spatial_merging = function(debug) {
 
   compareSpatialResults(resp, resp2);
 
+  // test if results have the correct structure
+  resp = mergedQuery(dbs, "test/fun1");
+  TEquals("object", typeof resp);
+  TEquals("object", typeof resp.rows);
+  for (i in resp.rows) {
+    TEquals("string", typeof resp.rows[i].id);
+    T(resp.rows[i].bbox instanceof Array);
+    TEquals("object", typeof resp.rows[i].geometry);
+    TEquals("string", typeof resp.rows[i].geometry.type);
+    T(resp.rows[i].geometry.coordinates instanceof Array);
+    T(resp.rows[i].value !== undefined);
+  }
+
+  // same, but with remote dbs
+  resp2 = mergedQuery([dbUri(dbA), dbB, dbUri(dbC), dbD, dbE], "test/fun1");
+
+  compareSpatialResults(resp, resp2);
+
 /* not supported by GeoCouch, but hopefully in the future
   // test include_docs query parameter
   resp = mergedQuery(dbs, "test/fun1", {"include_docs": "true"});

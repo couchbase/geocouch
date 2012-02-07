@@ -97,9 +97,11 @@ http_index_folder_req_details(#simple_index_spec{} = Spec, MergeParams, _DDoc) -
 spatial_row_obj({{Key, error}, Value}) ->
     {[{key, Key}, {error, Value}]};
 
-spatial_row_obj({{Bbox, DocId}, {Geom, Value}}) ->
-    {[{id, DocId}, {bbox, tuple_to_list(Bbox)}, {geometry, {[Geom]}},
-        {value, Value}]}.
+spatial_row_obj({{Bbox, DocId}, {{Type, Coords}, Value}}) ->
+    {[{id, DocId},
+      {bbox, tuple_to_list(Bbox)},
+      {geometry, {[{type, Type}, {coordinates, Coords}]}},
+      {value, Value}]}.
 
 spatial_less_fun(A, B) ->
     A < B.
