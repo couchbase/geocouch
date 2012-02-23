@@ -32,7 +32,7 @@
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
     gc_test_util:init_code_path(),
-    etap:plan(99),
+    etap:plan(119),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -987,7 +987,7 @@ test_insert_outliers() ->
         [Node|Acc]
     end, [], lists:seq(1,300)),
 
-    {ResultPos1, ResultHeight1} = ?MOD:insert_outlliers(
+    {ResultPos1, ResultHeight1} = ?MOD:insert_outliers(
             Fd, TargetPos, TargetMbr, TargetHeight, Nodes1),
     etap:is(ResultHeight1, 5,
         "Height is correct (insert_outliers) "
@@ -1013,7 +1013,7 @@ test_insert_outliers() ->
         [Node|Acc]
     end, [], lists:seq(1,1000)),
 
-    {ResultPos2, ResultHeight2} = ?MOD:insert_outlliers(
+    {ResultPos2, ResultHeight2} = ?MOD:insert_outliers(
             Fd, TargetPos, TargetMbr, TargetHeight, Nodes2),
     etap:is(ResultHeight2, 6,
         "Height is correct (insert_outliers) "
@@ -1038,7 +1038,7 @@ test_insert_outliers() ->
         [Node|Acc]
     end, [], lists:seq(1,1500)),
 
-    {ResultPos3, ResultHeight3} = ?MOD:insert_outlliers(
+    {ResultPos3, ResultHeight3} = ?MOD:insert_outliers(
             Fd, TargetPos, TargetMbr, TargetHeight, Nodes3),
     etap:is(ResultHeight3, 6,
         "Height is correct (insert_outliers) "
@@ -1063,7 +1063,7 @@ test_insert_outliers() ->
         [Node|Acc]
     end, [], lists:seq(1,4000)),
 
-    {ResultPos4, ResultHeight4} = ?MOD:insert_outlliers(
+    {ResultPos4, ResultHeight4} = ?MOD:insert_outliers(
             Fd, TargetPos, TargetMbr, TargetHeight, Nodes4),
     etap:is(ResultHeight4, 7,
         "Height is correct (insert_outliers) "
@@ -1088,7 +1088,7 @@ test_insert_outliers() ->
         [Node|Acc]
     end, [], lists:seq(1,7)),
 
-    {ResultPos5, ResultHeight5} = ?MOD:insert_outlliers(
+    {ResultPos5, ResultHeight5} = ?MOD:insert_outliers(
             Fd, TargetPos, TargetMbr, TargetHeight, Nodes5),
     etap:is(ResultHeight5, 4,
         "Height is correct (insert_outliers) "
@@ -1113,7 +1113,7 @@ test_insert_outliers() ->
         [Node|Acc]
     end, [], lists:seq(1,16)),
 
-    {ResultPos6, ResultHeight6} = ?MOD:insert_outlliers(
+    {ResultPos6, ResultHeight6} = ?MOD:insert_outliers(
             Fd, TargetPos, TargetMbr, TargetHeight, Nodes6),
     etap:is(ResultHeight6, 4,
         "Height is correct (insert_outliers) "
