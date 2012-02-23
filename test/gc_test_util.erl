@@ -49,7 +49,11 @@ random_node(Seed) ->
 -spec build_random_tree(Filename::string(), Num::integer()) ->
         {ok, {file:io_device(), {integer(), integer()}}} | {error, string()}.
 build_random_tree(Filename, Num) ->
-    build_random_tree(Filename, Num, {654, 642, 698}).
+    % The random seed generator changed in R15 (erts 5.9)
+    case erlang:system_info(version) >= "5.9" of
+        true -> build_random_tree(Filename, Num, {86880, 81598, 91188});
+        false -> build_random_tree(Filename, Num, {654, 642, 698})
+    end.
 -spec build_random_tree(Filename::string(), Num::integer(),
         Seed::{integer(), integer(), integer()}) ->
         {ok, {file:io_device(), {integer(), integer()}}} | {error, string()}.
