@@ -66,6 +66,12 @@ test() ->
 
 
 test_bulk_load() ->
+    % The random seed generator changed in R15 (erts 5.9)
+    {A, B, C} = case erlang:system_info(version) >= "5.9" of
+        true -> {50703, 57604, 8756};
+        false -> {27, 329, 45}
+    end,
+
     Filename = "/tmp/bulk.bin",
     Fd = case couch_file:open(Filename, [create, overwrite]) of
     {ok, Fd2} ->
@@ -78,7 +84,7 @@ test_bulk_load() ->
     % Load the initial tree (with bulk operation)
     Nodes1 = lists:foldl(fun(I, Acc) ->
         {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
-            gc_test_util:random_node({I,27+I*329,45}),
+            gc_test_util:random_node({I, A+I*B, C}),
         Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,7)),
@@ -94,7 +100,7 @@ test_bulk_load() ->
     % Load some more nodes
     Nodes2 = lists:foldl(fun(I, Acc) ->
         {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
-            gc_test_util:random_node({I,27+I*329,45}),
+            gc_test_util:random_node({I, A+I*B, C}),
         Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,20)),
@@ -114,7 +120,7 @@ test_bulk_load() ->
         {RootPos, RootHeight, _, _} = hd(Acc2),
         Nodes = lists:foldl(fun(I, Acc) ->
            {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
-                gc_test_util:random_node({I,27+I*329,45}),
+                gc_test_util:random_node({I, A+I*B, C}),
             Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
           [Node|Acc]
         end, [], lists:seq(1, Size)),
@@ -134,7 +140,7 @@ test_bulk_load() ->
         {RootPos, RootHeight, _, _} = hd(Acc2),
         Nodes = lists:foldl(fun(I, Acc) ->
             {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
-                gc_test_util:random_node({I,27+I*329,45}),
+                gc_test_util:random_node({I, A+I*B, C}),
             Node = {NodeMbr, NodeMeta, {[NodeId, <<"Bulk1">>], {NodeGeom, NodeData}}},
            [Node|Acc]
         end, [], lists:seq(1, Size)),
@@ -343,9 +349,15 @@ test_omt_write_tree() ->
     ok = couch_file:close(Fd).
 
 test_omt_sort_nodes() ->
+    % The random seed generator changed in R15 (erts 5.9)
+    {A, B, C} = case erlang:system_info(version) >= "5.9" of
+        true -> {64741, 25093, 10832};
+        false -> {20, 300, 54}
+    end,
+
     Nodes1 = lists:foldl(fun(I, Acc) ->
         {NodeId, {NodeMbr, NodeMeta, NodeGeom, NodeData}} =
-            gc_test_util:random_node({I,20+I*300,30-I*54}),
+            gc_test_util:random_node({I, A+I*B, 30-I*C}),
         Node = {NodeMbr, NodeMeta, {NodeId, {NodeGeom, NodeData}}},
         [Node|Acc]
     end, [], lists:seq(1,6)),
