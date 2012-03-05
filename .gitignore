@@ -7,3 +7,4 @@ coverage
 *.tar.gz
 tmp
 ebin
+deps
