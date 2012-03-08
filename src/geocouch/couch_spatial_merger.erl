@@ -114,9 +114,10 @@ spatial_folder(Db, SpatialSpec, MergeParams, _UserCtx, DDoc, Queue) ->
     #spatial_query_args{
         bbox = Bbox,
         bounds = Bounds,
-        stale = Stale
+        stale = Stale,
+        geometry = QueryGeom
     } = MergeParams#index_merge.http_params,
-    FoldlFun = make_spatial_fold_fun(Queue),
+    FoldlFun = make_spatial_fold_fun(Queue, QueryGeom),
     {DDocDb, Index} = get_spatial_index(Db, DDocDbName, DDocId,
         SpatialName, Stale),
 
@@ -227,9 +228,18 @@ http_spatial_fold_queue_row({Props}, Queue) ->
 
 % Counterpart to make_map_fold_fun/4 in couch_view_merger
 % Used for merges of local DBs
-make_spatial_fold_fun(Queue) ->
+make_spatial_fold_fun(Queue, nil) ->
     fun({{_Bbox, _DocId}, {_Geom, _Value}}=Row, Acc) ->
         ok = couch_view_merger_queue:queue(Queue, Row),
+        {ok, Acc}
+    end;
+make_spatial_fold_fun(Queue, QueryGeom) ->
+    QueryGeom2 = erlgeom:to_geom(QueryGeom),
+    fun({{_DocId, _Bbox}, {Geom, _Value}}=Row, Acc) ->
+        case couch_httpd_spatial:condition_disjoint(QueryGeom2, Geom) of
+            true -> ok = couch_view_merger_queue:queue(Queue, Row);
+            false -> ok
+        end,
         {ok, Acc}
     end.
 

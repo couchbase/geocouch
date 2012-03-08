@@ -90,7 +90,7 @@ couchTests.spatial_merging = function(debug) {
       qs = qs + String(q) + "=" + String(options[q]);
     }
 
-    qs = "?bbox=-1800,-900,1800,900&" + qs;
+    qs = "?" + qs;
 
     var xhr = CouchDB.request("POST", "/_spatial_merge" + qs, {
       headers: {
@@ -635,6 +635,29 @@ couchTests.spatial_merging = function(debug) {
   TEquals("object", typeof resp);
   TEquals("object", typeof resp.rows);
   TEquals(10, resp.rows.length);
+
+
+
+  // Test for a bug where the merging returned a point that isn't within
+  // the polygin
+  dbA = newDb("test_db_a");
+  dbB = newDb("test_db_b");
+  addDoc([dbA, dbB], ddoc);
+
+  var bbox = [-180, -90, 180, 90];
+  docs = [{"_id": "beff587-914", "loc": [84,65]},
+          {"_id": "withinpoly", "loc": [-7,9]}];
+
+  var poly = 'POLYGON%28%28-101.6015625+57.12890625%2C+-106.5234375+6.50390625%2C+-43.9453125+16.34765625%2C+-60.1171875+-30.76171875%2C+46.0546875+-37.08984375%2C+21.4453125+1.58203125%2C+157.1484375+-6.85546875%2C+23.5546875+30.41015625%2C+40.4296875+48.69140625%2C+-13.7109375+32.51953125%2C+-36.9140625+65.56640625%2C+-58.7109375+43.06640625%2C+-101.6015625+57.12890625%29%29';
+
+  dbA.save(docs[0]);
+  dbB.save(docs[1]);
+
+  resp = mergedQuery(dbs, "test/fun1", {geometry: poly});
+  TEquals("object", typeof resp);
+  TEquals("object", typeof resp.rows);
+  TEquals(1, resp.rows.length);
+  TEquals('withinpoly', resp.rows[0].id);
 
 
   // cleanup
