@@ -503,8 +503,7 @@ get_group_info(State) ->
 
 reset_group(#spatial_group{indexes=Indexes}=Group) ->
     Indexes2 = [Index#spatial{treepos=nil,treeheight=0} || Index <- Indexes],
-    Group#spatial_group{db=nil,fd=nil,query_server=nil,current_seq=0,
-            indexes=Indexes2}.
+    Group#spatial_group{db=nil,fd=nil,current_seq=0,indexes=Indexes2}.
 
 reset_file(Db, Fd, DbName, #spatial_group{sig=Sig,name=Name} = Group) ->
     ?LOG_DEBUG("Resetting spatial group index \"~s\" in db ~s", [Name, DbName]),

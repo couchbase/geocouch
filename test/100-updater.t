@@ -14,6 +14,7 @@
 % the License.
 
 -define(MOD, couch_spatial_updater).
+-define(JSON_ENCODE(V), ejson:encode(V)).
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
@@ -118,7 +119,7 @@ test_process_result_geometrycollection() ->
                   {[{<<"type">>,<<"LineString">>},
                     {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]}]}]},
     {Bbox, {Geom, <<"somedoc">>}} = ?MOD:process_result(
-        [Geojson, <<"somedoc">>]),
+        {?JSON_ENCODE(Geojson), ?JSON_ENCODE(<<"somedoc">>)}),
     etap:is(Geom,
             {'GeometryCollection', [
                 {'Point', [100.0,0.0]},
@@ -161,7 +162,7 @@ test_process_result_point() ->
     Geojson = {[{<<"type">>,<<"Point">>},
                 {<<"coordinates">>,[100.0,0.0]}]},
     {Bbox, {Geom, <<"somedoc">>}} = ?MOD:process_result(
-        [Geojson, <<"somedoc">>]),
+        {?JSON_ENCODE(Geojson), ?JSON_ENCODE(<<"somedoc">>)}),
     etap:is(Geom, {'Point', [100.0,0.0]},
         "Point was processed correctly"),
     etap:is(Bbox, {100.0, 0.0, 100.0, 0.0},
@@ -172,7 +173,7 @@ test_process_result_point_bbox() ->
                 {<<"coordinates">>,[100.0,0.0]},
                 {<<"bbox">>,[100.0,0.0,105.54,8.614]}]},
     {Bbox, {Geom, <<"somedoc">>}} = ?MOD:process_result(
-        [Geojson, <<"somedoc">>]),
+        {?JSON_ENCODE(Geojson), ?JSON_ENCODE(<<"somedoc">>)}),
     etap:is(Geom, {'Point', [100.0,0.0]},
         "Point was processed correctly (with pre set bounding box)"),
     etap:is(Bbox, {100.0, 0.0, 105.54, 8.614},
@@ -183,7 +184,7 @@ test_process_result_linestring() ->
     Geojson = {[{<<"type">>,<<"LineString">>},
                 {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]}]},
     {Bbox, {Geom, <<"somedoc">>}} = ?MOD:process_result(
-        [Geojson, <<"somedoc">>]),
+        {?JSON_ENCODE(Geojson), ?JSON_ENCODE(<<"somedoc">>)}),
     etap:is(Geom, {'LineString', [[101.0,0.0],[102.0,1.0]]},
         "LineString was processed correctly"),
     etap:is(Bbox, {101.0, 0.0, 102.0, 1.0},
@@ -195,7 +196,7 @@ test_process_result_linestring_toosmallbbox() ->
                 {<<"coordinates">>,[[101.0,0.0],[102.0,1.0]]},
                 {<<"bbox">>,[101.0,0.0,101.54,0.614]}]},
     {Bbox, {Geom, <<"somedoc">>}} = ?MOD:process_result(
-        [Geojson, <<"somedoc">>]),
+        {?JSON_ENCODE(Geojson), ?JSON_ENCODE(<<"somedoc">>)}),
     etap:is(Geom, {'LineString', [[101.0,0.0],[102.0,1.0]]},
         "LineString was processed correctly (with too small bounding box)"),
     etap:is(Bbox, {101.0, 0.0, 101.54, 0.614},

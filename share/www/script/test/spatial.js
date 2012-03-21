@@ -29,13 +29,15 @@ couchTests.spatial = function(debug) {
     }, */
     spatial : {
       basicIndex : stringFun(function(doc) {
-        emit({
-          type: "Point",
-          coordinates: [doc.loc[0], doc.loc[1]]
-        }, doc.string);
+        if (doc.loc) {
+          emit({
+            type: "Point",
+             coordinates: [doc.loc[0], doc.loc[1]]
+          }, doc.string);
+        }
       }),
       dontEmitAll : stringFun(function(doc) {
-        if (doc._id>5) {
+        if (doc._id > 5 && doc.loc) {
           emit({
             type: "Point",
             coordinates: [doc.loc[0], doc.loc[1]]

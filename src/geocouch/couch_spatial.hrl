@@ -26,8 +26,7 @@
     lib,
     id_btree=nil, % the back-index
     current_seq=0,
-    purge_seq=0,
-    query_server=nil
+    purge_seq=0
 %    waiting_delayed_commit=nil
     }).
 
