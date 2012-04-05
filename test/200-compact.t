@@ -38,6 +38,8 @@ main(_) ->
     ok.
 
 test() ->
+    ok = ssl:start(),
+    ok = lhttpc:start(),
     GeoCouchConfig = filename:join(
         gc_test_util:root_dir() ++ [gc_test_util:gc_config_file()]),
     ConfigFiles = test_util:config_files() ++ [GeoCouchConfig],

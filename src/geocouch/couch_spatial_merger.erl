@@ -59,7 +59,7 @@ http_index_folder_req_details(#merged_index_spec{} = Spec, MergeParams, DDoc) ->
         conn_timeout = Timeout,
         http_params = SpatialArgs
     } = MergeParams,
-    {ok, #httpdb{url = Url, ibrowse_options = Options} = Db} =
+    {ok, #httpdb{url = Url, lhttpc_options = Options} = Db} =
         couch_index_merger:open_db(MergeUrl0, nil, Timeout),
     MergeUrl = Url ++ spatial_qs(SpatialArgs),
     Headers = [{"Content-Type", "application/json"} | Db#httpdb.headers],
@@ -87,7 +87,7 @@ http_index_folder_req_details(#simple_index_spec{} = Spec, MergeParams, _DDoc) -
         conn_timeout = Timeout,
         http_params = SpatialArgs
     } = MergeParams,
-    {ok, #httpdb{url = Url, ibrowse_options = Options}} =
+    {ok, #httpdb{url = Url, lhttpc_options = Options}} =
         couch_index_merger:open_db(DbUrl, nil, Timeout),
     SpatialUrl = Url ++ ?b2l(DDocId) ++ "/_spatial/" ++ ?b2l(SpatialName) ++
         spatial_qs(SpatialArgs),
