@@ -62,8 +62,8 @@ compact_group(Group, EmptyGroup, DbName) ->
 
     DbName1 = docs_db_name(DbName),
     {ok, Db} = couch_db:open_int(DbName1, []),
-    {ok, DbReduce} = couch_btree:full_reduce(Db#db.docinfo_by_id_btree),
-    Count = element(1, DbReduce),
+    {ok, <<Count:40, _DelCount:40, _Size:48>>} =
+        couch_btree:full_reduce(Db#db.docinfo_by_id_btree),
 
     % Use "view_compaction" for now, that it shows up in Futons active tasks
     % screen. Think about a more generic way for the future.
