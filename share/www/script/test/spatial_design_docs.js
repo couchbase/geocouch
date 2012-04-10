@@ -109,7 +109,7 @@ couchTests.spatial_design_docs = function(debug) {
   var resp = JSON.parse(xhr.responseText);
   TEquals("spatial", resp.name);
   var sinfo = resp.spatial_index;
-  TEquals(51, sinfo.disk_size);
+  T(sinfo.disk_size > 0);
   TEquals(false, sinfo.compact_running);
   // test that GET /db/_design/test/_info
   // hasn't triggered an update of the views
