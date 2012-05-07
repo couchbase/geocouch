@@ -308,3 +308,25 @@ min_perimeter_overlap_candidate(Candidates, Less) ->
               IntersectedMbb = intersect_mbb(MbbF, MbbS, Less),
               calc_perimeter(IntersectedMbb)
       end, Candidates).
+
+
+% Returns the asym for a certain dimension
+-spec asym(Dim :: integer(), MbbO :: mbb(), MbbN :: mbb()) -> number().
+asym(Dim, MbbO, MbbN) ->
+    LengthN = mbb_dim_length(Dim, MbbN),
+    CenterN = mbb_dim_center(Dim, MbbN),
+    CenterO = mbb_dim_center(Dim, MbbO),
+    ((2*(CenterN - CenterO)) / LengthN).
+
+
+% Returns the length of a certain dimension of an MBB
+-spec mbb_dim_length(Dim :: integer(), Mbb :: mbb()) -> number().
+mbb_dim_length(Dim, Mbb) ->
+    {Min, Max} = lists:nth(Dim, Mbb),
+    Max - Min.
+
+
+-spec mbb_dim_center(Dim :: integer(), Mbb :: mbb()) -> number().
+mbb_dim_center(Dim, Mbb) ->
+    {Min, Max} = lists:nth(Dim, Mbb),
+    Min + ((Max - Min)/2).

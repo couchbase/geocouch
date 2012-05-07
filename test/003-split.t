@@ -18,7 +18,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(63),
+    etap:plan(78),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -45,6 +45,9 @@ test() ->
     test_min_perimeter_candidate(),
     test_min_volume_overlap_candidate(),
     test_min_perimeter_overlap_candidate(),
+    test_asym(),
+    test_mbb_dim_length(),
+    test_mbb_dim_center(),
     ok.
 
 
@@ -453,3 +456,52 @@ test_min_perimeter_overlap_candidate() ->
     etap:is(?MOD:min_perimeter_overlap_candidate(Candidates3, Less),
             lists:nth(1, Candidates3),
             "Candidate with minimum overlap (perimeter) (single partition)").
+
+
+test_asym() ->
+    Less = fun(A, B) -> A < B end,
+
+    MbbO = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
+    MbbAdd = [{48, 472}, {-9.38, 26.1}, {-382, -29}, {-1.4, 30}, {39.9, 100}],
+    MbbN = vtree_util:calc_mbb([MbbO, MbbAdd], Less),
+
+    etap:is(?MOD:asym(1, MbbO, MbbN), 0.78,
+            "asym() value of the 1st dimension"),
+    etap:is(?MOD:asym(2, MbbO, MbbN), -0.04948923102634272,
+            "asym() value of the 2nd dimension"),
+    etap:is(?MOD:asym(3, MbbO, MbbN), 0.0,
+            "asym() value of the 3rd dimension"),
+    etap:is(?MOD:asym(4, MbbO, MbbN), 0.9264864864864866,
+            "asym() value of the 4th dimension"),
+    etap:is(?MOD:asym(5, MbbO, MbbN), -0.050231926688539534,
+            "asym() value of the 5th dimension").
+
+
+test_mbb_dim_length() ->
+    Mbb = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
+
+    etap:is(?MOD:mbb_dim_length(1, Mbb), 112.2,
+            "Length of the 1st dimension"),
+    etap:is(?MOD:mbb_dim_length(2, Mbb), 910,
+            "Length of the 2nd dimension"),
+    etap:is(?MOD:mbb_dim_length(3, Mbb), 453,
+            "Length of the 3rd dimension"),
+    etap:is(?MOD:mbb_dim_length(4, Mbb), 2.7199999999999998,
+            "Length of the 4th dimension"),
+    etap:is(?MOD:mbb_dim_length(5, Mbb), 839.5,
+            "Length of the 5th dimension").
+
+
+test_mbb_dim_center() ->
+    Mbb = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
+
+    etap:is(?MOD:mbb_dim_center(1, Mbb), 18.1,
+            "Center of the 1st dimension"),
+    etap:is(?MOD:mbb_dim_center(2, Mbb), 493.0,
+            "Center of the 2nd dimension"),
+    etap:is(?MOD:mbb_dim_center(3, Mbb), -253.5,
+            "Center of the 3rd dimension"),
+    etap:is(?MOD:mbb_dim_center(4, Mbb), -5.640000000000001,
+            "Center of the 4th dimension"),
+    etap:is(?MOD:mbb_dim_center(5, Mbb), 504.05,
+            "Center of the 5th dimension").
