@@ -2,17 +2,13 @@ ERL=erl
 VERSION=$(shell git describe)
 GEOCOUCH_PLT ?= ../geocouch.plt
 
-# Output ERL_COMPILER_OPTIONS env variable
-COMPILER_OPTIONS=$(shell $(ERL) -noinput +B -eval 'Options = case os:getenv("ERL_COMPILER_OPTIONS") of false -> []; Else -> {ok,Tokens,_} = erl_scan:string(Else ++ "."),{ok,Term} = erl_parse:parse_term(Tokens), Term end, io:format("~p~n", [[{i, "${COUCH_SRC}"}] ++ Options]), halt(0).')
-COMPILER_OPTIONS_MAKE_CHECK=$(shell $(ERL) -noinput +B -eval 'Options = case os:getenv("ERL_COMPILER_OPTIONS") of false -> []; Else -> {ok,Tokens,_} = erl_scan:string(Else ++ "."),{ok,Term} = erl_parse:parse_term(Tokens), Term end, io:format("~p~n", [[{i, "${COUCH_SRC}"},{d, makecheck}] ++ Options]), halt(0).')
-
 all: compile
 
 compile:
-	ERL_COMPILER_OPTIONS='$(COMPILER_OPTIONS)' ./rebar compile
+	./rebar compile
 
 compileforcheck:
-	ERL_COMPILER_OPTIONS='$(COMPILER_OPTIONS_MAKE_CHECK)' ./rebar compile
+	MAKECHECK=1 ./rebar compile
 
 buildandtest: all test
 
