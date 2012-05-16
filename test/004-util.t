@@ -25,8 +25,10 @@ main(_) ->
         ok ->
             etap:end_tests();
         Other ->
-            etap:diag(io_lib:format("Test died abnormally: ~p", [Other])),
-            etap:bail(Other)
+            % Somehow etap:diag/1 and etap:bail/1 don't work properly
+            %etap:diag(io_lib:format("Test died abnormally: ~p", [Other])),
+            %etap:bail(Other),
+            io:format("Test died abnormally:~n~p~n", [Other])
     end,
     ok.
 

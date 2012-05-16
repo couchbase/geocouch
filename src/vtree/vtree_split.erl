@@ -26,7 +26,7 @@
 -type keyval() :: number() | string().
 
 % The multidimensional bounding box
--type mbb() :: [{Min :: keyval(), Max :: keyval()}] | [].
+-type mbb() :: [{Min :: keyval(), Max :: keyval()}].
 % The node format for the splits. It contains the MBB and in case of a:
 %  1. KV node: the pointer to the node in the file
 %  2. KP node: a list of pointers to its children
@@ -62,7 +62,7 @@
 %
 % The split axis is a list of candidates. It is the list of candidates, that
 % have the overall smallest perimeter. For the calculations on how to get
-% there see `split_axis/3`.
+% there see `split_axis/4`.
 
 
 
@@ -94,25 +94,85 @@ split_axis(Nodes, FillMin, FillMax, Less) ->
     Candidates.
 
 
-% This corresponds to step 2 of 4.1 in the RR*-tree paper
--spec choose_candidate(Candidates::[candidate()], Less :: lessfun()) ->
-                              candidate().
-choose_candidate(Candidates, Less) ->
-    case overlapfree_candidates(Candidates, Less) of
-        [] ->
-            % Check if one of the nodes has no volume (at least one dimension
-            % is collapsed to a single point).
-            {F, S} = hd(Candidates),
-            MbbF = nodes_mbb(F, Less),
-            MbbS = nodes_mbb(S, Less),
-            case (calc_volume(MbbF) =/= 0) and (calc_volume(MbbS) =/= 0) of
-                true ->
-                    min_volume_overlap_candidate(Candidates, Less);
-                false ->
-                    min_perimeter_overlap_candidate(Candidates, Less)
-            end;
-        OfCandidates ->
-            min_perimeter_candidate(OfCandidates, Less)
+% chooose_candidate returns the candidate with the minimal value as calculated
+% by the goal function. It's the second step of the split algorithm as
+% described in section 4.2.4.
+% `MbbN` is the bounding box around the nodes that should be split including
+% the newly added one.
+-spec choose_candidate(Candidates :: [candidate()], Dim :: integer(),
+                       MbbO :: mbb(), MbbN :: mbb(), FillMin :: integer(),
+                       FillMax :: integer(), Less :: lessfun()) -> candidate().
+choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin, FillMax, Less) ->
+    PerimMax = perim_max(MbbN),
+    Asym = asym(Dim, MbbO, MbbN),
+    Wf = make_weighting_fun(Asym, FillMin, FillMax),
+
+    find_min_candidate(
+      fun(Candidate) ->
+              goal_fun(Candidate, PerimMax, Wf, Less)
+      end, Candidates).
+
+
+% This is the goal function "w" as described in section 4.2.4.
+% It takes a Candidate, the maximum perimeter of the MBB that also includes
+% the to be added node and a less function.
+-spec goal_fun(Candidate :: candidate(), PerimMax :: number(), Wf :: fun(),
+               Less :: lessfun()) -> number().
+goal_fun({F, S}=Candidate, PerimMax, Wf, Less) ->
+    MbbF = nodes_mbb(F, Less),
+    MbbS = nodes_mbb(S, Less),
+    % The index is where the candidates were split
+    Index = length(F),
+
+    case intersect_mbb(MbbF, MbbS, Less) of
+        overlapfree ->
+            wg_overlapfree(Candidate, PerimMax, Less) * Wf(Index);
+        _ ->
+            wg(Candidate, Less) / Wf(Index)
+    end.
+
+
+% It's the original weighting function "wg" that returns a value for a
+% candidate.
+% It corresponds to step 2 of 4.1 in the RR*-tree paper, extended by 4.2.4.
+-spec wg(Candidate :: candidate(), Less :: lessfun()) -> number().
+wg({F, S}, Less) ->
+    MbbF = nodes_mbb(F, Less),
+    MbbS = nodes_mbb(S, Less),
+    OverlapMbb = intersect_mbb(MbbF, MbbS, Less),
+
+    % Check if one of the nodes has no volume (at least one
+    % dimension is collapsed to a single point).
+    case (calc_volume(MbbF) /= 0) andalso (calc_volume(MbbS) /= 0) of
+        true ->
+            calc_volume(OverlapMbb);
+        false ->
+            calc_perimeter(OverlapMbb)
+    end.
+
+
+% It's the original weighting function "wg" for the overlap-free case
+% It corresponds to step 2 of 4.1 in the RR*-tree paper, extended by 4.2.4.
+-spec wg_overlapfree(Candidate :: candidate(), PerimMax :: number(),
+                     Less :: lessfun()) -> number().
+wg_overlapfree({F, S}, PerimMax, Less) ->
+    nodes_perimeter(F, Less) + nodes_perimeter(S, Less) - PerimMax.
+
+
+-spec make_weighting_fun(Asym :: float(), FillMin :: integer(),
+                         FillMax :: integer()) -> fun().
+make_weighting_fun(Asym, FillMin, FillMax) ->
+    % In thee RR*-tree paper they conclude that the best average performance
+    % is achieved with a "S" set to 0.5. Hence it's hard-coded here.
+    S = 0.5,
+    Mu = (1 - (2*FillMin)/(FillMax+1)) * Asym,
+    Sigma = S * (1 + erlang:abs(Mu)),
+    Y1 = math:exp(-1/math:pow(S, 2)),
+    Ys = 1 / (1-Y1),
+    fun(Index) ->
+            Xi = ((2*Index) / (FillMax+1)) - 1,
+            Exp = math:exp(-math:pow((Xi-Mu)/Sigma, 2)),
+            Ys * (Exp - Y1)
     end.
 
 
@@ -125,7 +185,7 @@ sort_dim_min(Nodes, Dim, Less) ->
       fun({MbbA, _}, {MbbB, _}) ->
               {MinA, _} = lists:nth(Dim, MbbA),
               {MinB, _} = lists:nth(Dim, MbbB),
-              Less(MinA, MinB) orelse (MinA =:= MinB)
+              Less(MinA, MinB) orelse (MinA == MinB)
       end,
       Nodes).
 
@@ -138,7 +198,7 @@ sort_dim_max(Nodes, Dim, Less) ->
       fun({MbbA, _}, {MbbB, _}) ->
               {_, MaxA} = lists:nth(Dim, MbbA),
               {_, MaxB} = lists:nth(Dim, MbbB),
-              Less(MaxA, MaxB) orelse (MaxA =:= MaxB)
+              Less(MaxA, MaxB) orelse (MaxA == MaxB)
       end,
       Nodes).
 
@@ -158,6 +218,13 @@ calc_volume(Values) ->
     lists:foldl(fun({Min, Max}, Acc) ->
                         Acc * (Max-Min)
                 end, 1, Values).
+
+
+% The maximum perimeter (for definition see proof of Lemma 1, section 4.2.4)
+-spec perim_max(Mbb :: mbb()) -> number().
+perim_max(Mbb) ->
+    MinPerim = lists:min([Max-Min || {Min, Max} <- Mbb]),
+    2 * calc_perimeter(Mbb) - MinPerim.
 
 
 % Create all possible split candidates from a list of nodes
@@ -197,7 +264,7 @@ candidates_perimeter(Nodes, FillMin, FillMax, Less) ->
 
 
 % Input is a list of 2-tuples that contain the perimeter as first element.
-% Return the 2-tuple that contains the minumum perimeter.
+% Return the 2-tuple that contains the minimum perimeter.
 -spec min_perim([{number(), any()}]) -> {number(), any()}.
 min_perim([H|T]) ->
     min_perim(T, H).
@@ -227,8 +294,8 @@ intersect_mbb0([{{MinA, MaxA}, {MinB, MaxB}}|T], Less, Acc) ->
         {Min, Max} when Min > Max -> overlapfree;
         {Min, Max} when Min < Max -> intersect_mbb0(T, Less, [{Min, Max}|Acc]);
         % The MBBs either touch eachother, or one has zero length
-        {Min, Max} when Min =:= Max ->
-            case (MinA =/= MaxB) and (MaxA =/= MinB) of
+        {Min, Max} when Min == Max ->
+            case (MinA /= MaxB) and (MaxA /= MinB) of
                 % The MBBs don't touch eachother
                 true -> intersect_mbb0(T, Less, [{Min, Max}|Acc]);
                 % The Mbbs touch eachother
@@ -237,22 +304,7 @@ intersect_mbb0([{{MinA, MaxA}, {MinB, MaxB}}|T], Less, Acc) ->
     end.
 
 
-% Returns all overlap-free candidates. Overlap-free means the the MBBs of
-% the two partitions of the candidate don't intersect eachother.
--spec overlapfree_candidates(Candidates :: [candidate()], Less :: lessfun()) ->
-                                    [candidate()].
-overlapfree_candidates(Candidates, Less) ->
-    lists:filter(fun({F, S}) ->
-                         MbbF = nodes_mbb(F, Less),
-                         MbbS = nodes_mbb(S, Less),
-                         case intersect_mbb(MbbF, MbbS, Less) of
-                             overlapfree -> true;
-                             _ -> false
-                         end
-                 end, Candidates).
-
-
-% `find_min_candidate` returns the split candidate with the minumum value.
+% `find_min_candidate` returns the split candidate with the minimum value.
 % The `MinFun` is a function that gets a candidate and returns the
 % value that should be minimized.
 -spec find_min_candidate(MinFun :: fun(), Candidates :: [candidate()]) ->
@@ -268,46 +320,6 @@ find_min_candidate(MinFun, Candidates) ->
                        end,
                        {nil, []}, Candidates),
     Candidate.
-
-
-% Returns the candidate with the minimum perimeter.
-% The minimum perimeter of a candidate is the perimeter of sum of the
-% perimeters of the enclosing mbb of each partition.
--spec min_perimeter_candidate(Candidates :: [candidate()],
-                              Less :: lessfun()) -> candidate().
-min_perimeter_candidate(Candidates, Less) ->
-    find_min_candidate(
-      fun({F, S}) ->
-              nodes_perimeter(F, Less) + nodes_perimeter(S, Less)
-      end, Candidates).
-
-
-% All input Candidates must be non overlap-free
-% Returns the candidate with the overlap with the minimum volume
--spec min_volume_overlap_candidate(Candidates :: [candidate()],
-                                   Less :: lessfun()) -> candidate().
-min_volume_overlap_candidate(Candidates, Less) ->
-    find_min_candidate(
-      fun({F, S}) ->
-              MbbF = nodes_mbb(F, Less),
-              MbbS = nodes_mbb(S, Less),
-              IntersectedMbb = intersect_mbb(MbbF, MbbS, Less),
-              calc_volume(IntersectedMbb)
-      end, Candidates).
-
-
-% All input Candidates must be non overlap-free
-% Returns the candidate with the overlap with the minimum perimeter.
--spec min_perimeter_overlap_candidate(Candidates :: [candidate()],
-                                      Less :: lessfun()) -> candidate().
-min_perimeter_overlap_candidate(Candidates, Less) ->
-    find_min_candidate(
-      fun({F, S}) ->
-              MbbF = nodes_mbb(F, Less),
-              MbbS = nodes_mbb(S, Less),
-              IntersectedMbb = intersect_mbb(MbbF, MbbS, Less),
-              calc_perimeter(IntersectedMbb)
-      end, Candidates).
 
 
 % Returns the asym for a certain dimension
@@ -326,6 +338,7 @@ mbb_dim_length(Dim, Mbb) ->
     Max - Min.
 
 
+% Returns the center of a certain dimension of an MBB
 -spec mbb_dim_center(Dim :: integer(), Mbb :: mbb()) -> number().
 mbb_dim_center(Dim, Mbb) ->
     {Min, Max} = lists:nth(Dim, Mbb),
