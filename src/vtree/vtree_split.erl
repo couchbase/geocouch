@@ -17,27 +17,12 @@
 
 -module(vtree_split).
 
+-include("vtree.hrl").
+
 -ifdef(makecheck).
 -compile(export_all).
 -endif.
 
-% The value a key can have. For the vtree that is either a number or
-% (UTF-8) string
--type keyval() :: number() | string().
-
-% The multidimensional bounding box
--type mbb() :: [{Min :: keyval(), Max :: keyval()}].
-% The node format for the splits. It contains the MBB and in case of a:
-%  1. KV node: the pointer to the node in the file
-%  2. KP node: a list of pointers to its children
--type split_node() :: {Mbb :: mbb(),
-                       KvPosOrChildren :: integer() | [integer()]}.
-
--type candidate() :: {[split_node()], [split_node()]}.
-
-% The less function compares two values and returns true if the former is
-% less than the latter
--type lessfun() :: fun((keyval(), keyval()) -> boolean()).
 
 % Some infos for this module
 % ==========================
