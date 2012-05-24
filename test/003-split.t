@@ -18,7 +18,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(109),
+    etap:plan(107),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -47,7 +47,6 @@ test() ->
     test_candidates_perimeter(),
     test_min_perim(),
     test_intersect_mbb(),
-    test_find_min_candidate(),
     test_asym(),
     test_mbb_dim_length(),
     test_mbb_dim_center(),
@@ -579,19 +578,6 @@ test_intersect_mbb() ->
     etap:is(?MOD:intersect_mbb(Mbb5, Mbb11, Less),
             overlapfree,
             "A zero volume MBB touches another MBB").
-
-
-test_find_min_candidate() ->
-    Candidates1 = ?MOD:create_split_candidates([a,b,c,d,e,f], 1, 5),
-    MinFun = fun({F, S}) -> abs(length(F) - length(S)) end,
-    etap:is(?MOD:find_min_candidate(MinFun, Candidates1),
-            {[a,b,c],[d,e,f]},
-            "Candidate with min value"),
-
-    Candidates2 = [{[a],[b,c]}],
-    etap:is(?MOD:find_min_candidate(MinFun, Candidates2),
-            hd(Candidates2),
-            "Single candidate").
 
 
 test_asym() ->

@@ -92,10 +92,11 @@ choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin, FillMax, Less) ->
     Asym = asym(Dim, MbbO, MbbN),
     Wf = make_weighting_fun(Asym, FillMin, FillMax),
 
-    find_min_candidate(
-      fun(Candidate) ->
-              goal_fun(Candidate, PerimMax, Wf, Less)
-      end, Candidates).
+    {_, Candidate} = vtree_util:find_min_value(
+                       fun(Candidate) ->
+                               goal_fun(Candidate, PerimMax, Wf, Less)
+                       end, Candidates),
+    Candidate.
 
 
 % This is the goal function "w" as described in section 4.2.4.
@@ -287,24 +288,6 @@ intersect_mbb0([{{MinA, MaxA}, {MinB, MaxB}}|T], Less, Acc) ->
                 false -> overlapfree
             end
     end.
-
-
-% `find_min_candidate` returns the split candidate with the minimum value.
-% The `MinFun` is a function that gets a candidate and returns the
-% value that should be minimized.
--spec find_min_candidate(MinFun :: fun(), Candidates :: [candidate()]) ->
-                                candidate().
-find_min_candidate(MinFun, Candidates) ->
-    {_, Candidate} = lists:foldl(
-                       fun(Candidate, {MinVal, _MinCandidate}=Acc) ->
-                               Val = MinFun(Candidate),
-                               case (Val < MinVal) orelse (MinVal =:= nil) of
-                                   true -> {Val, Candidate};
-                                   false -> Acc
-                               end
-                       end,
-                       {nil, []}, Candidates),
-    Candidate.
 
 
 % Returns the asym for a certain dimension
