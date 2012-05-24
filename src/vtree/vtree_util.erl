@@ -10,11 +10,6 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
-% This module implements a split algorithm for the vtree. It is an
-% implementation of the split algorithm described in:
-% A Revised R * -tree in Comparison with Related Index Structures
-% by Norbert Beckmann, Bernhard Seeger
-
 -module(vtree_util).
 
 -include("vtree.hrl").
