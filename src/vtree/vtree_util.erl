@@ -19,7 +19,7 @@
 
 -include("couch_db.hrl").
 
--export([calc_mbb/2, min/2, max/2]).
+-export([calc_mbb/2, min/2, max/2, find_min_value/2]).
 
 
 -spec min(Tuple::{any(), any()} | [any()], Less::fun()) -> Min::any().
@@ -73,3 +73,20 @@ calc_mbb([H|T], Less, Mbb) ->
                       ?MODULE:max({Max, MaxMbb}, Less)}
              end, lists:zip(H, Mbb)),
     calc_mbb(T, Less, Mbb2).
+
+
+% Find the minumum value from a list of things. One item from the
+% list will be passed into the the suppplied `MinFun`, which returns
+% some numner. The lowest number together with the corresponding item
+% will be returned.
+-spec find_min_value(MinFun :: fun(), Data :: [any()]) -> {number(), any()}.
+find_min_value(MinFun, [_|_]=Data) ->
+    lists:foldl(
+      fun(Item, {MinVal, _}=Acc) ->
+              Val = MinFun(Item),
+              case (Val < MinVal) orelse (MinVal =:= nil) of
+                  true -> {Val, Item};
+                  false -> Acc
+              end
+      end,
+      {nil, []}, Data).

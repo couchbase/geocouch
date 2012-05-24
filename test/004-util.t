@@ -20,7 +20,7 @@ main(_) ->
     random:seed(1, 11, 91),
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(14),
+    etap:plan(18),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -36,6 +36,7 @@ test() ->
     test_min(),
     test_max(),
     test_calc_mbb(),
+    test_find_min_value(),
     ok.
 
 test_min() ->
@@ -73,3 +74,21 @@ test_calc_mbb() ->
             "Combine two MBBs"),
     etap:is(?MOD:calc_mbb([Mbb1], Less), Mbb1,
             "Single MBB (nothing to combine)").
+
+
+test_find_min_value() ->
+    Pair1 = {a, 1},
+    Pair2 = {b, 2},
+    Pair3 = {c, 3},
+    Pair4 = {d, 4},
+    Pair5 = {e, 5},
+
+    MinFun = fun({_Key, Value}) -> Value+3 end,
+    etap:is(?MOD:find_min_value(MinFun, [Pair3, Pair4, Pair2, Pair1]),
+            {4, Pair1}, "Last item has minimum value"),
+    etap:is(?MOD:find_min_value(MinFun, [Pair1, Pair4, Pair2, Pair3]),
+            {4, Pair1}, "First item has minimum value"),
+    etap:is(?MOD:find_min_value(MinFun, [Pair5, Pair4, Pair2, Pair3]),
+            {5, Pair2}, "Item in the middle has minimum value"),
+    etap_exception:throws_ok(fun() -> ?MOD:find_min_value(MinFun, []) end,
+                             function_clause, "Empty list throws error").
