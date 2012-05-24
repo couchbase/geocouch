@@ -18,7 +18,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(107),
+    etap:plan(93),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -38,15 +38,12 @@ test() ->
     test_wg_overlapfree(),
     test_make_weighting_fun(),
     test_sort_dim(),
-    test_calc_perimeter(),
-    test_calc_volume(),
     test_perim_max(),
     test_create_split_candidates(),
     test_nodes_mbb(),
     test_nodes_perimeter(),
     test_candidates_perimeter(),
     test_min_perim(),
-    test_intersect_mbb(),
     test_asym(),
     test_mbb_dim_length(),
     test_mbb_dim_center(),
@@ -407,30 +404,11 @@ test_sort_dim() ->
     etap:is(SortedMax5, [Node2, Node1], "Sorted by max 5th dimension").
 
 
-test_calc_perimeter() ->
-    Mbb1 = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
-    Mbb2 = [{39, 938}, {-937, 8424}, {-1000, -82}, {4.72, 593}, {372, 490.3}],
-
-    etap:is(?MOD:calc_perimeter(Mbb1), 2317.42, "Perimeter of an MBB (a)"),
-    etap:is(?MOD:calc_perimeter(Mbb2), 11884.58, "Perimeter of an MBB (b)").
-
-
-test_calc_volume() ->
-    Mbb1 = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
-    Mbb2 = [{39, 938}, {-937, 8424}, {-1000, -82}, {4.72, 593}, {372, 490.3}],
-    Mbb3 = [{48, 472}, {-9.38, 26.1}, {-29, -29}, {-1.4, 30}, {39.9, 100}],
-
-    etap:is(?MOD:calc_volume(Mbb1), 105614137268.64, "Volume of an MBB (a)"),
-    etap:is(?MOD:calc_volume(Mbb2), 537642320109142.24,
-            "Volume of an MBB (b)"),
-    etap:is(?MOD:calc_volume(Mbb3), 0, "Zero volume of an MBB").
-
-
 test_perim_max() ->
     Mbb1 = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
     Mbb2 = [{-38, 74.2}, {948, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
-    Perimeter1 = ?MOD:calc_perimeter(Mbb1),
-    Perimeter2 = ?MOD:calc_perimeter(Mbb2),
+    Perimeter1 = vtree_util:calc_perimeter(Mbb1),
+    Perimeter2 = vtree_util:calc_perimeter(Mbb2),
 
     etap:is(?MOD:perim_max(Mbb1), Perimeter1*2-(-4.28 + 7), "Maximum perimeter"),
     etap:is(?MOD:perim_max(Mbb2), Perimeter2*2,
@@ -491,18 +469,21 @@ test_nodes_perimeter() ->
     Node1 = {Mbb1, 3487},
     Node2 = {Mbb2, 823},
     Node3 = {Mbb3, 96242},
-    etap:is(?MOD:nodes_perimeter([Node1], Less), ?MOD:calc_perimeter(Mbb1),
+    etap:is(?MOD:nodes_perimeter([Node1], Less),
+            vtree_util:calc_perimeter(Mbb1),
             "Calculate the perimeter of a single node (a)"),
-    etap:is(?MOD:nodes_perimeter([Node2], Less), ?MOD:calc_perimeter(Mbb2),
+    etap:is(?MOD:nodes_perimeter([Node2], Less),
+            vtree_util:calc_perimeter(Mbb2),
             "Calculate the perimeter of a single node (b)"),
     etap:is(?MOD:nodes_perimeter([Node1, Node2], Less),
-            ?MOD:calc_perimeter(vtree_util:calc_mbb([Mbb1, Mbb2], Less)),
+            vtree_util:calc_perimeter(vtree_util:calc_mbb([Mbb1, Mbb2], Less)),
             "Calculate the perimeter of two nodes (a)"),
     etap:is(?MOD:nodes_perimeter([Node2, Node3], Less),
-            ?MOD:calc_perimeter(vtree_util:calc_mbb([Mbb2, Mbb3], Less)),
+            vtree_util:calc_perimeter(vtree_util:calc_mbb([Mbb2, Mbb3], Less)),
             "Calculate the perimeter of two nodes (b)"),
     etap:is(?MOD:nodes_perimeter([Node1, Node2, Node3], Less),
-            ?MOD:calc_perimeter(vtree_util:calc_mbb([Mbb1, Mbb2, Mbb3], Less)),
+            vtree_util:calc_perimeter(
+              vtree_util:calc_mbb([Mbb1, Mbb2, Mbb3], Less)),
             "Calculate the perimeter of three nodes").
 
 
@@ -537,47 +518,6 @@ test_min_perim() ->
             "Calculate the tuple with the minimum perimeter"),
     etap:is(?MOD:min_perim([{34.38, a}]), {34.38, a},
             "Calculate the tuple with the minimum perimeter (one element)").
-
-
-test_intersect_mbb() ->
-    Less = fun(A, B) -> A < B end,
-
-    Mbb1 = [{-38, 74.2}, {38, 948}],
-    Mbb2 = [{-480, 5}, {-7, 428.74}],
-    Mbb3 = [{84.3, 923.8}, {39, 938}],
-    Mbb4 = [{-937, 8424}, {-1000, -82}],
-    Mbb5 = [{4.72, 593}, {-472, -390.3}],
-    Mbb6 = [{4.72, 593}, {-472, 390.3}, {-480, 5}, {-7, 428.74}],
-    Mbb7 = [{84.3, 923.8}, {39, 938}, {-937, 8424}, {-1000, 82}],
-    Mbb8 = [{222, 222}, {-432.39, -294.20}],
-    Mbb9 = [{-222, -222}, {-382.39, 294.20}],
-    Mbb10 = [{593, 777}, {-432.39, -294.20}],
-    Mbb11 = [{593, 593}, {-432.39, -294.20}],
-
-
-    etap:is(?MOD:intersect_mbb(Mbb1, Mbb2, Less), [{-38,5},{38,428.74}],
-            "MBBs intersect (two dimensions)"),
-    etap:is(?MOD:intersect_mbb(Mbb2, Mbb3, Less), overlapfree,
-            "MBBs are overlap-free (first dimension)"),
-    etap:is(?MOD:intersect_mbb(Mbb3, Mbb4, Less), overlapfree,
-            "MBBs are overlap-free (second dimension)"),
-    etap:is(?MOD:intersect_mbb(Mbb4, Mbb5, Less), Mbb5,
-            "One MBB is in another MBB"),
-    etap:is(?MOD:intersect_mbb(Mbb6, Mbb7, Less),
-            [{84.3,593},{39,390.3},{-480,5},{-7,82}],
-            "MBBs intersect (4 dimensions)"),
-    etap:is(?MOD:intersect_mbb(Mbb5, Mbb8, Less),
-            [{222,222},{-432.39,-390.3}],
-            "One MBBs has zero volume and intersects"),
-    etap:is(?MOD:intersect_mbb(Mbb3, Mbb9, Less),
-            overlapfree,
-            "One MBBs has zero volume and doesn't overlap (is overlap-free)"),
-    etap:is(?MOD:intersect_mbb(Mbb5, Mbb10, Less),
-            overlapfree,
-            "One MBB touches another MBB"),
-    etap:is(?MOD:intersect_mbb(Mbb5, Mbb11, Less),
-            overlapfree,
-            "A zero volume MBB touches another MBB").
 
 
 test_asym() ->

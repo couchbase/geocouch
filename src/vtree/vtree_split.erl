@@ -110,7 +110,7 @@ goal_fun({F, S}=Candidate, PerimMax, Wf, Less) ->
     % The index is where the candidates were split
     Index = length(F),
 
-    case intersect_mbb(MbbF, MbbS, Less) of
+    case vtree_util:intersect_mbb(MbbF, MbbS, Less) of
         overlapfree ->
             wg_overlapfree(Candidate, PerimMax, Less) * Wf(Index);
         _ ->
@@ -125,15 +125,16 @@ goal_fun({F, S}=Candidate, PerimMax, Wf, Less) ->
 wg({F, S}, Less) ->
     MbbF = nodes_mbb(F, Less),
     MbbS = nodes_mbb(S, Less),
-    OverlapMbb = intersect_mbb(MbbF, MbbS, Less),
+    OverlapMbb = vtree_util:intersect_mbb(MbbF, MbbS, Less),
 
     % Check if one of the nodes has no volume (at least one
     % dimension is collapsed to a single point).
-    case (calc_volume(MbbF) /= 0) andalso (calc_volume(MbbS) /= 0) of
+    case (vtree_util:calc_volume(MbbF) /= 0) andalso
+        (vtree_util:calc_volume(MbbS) /= 0) of
         true ->
-            calc_volume(OverlapMbb);
+            vtree_util:calc_volume(OverlapMbb);
         false ->
-            calc_perimeter(OverlapMbb)
+            vtree_util:calc_perimeter(OverlapMbb)
     end.
 
 
@@ -188,29 +189,12 @@ sort_dim_max(Nodes, Dim, Less) ->
       end,
       Nodes).
 
-% Calculate the perimeter of list of 2-tuples that contain a min and a max
-% value
--spec calc_perimeter(mbb()) -> number().
-calc_perimeter(Values) ->
-    lists:foldl(fun({Min, Max}, Acc) ->
-                        Acc + (Max-Min)
-                end, 0, Values).
-
-
-% Calculate the volume of list of 2-tuples that contain a min and a max
-% value
--spec calc_volume(mbb()) -> number().
-calc_volume(Values) ->
-    lists:foldl(fun({Min, Max}, Acc) ->
-                        Acc * (Max-Min)
-                end, 1, Values).
-
 
 % The maximum perimeter (for definition see proof of Lemma 1, section 4.2.4)
 -spec perim_max(Mbb :: mbb()) -> number().
 perim_max(Mbb) ->
     MinPerim = lists:min([Max-Min || {Min, Max} <- Mbb]),
-    2 * calc_perimeter(Mbb) - MinPerim.
+    2 * vtree_util:calc_perimeter(Mbb) - MinPerim.
 
 
 % Create all possible split candidates from a list of nodes
@@ -233,7 +217,7 @@ nodes_mbb(Nodes, Less) ->
 -spec nodes_perimeter(Nodes :: [split_node()], Less :: lessfun()) -> number().
 nodes_perimeter(Nodes, Less) ->
     Mbb = nodes_mbb(Nodes, Less),
-    calc_perimeter(Mbb).
+    vtree_util:calc_perimeter(Mbb).
 
 
 % Get the perimeters of all split candidates. Returns a 2-tuple with the
@@ -261,33 +245,6 @@ min_perim([{Perim, _}=H|T], {MinPerim, _}) when Perim < MinPerim ->
     min_perim(T, H);
 min_perim([_|T], Min) ->
     min_perim(T, Min).
-
-
-% Returns the intersection of two MBBs
--spec intersect_mbb(A :: mbb(), B :: mbb(), Less :: lessfun()) ->
-                           mbb() | overlapfree.
-intersect_mbb(A, B, Less) ->
-    intersect_mbb0(lists:zip(A, B), Less, []).
--spec intersect_mbb0([{{keyval(), keyval()}, {keyval(), keyval()}}],
-                     Less :: lessfun(), Acc :: mbb()) -> mbb() | overlapfree.
-intersect_mbb0([], _Less, Acc) ->
-    lists:reverse(Acc);
-intersect_mbb0([{{MinA, MaxA}, {MinB, MaxB}}|T], Less, Acc) ->
-    Min = vtree_util:max({MinA, MinB}, Less),
-    Max = vtree_util:min({MaxA, MaxB}, Less),
-
-    case {Min, Max} of
-        {Min, Max} when Min > Max -> overlapfree;
-        {Min, Max} when Min < Max -> intersect_mbb0(T, Less, [{Min, Max}|Acc]);
-        % The MBBs either touch eachother, or one has zero length
-        {Min, Max} when Min == Max ->
-            case (MinA /= MaxB) and (MaxA /= MinB) of
-                % The MBBs don't touch eachother
-                true -> intersect_mbb0(T, Less, [{Min, Max}|Acc]);
-                % The Mbbs touch eachother
-                false -> overlapfree
-            end
-    end.
 
 
 % Returns the asym for a certain dimension
