@@ -15,7 +15,7 @@
 -export([handle_req/1]).
 
 -include("couch_db.hrl").
--include("couch_index_merger.hrl").
+-include_lib("couch_index_merger/include/couch_index_merger.hrl").
 -include("../lhttpc/lhttpc.hrl").
 
 -import(couch_util, [

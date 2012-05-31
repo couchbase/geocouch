@@ -17,7 +17,7 @@
     http_index_folder_req_details/3, make_event_fun/2]).
 
 -include("couch_db.hrl").
--include("couch_index_merger.hrl").
+-include_lib("couch_index_merger/include/couch_index_merger.hrl").
 -include("couch_spatial.hrl").
 
 -define(LOCAL, <<"local">>).
