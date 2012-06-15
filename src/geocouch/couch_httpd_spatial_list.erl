@@ -76,9 +76,6 @@ list_etag(#httpd{user_ctx=UserCtx}=Req, Db, Group, Index, More) ->
     couch_httpd_spatial:spatial_etag(
         Db, Group, Index, {More, Accept, UserCtx#user_ctx.roles}).
 
-output_list(_, _, _, _, _, #spatial_query_args{bbox=nil}, _, _) ->
-    throw({spatial_query_error, <<"Bounding box not specified.">>});
-
 output_list(Req, Db, DDoc, LName, Index, QueryArgs, Etag, Group) ->
     #spatial_query_args{
         bbox = Bbox,
