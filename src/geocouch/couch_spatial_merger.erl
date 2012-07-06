@@ -94,14 +94,17 @@ http_index_folder_req_details(#simple_index_spec{} = Spec, MergeParams, _DDoc) -
     put(from_url, DbUrl),
     {SpatialUrl, get, [], [], Options}.
 
-spatial_row_obj({{Key, error}, Value}) ->
-    {[{key, Key}, {error, Value}]};
-
+spatial_row_obj({{Key, error}, Reason}) ->
+    <<"{\"key\":", (?JSON_ENCODE(Key))/binary,
+      ",\"error\":",
+      (?JSON_ENCODE(couch_util:to_binary(Reason)))/binary, "}">>;
 spatial_row_obj({{Bbox, DocId}, {{Type, Coords}, Value}}) ->
-    {[{id, DocId},
-      {bbox, tuple_to_list(Bbox)},
-      {geometry, {[{type, Type}, {coordinates, Coords}]}},
-      {value, Value}]}.
+    <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
+      ",\"bbox\":", (?JSON_ENCODE(tuple_to_list(Bbox)))/binary,
+      ",\"geometry\":",
+      (?JSON_ENCODE({[{type, Type}, {coordinates, Coords}]}))/binary,
+      ",\"node\":\"", (?LOCAL)/binary, "\"",
+      ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>.
 
 spatial_less_fun(A, B) ->
     A < B.
