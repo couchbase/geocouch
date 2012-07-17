@@ -141,10 +141,10 @@ spatial_docs(MapCtx, Docs, EmptyResults) ->
 spatial_docs(_MapCtx, [], _EmptyResults, Acc) ->
     lists:reverse(Acc);
 spatial_docs(MapCtx, [Doc | RestDocs], EmptyResults, Acc) ->
-    JsonDoc = couch_doc:to_raw_json_binary(Doc),
+    {DocBody, DocMeta} = couch_doc:to_raw_json_binary_views(Doc),
     % NOTE vmx: perhaps should map_doc renamed to something more
     % general as it can be used for most indexers
-    case mapreduce:map_doc(MapCtx, JsonDoc) of
+    case mapreduce:map_doc(MapCtx, DocBody, DocMeta) of
     {ok, FunsResults} ->
         % the results are a json array of function map yields like this:
         % [FunResults1, FunResults2 ...]

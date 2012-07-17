@@ -133,10 +133,13 @@ compact_spatial_group(DbName, DdocName) ->
 add_design_doc(DbName) ->
     {ok, Db} = couch_db:open_int(DbName, [admin_user_ctx()]),
     DDoc = couch_doc:from_json_obj({[
-        {<<"_id">>, <<"_design/foo">>},
-        {<<"language">>, <<"javascript">>},
-        {<<"spatial">>, {[
-            {<<"foo">>, <<"function(doc) { emit({type: \"Point\", coordinates: [0,0]}, doc); }">>}
+        {<<"meta">>, {[
+            {<<"id">>, <<"_design/foo">>}]}},
+        {<<"json">>, {[
+            {<<"language">>, <<"javascript">>},
+            {<<"spatial">>, {[
+                {<<"foo">>, <<"function(doc) { emit({type: \"Point\", coordinates: [0,0]}, doc); }">>}
+            ]}}
         ]}}
     ]}),
     ok = couch_db:update_docs(Db, [DDoc]),
@@ -150,7 +153,8 @@ insert(DbName) ->
     {ok, Db} = couch_db:open_int(DbName, [admin_user_ctx()]),
     _Docs = lists:map(
         fun(_) ->
-            Doc = couch_doc:from_json_obj({[{<<"_id">>, couch_uuids:new()}]}),
+            Doc = couch_doc:from_json_obj(
+                {[{<<"meta">>, {[{<<"id">>, couch_uuids:new()}]}}]}),
             ok = couch_db:update_docs(Db, [Doc])
         end,
         lists:seq(1, 100)),
