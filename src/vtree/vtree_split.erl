@@ -52,17 +52,18 @@
 
 
 
-% Calculate the split axis. Returns the split candidates with the overall
-% minimal perimeter.
+% Calculate the split axis. Returns the dimension of the split candidates
+% with the overall minimal perimeter and the candidates themselves.
 % This corresponds to step 1 of 4.1 in the RR*-tree paper
 -spec split_axis(Nodes :: [split_node()], FillMin :: integer(),
-                 FillMax :: integer(), Less :: lessfun()) -> [candidate()].
+                 FillMax :: integer(), Less :: lessfun()) ->
+                        {integer(), [candidate()]}.
 split_axis(Nodes, FillMin, FillMax, Less) ->
     NumDims = length(element(1, hd(Nodes))),
 
-    {_, Candidates} =
+    {Dim, {_MinPerim, Candidates}} =
         lists:foldl(
-          fun(Dim, CurMin) ->
+          fun(Dim, {_, CurMin}) ->
                   SortedMin = sort_dim_min(Nodes, Dim, Less),
                   SortedMax = sort_dim_max(Nodes, Dim, Less),
                   Min = candidates_perimeter(SortedMin, FillMin, FillMax,
@@ -70,13 +71,14 @@ split_axis(Nodes, FillMin, FillMax, Less) ->
                   Max = candidates_perimeter(SortedMax, FillMin, FillMax,
                                              Less),
 
-                  case CurMin of
+                  NewMin = case CurMin of
                       nil -> min_perim([Min, Max]);
                       CurMin -> min_perim([CurMin, Min, Max])
-                  end
+                  end,
+                  {Dim, NewMin}
           end,
-          nil, lists:seq(1, NumDims)),
-    Candidates.
+          {1, nil}, lists:seq(1, NumDims)),
+    {Dim, Candidates}.
 
 
 % chooose_candidate returns the candidate with the minimal value as calculated
