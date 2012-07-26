@@ -18,7 +18,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(93),
+    etap:plan(95),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -31,6 +31,8 @@ main(_) ->
 
 
 test() ->
+    test_split_inner(),
+    test_split_leaf(),
     test_split_axis(),
     test_choose_candidate(),
     test_goal_fun(),
@@ -48,6 +50,49 @@ test() ->
     test_mbb_dim_length(),
     test_mbb_dim_center(),
     ok.
+
+test_split_inner() ->
+    Less = fun(A, B) -> A < B end,
+
+    Mbb1 = [{-380, -74.2}, {-380, 948}],
+    Mbb2 = [{-480, 5}, {-7, 28.74}],
+    Mbb3 = [{84.3, 923.8}, {39, 938}],
+    Mbb4 = [{-937, 8424}, {-1000, -82}],
+    Mbb5 = [{4.72, 593}, {372, 490.3}],
+    Mbb6 = [{48, 472}, {-9.38, 26.1}],
+    Node1 = {Mbb1, a},
+    Node2 = {Mbb2, b},
+    Node3 = {Mbb3, c},
+    Node4 = {Mbb4, d},
+    Node5 = {Mbb5, e},
+    Node6 = {Mbb6, f},
+    Nodes = [Node1, Node2, Node3, Node4, Node5, Node6],
+
+    {A, B} = ?MOD:split_inner(Nodes, Mbb1, 1, 5, Less),
+    etap:is(lists:sort(A ++ B), lists:sort(Nodes),
+            "One candidate was choosen (inner node)").
+
+
+test_split_leaf() ->
+    Less = fun(A, B) -> A < B end,
+
+    Mbb1 = [{-380, -74.2}, {-380, 948}],
+    Mbb2 = [{-480, 5}, {-7, 28.74}],
+    Mbb3 = [{84.3, 923.8}, {39, 938}],
+    Mbb4 = [{-937, 8424}, {-1000, -82}],
+    Mbb5 = [{4.72, 593}, {372, 490.3}],
+    Mbb6 = [{48, 472}, {-9.38, 26.1}],
+    Node1 = {Mbb1, a},
+    Node2 = {Mbb2, b},
+    Node3 = {Mbb3, c},
+    Node4 = {Mbb4, d},
+    Node5 = {Mbb5, e},
+    Node6 = {Mbb6, f},
+    Nodes = [Node1, Node2, Node3, Node4, Node5, Node6],
+
+    {A, B} = ?MOD:split_leaf(Nodes, Mbb1, 1, 5, Less),
+    etap:is(lists:sort(A ++ B), lists:sort(Nodes),
+            "One candidate was choosen (leaf node)").
 
 
 test_split_axis() ->
@@ -106,35 +151,36 @@ test_choose_candidate() ->
     Candidates1 = ?MOD:create_split_candidates(
                     [Node1, Node2, Node3, Node4, Node5, Node6], 1, 5),
     MbbN1 = vtree_util:calc_mbb([Mbb1, Mbb2, Mbb3, Mbb4, Mbb5, Mbb6], Less),
-    etap:is(?MOD:choose_candidate(Candidates1, 1, Mbb1, MbbN1, 1, 5, Less),
-            lists:nth(5, Candidates1),
-            "Best candidate (6 nodes)"),
+    {_, Best1} = ?MOD:choose_candidate(Candidates1, 1, Mbb1, MbbN1, 1, 5,
+                                       Less),
+    etap:is(Best1, lists:nth(5, Candidates1), "Best candidate (6 nodes)"),
 
     Candidates2 = ?MOD:create_split_candidates(
                     [Node3, Node4, Node5, Node6, Node2], 2, 4),
     MbbN2 = vtree_util:calc_mbb([Mbb3, Mbb4, Mbb5, Mbb6, Mbb2], Less),
-    etap:is(?MOD:choose_candidate(Candidates2, 2, Mbb3, MbbN2, 2, 4, Less),
-            lists:nth(2, Candidates2),
-            "Best candidate (5 nodes)"),
+    {_, Best2} = ?MOD:choose_candidate(Candidates2, 2, Mbb3, MbbN2, 2, 4,
+                                       Less),
+    etap:is(Best2, lists:nth(2, Candidates2), "Best candidate (5 nodes)"),
 
     Candidates3 = ?MOD:create_split_candidates([Node3, Node5], 1, 1),
     MbbN3 = vtree_util:calc_mbb([Mbb3, Mbb5], Less),
-    etap:is(?MOD:choose_candidate(Candidates3, 1, Mbb3, MbbN3, 1, 1, Less),
-            lists:nth(1, Candidates3),
+    {_, Best3} = ?MOD:choose_candidate(Candidates3, 1, Mbb3, MbbN3, 1, 1,
+                                       Less),
+    etap:is(Best3, lists:nth(1, Candidates3),
             "Best candidate (single partition)"),
 
     Candidates4 = ?MOD:create_split_candidates([Node3, Node4], 1, 1),
     MbbN4 = vtree_util:calc_mbb([Mbb3, Mbb4], Less),
-    etap:is(?MOD:choose_candidate(Candidates4, 1, Mbb3, MbbN4, 1, 1, Less),
-            lists:nth(1, Candidates4),
-            "Best candidate "
-            "(single partition, overlap-free)"),
+    {_, Best4} = ?MOD:choose_candidate(Candidates4, 1, Mbb3, MbbN4, 1, 1,
+                                       Less),
+    etap:is(Best4, lists:nth(1, Candidates4),
+            "Best candidate (single partition, overlap-free)"),
 
     Candidates5 = ?MOD:create_split_candidates([Node7, Node8, Node9], 1, 2),
     MbbN5 = vtree_util:calc_mbb([Mbb7, Mbb8, Mbb9], Less),
-    etap:is(?MOD:choose_candidate(Candidates5, 2, Mbb7, MbbN5, 1, 2, Less),
-            lists:nth(2, Candidates5),
-            "Best candidate (0 volume)").
+    {_, Best5} = ?MOD:choose_candidate(Candidates5, 2, Mbb7, MbbN5, 1, 2,
+                                       Less),
+    etap:is(Best5, lists:nth(2, Candidates5), "Best candidate (0 volume)").
 
 
 test_goal_fun() ->

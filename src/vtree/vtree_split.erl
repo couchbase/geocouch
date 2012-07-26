@@ -19,6 +19,8 @@
 
 -include("vtree.hrl").
 
+-export([split_inner/5, split_leaf/5]).
+
 -ifdef(makecheck).
 -compile(export_all).
 -endif.
@@ -50,6 +52,59 @@
 % there see `split_axis/4`.
 
 
+
+
+% The full split algorithm for an inner node. All dimensions are
+% taken into account. The best split candidate is returned.
+-spec split_inner(Nodes :: [split_node()], Mbb0 :: mbb(),
+                  FillMin :: integer(), FillMax :: integer(),
+                  Less :: lessfun()) -> candidate().
+split_inner(Nodes, _MbbO, _FillMin, FillMax, _Less) when
+      length(Nodes) > FillMax+1 ->
+    throw("Can only split up to FillMax+1 nodes");
+split_inner(Nodes, MbbO, FillMin, FillMax, Less) ->
+    NumDims = length(element(1, hd(Nodes))),
+    MbbN = nodes_mbb(Nodes, Less),
+
+    {_, Candidate} =
+        lists:foldl(
+          % Loop through every dimension to find the split with the
+          % minimal cost
+          fun(Dim, {MinVal, _}=Acc) ->
+                  SortedMin = sort_dim_min(Nodes, Dim, Less),
+                  SortedMax = sort_dim_max(Nodes, Dim, Less),
+                  CandidatesMin = create_split_candidates(SortedMin, FillMin,
+                                                          FillMax),
+                  CandidatesMax = create_split_candidates(SortedMax, FillMin,
+                                                          FillMax),
+
+                  {Val, Candidate} = choose_candidate(
+                                       CandidatesMin ++ CandidatesMax, Dim,
+                                       MbbO, MbbN, FillMin, FillMax, Less),
+                  case Val < MinVal of
+                      true -> {Val, Candidate};
+                      false -> Acc
+                  end
+          end,
+          {nil, nil}, lists:seq(1, NumDims)),
+    Candidate.
+
+
+% The full split algorithm for a leaf node. Only the dimension with the
+% minumum perimeter is taken into account. The best split candidate is
+% returned.
+-spec split_leaf(Nodes :: [split_node()], Mbb0 :: mbb(),
+                 FillMin :: integer(), FillMax :: integer(),
+                 Less :: lessfun()) -> candidate().
+split_leaf(Nodes, _MbbO, _FillMin, FillMax, _Less) when
+      length(Nodes) > FillMax+1 ->
+    throw("Can only split up to FillMax+1 nodes");
+split_leaf(Nodes, MbbO, FillMin, FillMax, Less) ->
+    {Dim, Candidates} = split_axis(Nodes, FillMin, FillMax, Less),
+    MbbN = nodes_mbb(Nodes, Less),
+    {_, Candidate} = choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin,
+                                      FillMax, Less),
+    Candidate.
 
 
 % Calculate the split axis. Returns the dimension of the split candidates
@@ -88,17 +143,17 @@ split_axis(Nodes, FillMin, FillMax, Less) ->
 % the newly added one.
 -spec choose_candidate(Candidates :: [candidate()], Dim :: integer(),
                        MbbO :: mbb(), MbbN :: mbb(), FillMin :: integer(),
-                       FillMax :: integer(), Less :: lessfun()) -> candidate().
+                       FillMax :: integer(), Less :: lessfun()) ->
+                              {number(), candidate()}.
 choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin, FillMax, Less) ->
     PerimMax = perim_max(MbbN),
     Asym = asym(Dim, MbbO, MbbN),
     Wf = make_weighting_fun(Asym, FillMin, FillMax),
 
-    {_, Candidate} = vtree_util:find_min_value(
-                       fun(Candidate) ->
-                               goal_fun(Candidate, PerimMax, Wf, Less)
-                       end, Candidates),
-    Candidate.
+    vtree_util:find_min_value(
+      fun(Candidate) ->
+              goal_fun(Candidate, PerimMax, Wf, Less)
+      end, Candidates).
 
 
 % This is the goal function "w" as described in section 4.2.4.
@@ -209,7 +264,7 @@ create_split_candidates(Nodes, FillMin, FillMax) ->
 
 
 % Calculate the enclosing MBB from a list of nodes
--spec nodes_mbb(Nodes :: [split_node()], Less :: lessfun()) -> [mbb()].
+-spec nodes_mbb(Nodes :: [split_node()], Less :: lessfun()) -> mbb().
 nodes_mbb(Nodes, Less) ->
     {Mbbs, _} = lists:unzip(Nodes),
     vtree_util:calc_mbb(Mbbs, Less).
