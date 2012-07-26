@@ -57,7 +57,7 @@
 % The full split algorithm for an inner node. All dimensions are
 % taken into account. The best split candidate is returned.
 -spec split_inner(Nodes :: [split_node()], Mbb0 :: mbb(),
-                  FillMin :: integer(), FillMax :: integer(),
+                  FillMin :: pos_integer(), FillMax :: pos_integer(),
                   Less :: lessfun()) -> candidate().
 split_inner(Nodes, _MbbO, _FillMin, FillMax, _Less) when
       length(Nodes) > FillMax+1 ->
@@ -94,7 +94,7 @@ split_inner(Nodes, MbbO, FillMin, FillMax, Less) ->
 % minumum perimeter is taken into account. The best split candidate is
 % returned.
 -spec split_leaf(Nodes :: [split_node()], Mbb0 :: mbb(),
-                 FillMin :: integer(), FillMax :: integer(),
+                 FillMin :: pos_integer(), FillMax :: pos_integer(),
                  Less :: lessfun()) -> candidate().
 split_leaf(Nodes, _MbbO, _FillMin, FillMax, _Less) when
       length(Nodes) > FillMax+1 ->
@@ -110,8 +110,8 @@ split_leaf(Nodes, MbbO, FillMin, FillMax, Less) ->
 % Calculate the split axis. Returns the dimension of the split candidates
 % with the overall minimal perimeter and the candidates themselves.
 % This corresponds to step 1 of 4.1 in the RR*-tree paper
--spec split_axis(Nodes :: [split_node()], FillMin :: integer(),
-                 FillMax :: integer(), Less :: lessfun()) ->
+-spec split_axis(Nodes :: [split_node()], FillMin :: pos_integer(),
+                 FillMax :: pos_integer(), Less :: lessfun()) ->
                         {integer(), [candidate()]}.
 split_axis(Nodes, FillMin, FillMax, Less) ->
     NumDims = length(element(1, hd(Nodes))),
@@ -142,8 +142,8 @@ split_axis(Nodes, FillMin, FillMax, Less) ->
 % `MbbN` is the bounding box around the nodes that should be split including
 % the newly added one.
 -spec choose_candidate(Candidates :: [candidate()], Dim :: integer(),
-                       MbbO :: mbb(), MbbN :: mbb(), FillMin :: integer(),
-                       FillMax :: integer(), Less :: lessfun()) ->
+                       MbbO :: mbb(), MbbN :: mbb(), FillMin :: pos_integer(),
+                       FillMax :: pos_integer(), Less :: lessfun()) ->
                               {number(), candidate()}.
 choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin, FillMax, Less) ->
     PerimMax = perim_max(MbbN),
@@ -203,8 +203,8 @@ wg_overlapfree({F, S}, PerimMax, Less) ->
     nodes_perimeter(F, Less) + nodes_perimeter(S, Less) - PerimMax.
 
 
--spec make_weighting_fun(Asym :: float(), FillMin :: integer(),
-                         FillMax :: integer()) -> fun().
+-spec make_weighting_fun(Asym :: float(), FillMin :: pos_integer(),
+                         FillMax :: pos_integer()) -> fun().
 make_weighting_fun(Asym, FillMin, FillMax) ->
     % In thee RR*-tree paper they conclude that the best average performance
     % is achieved with a "S" set to 0.5. Hence it's hard-coded here.
@@ -255,8 +255,9 @@ perim_max(Mbb) ->
 
 
 % Create all possible split candidates from a list of nodes
--spec create_split_candidates(Nodes :: [split_node()], FillMin :: integer(),
-                              FillMax :: integer()) -> [candidate()].
+-spec create_split_candidates(Nodes :: [split_node()],
+                              FillMin :: pos_integer(),
+                              FillMax :: pos_integer()) -> [candidate()].
 create_split_candidates(Nodes, FillMin, FillMax) ->
     % FillMax might violate the minimum fill rate condition
     FillMax2 = erlang:min(length(Nodes)-FillMin, FillMax),
@@ -279,8 +280,8 @@ nodes_perimeter(Nodes, Less) ->
 
 % Get the perimeters of all split candidates. Returns a 2-tuple with the
 % perimeter and the split candidates
--spec candidates_perimeter(Nodes :: [split_node()], FillMin :: integer(),
-                           FillMax :: integer(), Less :: lessfun()) ->
+-spec candidates_perimeter(Nodes :: [split_node()], FillMin :: pos_integer(),
+                           FillMax :: pos_integer(), Less :: lessfun()) ->
                                   {number(), [candidate()]}.
 candidates_perimeter(Nodes, FillMin, FillMax, Less) ->
     Candidates = create_split_candidates(Nodes, FillMin, FillMax),
