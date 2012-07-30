@@ -64,7 +64,7 @@ split_inner(Nodes, _MbbO, _FillMin, FillMax, _Less) when
     throw("Can only split up to FillMax+1 nodes");
 split_inner(Nodes, MbbO, FillMin, FillMax, Less) ->
     NumDims = length(element(1, hd(Nodes))),
-    MbbN = nodes_mbb(Nodes, Less),
+    MbbN = vtree_util:nodes_mbb(Nodes, Less),
 
     {_, Candidate} =
         lists:foldl(
@@ -101,7 +101,7 @@ split_leaf(Nodes, _MbbO, _FillMin, FillMax, _Less) when
     throw("Can only split up to FillMax+1 nodes");
 split_leaf(Nodes, MbbO, FillMin, FillMax, Less) ->
     {Dim, Candidates} = split_axis(Nodes, FillMin, FillMax, Less),
-    MbbN = nodes_mbb(Nodes, Less),
+    MbbN = vtree_util:nodes_mbb(Nodes, Less),
     {_, Candidate} = choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin,
                                       FillMax, Less),
     Candidate.
@@ -162,8 +162,8 @@ choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin, FillMax, Less) ->
 -spec goal_fun(Candidate :: candidate(), PerimMax :: number(), Wf :: fun(),
                Less :: lessfun()) -> number().
 goal_fun({F, S}=Candidate, PerimMax, Wf, Less) ->
-    MbbF = nodes_mbb(F, Less),
-    MbbS = nodes_mbb(S, Less),
+    MbbF = vtree_util:nodes_mbb(F, Less),
+    MbbS = vtree_util:nodes_mbb(S, Less),
     % The index is where the candidates were split
     Index = length(F),
 
@@ -180,8 +180,8 @@ goal_fun({F, S}=Candidate, PerimMax, Wf, Less) ->
 % It corresponds to step 2 of 4.1 in the RR*-tree paper, extended by 4.2.4.
 -spec wg(Candidate :: candidate(), Less :: lessfun()) -> number().
 wg({F, S}, Less) ->
-    MbbF = nodes_mbb(F, Less),
-    MbbS = nodes_mbb(S, Less),
+    MbbF = vtree_util:nodes_mbb(F, Less),
+    MbbS = vtree_util:nodes_mbb(S, Less),
     OverlapMbb = vtree_util:intersect_mbb(MbbF, MbbS, Less),
 
     % Check if one of the nodes has no volume (at least one
@@ -264,17 +264,10 @@ create_split_candidates(Nodes, FillMin, FillMax) ->
     [lists:split(SplitPos, Nodes) || SplitPos <- lists:seq(FillMin, FillMax2)].
 
 
-% Calculate the enclosing MBB from a list of nodes
--spec nodes_mbb(Nodes :: [split_node()], Less :: lessfun()) -> mbb().
-nodes_mbb(Nodes, Less) ->
-    {Mbbs, _} = lists:unzip(Nodes),
-    vtree_util:calc_mbb(Mbbs, Less).
-
-
 % Calculate the perimeter of the enclosing MBB of some nodes
 -spec nodes_perimeter(Nodes :: [split_node()], Less :: lessfun()) -> number().
 nodes_perimeter(Nodes, Less) ->
-    Mbb = nodes_mbb(Nodes, Less),
+    Mbb = vtree_util:nodes_mbb(Nodes, Less),
     vtree_util:calc_perimeter(Mbb).
 
 

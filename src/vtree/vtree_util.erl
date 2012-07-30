@@ -14,8 +14,8 @@
 
 -include("vtree.hrl").
 
--export([calc_mbb/2, min/2, max/2, calc_perimeter/1, calc_volume/1,
-         intersect_mbb/3, find_min_value/2]).
+-export([calc_mbb/2, nodes_mbb/2, min/2, max/2, calc_perimeter/1,
+         calc_volume/1, intersect_mbb/3, find_min_value/2]).
 
 
 -spec min(Tuple::{any(), any()} | [any()], Less::fun()) -> Min::any().
@@ -89,6 +89,12 @@ calc_mbb([H|T], Less, Mbb) ->
              end, lists:zip(H, Mbb)),
     calc_mbb(T, Less, Mbb2).
 
+
+% Calculate the enclosing MBB from a list of nodes
+-spec nodes_mbb(Nodes :: [split_node()], Less :: lessfun()) -> mbb().
+nodes_mbb(Nodes, Less) ->
+    {Mbbs, _} = lists:unzip(Nodes),
+    vtree_util:calc_mbb(Mbbs, Less).
 
 
 % Returns the intersection of two MBBs

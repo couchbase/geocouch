@@ -18,7 +18,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(95),
+    etap:plan(91),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -42,7 +42,6 @@ test() ->
     test_sort_dim(),
     test_perim_max(),
     test_create_split_candidates(),
-    test_nodes_mbb(),
     test_nodes_perimeter(),
     test_candidates_perimeter(),
     test_min_perim(),
@@ -488,28 +487,6 @@ test_create_split_candidates() ->
              {[a,b,c,d,e], [f,g,h,i,j]},
              {[a,b,c,d,e,f], [g,h,i,j]}],
             "10 split candidates with min=4, max=8").
-
-
-test_nodes_mbb() ->
-    Less = fun(A, B) -> A < B end,
-
-    Mbb1 = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
-    Mbb2 = [{39, 938}, {-937, 8424}, {-1000, -82}, {4.72, 593}, {372, 490.3}],
-    Mbb3 = [{48, 472}, {-9.38, 26.1}, {-382, -29}, {-1.4, 30}, {39.9, 100}],
-    Node1 = {Mbb1, 3487},
-    Node2 = {Mbb2, 823},
-    Node3 = {Mbb3, 96242},
-
-    etap:is(?MOD:nodes_mbb([Node1, Node2], Less),
-            vtree_util:calc_mbb([Mbb1, Mbb2], Less),
-            "Calculate the MBB of two nodes (a)"),
-    etap:is(?MOD:nodes_mbb([Node2, Node3], Less),
-            vtree_util:calc_mbb([Mbb2, Mbb3], Less),
-            "Calculate the MBB of two nodes (b)"),
-    etap:is(?MOD:nodes_mbb([Node2], Less), vtree_util:calc_mbb([Mbb2], Less),
-            "Calculate the MBB of a single node (a)"),
-    etap:is(?MOD:nodes_mbb([Node3], Less), vtree_util:calc_mbb([Mbb3], Less),
-            "Calculate the MBB of a single node (b)").
 
 
 test_nodes_perimeter() ->
