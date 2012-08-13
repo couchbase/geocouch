@@ -63,7 +63,7 @@
 % #view_query_args
 -record(spatial_query_args, {
     bbox=nil,
-    stale=nil,
+    stale=update_after :: update_after | ok | false,
     count=false,
     % Bounds of the cartesian plane
     bounds=nil,

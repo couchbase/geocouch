@@ -230,13 +230,19 @@ parse_spatial_params(Req) ->
 
 parse_spatial_param("bbox", Bbox) ->
     [{bbox, list_to_tuple(?JSON_DECODE("[" ++ Bbox ++ "]"))}];
-parse_spatial_param("stale", "ok") ->
-    [{stale, ok}];
-parse_spatial_param("stale", "update_after") ->
-    [{stale, update_after}];
-parse_spatial_param("stale", _Value) ->
-    throw({query_parse_error,
-            <<"stale only available as stale=ok or as stale=update_after">>});
+parse_spatial_param("stale", Value) ->
+    case string:to_lower(Value) of
+    "false" ->
+        [{stale, false}];
+    "ok" ->
+        [{stale, ok}];
+    "update_after" ->
+        [{stale, update_after}];
+    _ ->
+        throw({query_parse_error,
+            <<"stale only available as stale=ok, stale=update_after or "
+              "stale=false">>})
+    end;
 parse_spatial_param("count", "true") ->
     [{count, true}];
 parse_spatial_param("count", _Value) ->
@@ -252,12 +258,12 @@ parse_spatial_param(Key, Value) ->
 
 validate_spatial_query(bbox, Value, Args) ->
     Args#spatial_query_args{bbox=Value};
+validate_spatial_query(stale, false, Args) ->
+    Args#spatial_query_args{stale=false};
 validate_spatial_query(stale, ok, Args) ->
     Args#spatial_query_args{stale=ok};
 validate_spatial_query(stale, update_after, Args) ->
     Args#spatial_query_args{stale=update_after};
-validate_spatial_query(stale, _, Args) ->
-    Args;
 validate_spatial_query(count, true, Args) ->
     Args#spatial_query_args{count=true};
 validate_spatial_query(bounds, Value, Args) ->
