@@ -1,0 +1,147 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+
+% Licensed under the Apache License, Version 2.0 (the "License"); you may not
+% use this file except in compliance with the License. You may obtain a copy of
+% the License at
+%
+%   http://www.apache.org/licenses/LICENSE-2.0
+%
+% Unless required by applicable law or agreed to in writing, software
+% distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+% License for the specific language governing permissions and limitations under
+% the License.
+
+-include_lib("../include/vtree.hrl").
+
+-define(MOD, vtree_io).
+-define(FILENAME, "/tmp/vtree_io_vtree.bin").
+
+main(_) ->
+    % Set the random seed once, for the whole test suite
+    random:seed(1, 11, 91),
+
+    code:add_pathz(filename:dirname(escript:script_name())),
+    etap:plan(10),
+    case (catch test()) of
+        ok ->
+            etap:end_tests();
+        Other ->
+            % Somehow etap:diag/1 and etap:bail/1 don't work properly
+            %etap:diag(io_lib:format("Test died abnormally: ~p", [Other])),
+            %etap:bail(Other),
+            io:format(standard_error, "Test died abnormally:~n~p~n", [Other])
+     end.
+
+
+test() ->
+    couch_file_write_guard:sup_start_link(),
+    test_encode_decode_kvnode_value(),
+    test_encode_decode_kpnode_value(),
+    test_encode_decode_kvnodes(),
+    test_encode_decode_kpnodes(),
+    test_write_read_nodes(),
+    ok.
+
+
+test_encode_decode_kvnode_value() ->
+    Fd = vtree_test_util:create_file(?FILENAME),
+    [Node1, Node2] = vtree_test_util:generate_kvnodes(2),
+
+    {Encoded1, _Size1} = ?MOD:encode_value(Fd, Node1),
+    % We flush as late as possible, hence for testing it needs to be done
+    % manually
+    geocouch_file:flush(Fd),
+    Decoded1 = ?MOD:decode_kvnode_value(Fd, Encoded1),
+    etap:is(Decoded1, Node1#kv_node{key=[]},
+            "KV-node value got correctly encoded and decoded (a)"),
+
+    {Encoded2, _Size2} = ?MOD:encode_value(Fd, Node2),
+    geocouch_file:flush(Fd),
+    Decoded2 = ?MOD:decode_kvnode_value(Fd, Encoded2),
+    etap:is(Decoded2, Node2#kv_node{key=[]},
+            "KV-node value got correctly encoded and decoded (b)"),
+    couch_file:close(Fd).
+
+
+test_encode_decode_kpnode_value() ->
+    Fd = vtree_test_util:create_file(?FILENAME),
+    [Node1, Node2] = vtree_test_util:generate_kpnodes(2),
+
+    {Encoded1, _Size1} = ?MOD:encode_value(Fd, Node1),
+    % We flush as late as possible, hence for testing it needs to be done
+    % manually
+    geocouch_file:flush(Fd),
+    Decoded1 = ?MOD:decode_kpnode_value(Encoded1),
+    etap:is(Decoded1, Node1#kp_node{key=[]},
+            "KP-node value got correctly encoded and decoded (a)"),
+
+    {Encoded2, _Size2} = ?MOD:encode_value(Fd, Node2),
+    geocouch_file:flush(Fd),
+    Decoded2 = ?MOD:decode_kpnode_value(Encoded2),
+    etap:is(Decoded2, Node2#kp_node{key=[]},
+            "KP-node value got correctly encoded and decoded (b)"),
+    couch_file:close(Fd).
+
+
+test_encode_decode_kvnodes() ->
+    Fd = vtree_test_util:create_file(?FILENAME),
+    Nodes1 = vtree_test_util:generate_kvnodes(1),
+    Nodes2 = vtree_test_util:generate_kvnodes(5),
+
+    {Encoded1, _Size1} = ?MOD:encode_node(Fd, Nodes1),
+    % We flush as late as possible, hence for testing it needs to be done
+    % manually
+    geocouch_file:flush(Fd),
+    Decoded1 = ?MOD:decode_node(Fd, Encoded1),
+    etap:is(Decoded1, Nodes1,
+            "KV-node got correctly encoded and decoded (a)"),
+
+    {Encoded2, _Size2} = ?MOD:encode_node(Fd, Nodes2),
+    geocouch_file:flush(Fd),
+    Decoded2 = ?MOD:decode_node(Fd, Encoded2),
+    etap:is(Decoded2, Nodes2,
+            "KV-node got correctly encoded and decoded (b)"),
+    couch_file:close(Fd).
+
+
+test_encode_decode_kpnodes() ->
+    Fd = vtree_test_util:create_file(?FILENAME),
+    Nodes1 = vtree_test_util:generate_kpnodes(1),
+    Nodes2 = vtree_test_util:generate_kpnodes(7),
+
+    {Encoded1, _Size1} = ?MOD:encode_node(Fd, Nodes1),
+    % We flush as late as possible, hence for testing it needs to be done
+    % manually
+    geocouch_file:flush(Fd),
+    Decoded1 = ?MOD:decode_node(Fd, Encoded1),
+    etap:is(Decoded1, Nodes1,
+            "KP-node got correctly encoded and decoded (a)"),
+
+    {Encoded2, _Size2} = ?MOD:encode_node(Fd, Nodes2),
+    geocouch_file:flush(Fd),
+    Decoded2 = ?MOD:decode_node(Fd, Encoded2),
+    etap:is(Decoded2, Nodes2,
+            "KP-node got correctly encoded and decoded (b)"),
+    couch_file:close(Fd).
+
+
+test_write_read_nodes() ->
+    Fd = vtree_test_util:create_file(?FILENAME),
+    Nodes1 = vtree_test_util:generate_kvnodes(6),
+    Nodes2 = vtree_test_util:generate_kpnodes(2),
+    Less = fun(A, B) -> A < B end,
+
+    {ok, ParentNode1} = ?MOD:write_node(Fd, Nodes1, Less),
+    NodesWritten1 = ?MOD:read_node(Fd, ParentNode1#kp_node.childpointer),
+    etap:is(NodesWritten1, Nodes1,
+            "KV-nodes were correctly written and read back"),
+
+    {ok, ParentNode2} = ?MOD:write_node(Fd, Nodes2, Less),
+    NodesWritten2 = ?MOD:read_node(Fd, ParentNode2#kp_node.childpointer),
+    etap:is(NodesWritten2, Nodes2,
+            "KP-nodes were correctly written and read back"),
+
+    couch_file:close(Fd).
+

@@ -91,7 +91,14 @@ calc_mbb([H|T], Less, Mbb) ->
 
 
 % Calculate the enclosing MBB from a list of nodes
--spec nodes_mbb(Nodes :: [split_node()], Less :: lessfun()) -> mbb().
+-spec nodes_mbb(Nodes :: [#kv_node{} | #kp_node{} | split_node()],
+                Less :: lessfun()) -> mbb().
+nodes_mbb([#kv_node{}|_]=Nodes, Less) ->
+    Mbbs = [Node#kv_node.key || Node <- Nodes],
+    vtree_util:calc_mbb(Mbbs, Less);
+nodes_mbb([#kp_node{}|_]=Nodes, Less) ->
+    Mbbs = [Node#kp_node.key || Node <- Nodes],
+    vtree_util:calc_mbb(Mbbs, Less);
 nodes_mbb(Nodes, Less) ->
     {Mbbs, _} = lists:unzip(Nodes),
     vtree_util:calc_mbb(Mbbs, Less).
