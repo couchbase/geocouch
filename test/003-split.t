@@ -18,7 +18,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(91),
+    etap:plan(92),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -26,7 +26,7 @@ main(_) ->
             % Somehow etap:diag/1 and etap:bail/1 don't work properly
             %etap:diag(io_lib:format("Test died abnormally: ~p", [Other])),
             %etap:bail(Other),
-            io:format("Test died abnormally:~n~p~n", [Other])
+            io:format(standard_error, "Test died abnormally:~n~p~n", [Other])
      end.
 
 
@@ -478,15 +478,25 @@ test_create_split_candidates() ->
     etap:is(?MOD:create_split_candidates(Nodes, 2, 3),
             [{[a,b], [c,d,e]}, {[a,b,c], [d,e]}],
             "5 split candidates with min=2, max=3"),
-    etap:is(?MOD:create_split_candidates(Nodes, 3, 4),
-            [],
-            "5 split candidates, can't create split with min=3, max=4"),
+    etap_exception:throws_ok(
+      fun() -> ?MOD:create_split_candidates(Nodes, 3, 4) end,
+      "Can't create split candidates, chose different values for "
+      "FillMin/FillMax",
+      "5 split candidates, can't create split with min=3, max=4"),
+
     Nodes2 = [a,b,c,d,e,f,g,h,i,j],
     etap:is(?MOD:create_split_candidates(Nodes2, 4, 8),
             [{[a,b,c,d], [e,f,g,h,i,j]},
              {[a,b,c,d,e], [f,g,h,i,j]},
              {[a,b,c,d,e,f], [g,h,i,j]}],
-            "10 split candidates with min=4, max=8").
+            "10 split candidates with min=4, max=8"),
+
+    Nodes3 = [a,b,c,d,e,f,g],
+    etap_exception:throws_ok(
+      fun() -> ?MOD:create_split_candidates(Nodes3, 4, 6) end,
+      "Can't create split candidates, chose different values for "
+      "FillMin/FillMax",
+      "7 split candidates, Impossible split (min=4, max=6) throws error").
 
 
 test_nodes_perimeter() ->

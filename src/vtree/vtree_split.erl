@@ -258,6 +258,11 @@ perim_max(Mbb) ->
 -spec create_split_candidates(Nodes :: [split_node()],
                               FillMin :: pos_integer(),
                               FillMax :: pos_integer()) -> [candidate()].
+create_split_candidates(Nodes, FillMin, FillMax) when
+      FillMax < FillMin orelse
+      length(Nodes) - FillMin < FillMin ->
+    throw("Can't create split candidates, chose different values for "
+          "FillMin/FillMax");
 create_split_candidates(Nodes, FillMin, FillMax) ->
     % FillMax might violate the minimum fill rate condition
     FillMax2 = erlang:min(length(Nodes)-FillMin, FillMax),
