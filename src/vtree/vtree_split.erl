@@ -307,9 +307,14 @@ min_perim([_|T], Min) ->
 -spec asym(Dim :: integer(), MbbO :: mbb(), MbbN :: mbb()) -> number().
 asym(Dim, MbbO, MbbN) ->
     LengthN = mbb_dim_length(Dim, MbbN),
-    CenterN = mbb_dim_center(Dim, MbbN),
-    CenterO = mbb_dim_center(Dim, MbbO),
-    ((2*(CenterN - CenterO)) / LengthN).
+    case LengthN == 0 of
+        true ->
+            0;
+        false ->
+            CenterN = mbb_dim_center(Dim, MbbN),
+            CenterO = mbb_dim_center(Dim, MbbO),
+            ((2*(CenterN - CenterO)) / LengthN)
+    end.
 
 
 % Returns the length of a certain dimension of an MBB

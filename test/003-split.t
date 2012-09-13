@@ -562,8 +562,8 @@ test_min_perim() ->
 test_asym() ->
     Less = fun(A, B) -> A < B end,
 
-    MbbO = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 923.8}],
-    MbbAdd = [{48, 472}, {-9.38, 26.1}, {-382, -29}, {-1.4, 30}, {39.9, 100}],
+    MbbO = [{-38, 74.2}, {38, 948}, {-480, -27}, {-7, -4.28}, {84.3, 84.3}],
+    MbbAdd = [{48, 472}, {-9.38, 26.1}, {-382, -29}, {-1.4, 30}, {84.3, 84.3}],
     MbbN = vtree_util:calc_mbb([MbbO, MbbAdd], Less),
 
     etap:is(?MOD:asym(1, MbbO, MbbN), 0.78,
@@ -574,8 +574,8 @@ test_asym() ->
             "asym() value of the 3rd dimension"),
     etap:is(?MOD:asym(4, MbbO, MbbN), 0.9264864864864866,
             "asym() value of the 4th dimension"),
-    etap:is(?MOD:asym(5, MbbO, MbbN), -0.050231926688539534,
-            "asym() value of the 5th dimension").
+    etap:is(?MOD:asym(5, MbbO, MbbN), 0,
+            "asym() value of the 5th dimension is zero").
 
 
 test_mbb_dim_length() ->
