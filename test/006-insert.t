@@ -172,8 +172,7 @@ test_insert_multiple() ->
 
     PartitionedNodes2 = ?MOD:partition_nodes([Root], Nodes3, Less),
     KpNodes2 = ?MOD:insert_multiple(Vtree2, PartitionedNodes2, [Root], []),
-    KpNode2 = ?MOD:write_new_root(Vtree2, KpNodes2,
-                                  (hd(KpNodes2))#kp_node.key),
+    KpNode2 = ?MOD:write_new_root(Vtree2, KpNodes2),
     {Depths2, KvNodes2} = get_kvnodes(Fd, KpNode2#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths2)), 1, "Tree is balanced (b)"),
     etap:is(lists:sort(KvNodes2), lists:sort(Nodes1 ++ Nodes3),
@@ -247,17 +246,16 @@ test_write_new_root() ->
      },
 
     NodesKp = vtree_test_util:generate_kpnodes(5),
-    MbbOKp = (hd(NodesKp))#kp_node.key,
 
-    Root1 = ?MOD:write_new_root(Vtree1, [hd(NodesKp)], MbbOKp),
+    Root1 = ?MOD:write_new_root(Vtree1, [hd(NodesKp)]),
     etap:is(Root1, hd(NodesKp), "Single node is new root"),
 
-    Root2 = ?MOD:write_new_root(Vtree1, tl(NodesKp), MbbOKp),
+    Root2 = ?MOD:write_new_root(Vtree1, tl(NodesKp)),
     Root2Children = vtree_io:read_node(Fd, Root2#kp_node.childpointer),
     etap:is(Root2Children, tl(NodesKp),
             "A new root node was written (one new level)"),
 
-    Root3 = ?MOD:write_new_root(Vtree1, NodesKp, MbbOKp),
+    Root3 = ?MOD:write_new_root(Vtree1, NodesKp),
     Root3Children = vtree_io:read_node(Fd, Root3#kp_node.childpointer),
     ChildPointer = [C#kp_node.childpointer || C <- Root3Children],
     Root3ChildrenChildren = lists:append(
@@ -269,7 +267,7 @@ test_write_new_root() ->
     NodesKv = vtree_test_util:generate_kvnodes(4),
     MbbOKv = (hd(NodesKv))#kv_node.key,
 
-    Root4 = ?MOD:write_new_root(Vtree1, NodesKv, MbbOKv),
+    Root4 = ?MOD:write_new_root(Vtree1, NodesKv),
     Root4Children = vtree_io:read_node(Fd, Root4#kp_node.childpointer),
     etap:is(Root4Children, NodesKv,
             "A new root node (for KV-nodes) was written (one new level)"),
@@ -369,7 +367,10 @@ test_write_multiple_nodes() ->
     Fd1b = vtree_test_util:create_file(?FILENAME),
     {ok, WrittenNodes1a} = vtree_io:write_node(Fd1b, Nodes1a, Less),
     {ok, WrittenNodes1b} = vtree_io:write_node(Fd1b, Nodes1b, Less),
-    etap:is(WrittenNodes1, [WrittenNodes1a, WrittenNodes1b],
+    % The #kp_node.mmb_orig isn't set bt vtree_io, hence set it manually
+    etap:is(WrittenNodes1,
+            [WrittenNodes1a#kp_node{mbb_orig=WrittenNodes1a#kp_node.key},
+             WrittenNodes1b#kp_node{mbb_orig=WrittenNodes1b#kp_node.key}],
             "Multiple KV-nodes were correctly written"),
     couch_file:close(Fd1b),
 
@@ -382,7 +383,10 @@ test_write_multiple_nodes() ->
     Fd2b = vtree_test_util:create_file(?FILENAME),
     {ok, WrittenNodes2a} = vtree_io:write_node(Fd2b, Nodes2a, Less),
     {ok, WrittenNodes2b} = vtree_io:write_node(Fd2b, Nodes2b, Less),
-    etap:is(WrittenNodes2, [WrittenNodes2a, WrittenNodes2b],
+    % The #kp_node.mmb_orig isn't set bt vtree_io, hence set it manually
+    etap:is(WrittenNodes2,
+            [WrittenNodes2a#kp_node{mbb_orig=WrittenNodes2a#kp_node.key},
+             WrittenNodes2b#kp_node{mbb_orig=WrittenNodes2b#kp_node.key}],
             "Multiple KP-nodes were correctly written"),
 
     couch_file:close(Fd2b).

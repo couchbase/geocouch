@@ -151,12 +151,16 @@ encode_value(_Fd, #kp_node{}=Node) ->
     #kp_node{
               childpointer = PointerNode,
               treesize = TreeSize,
-              reduce = Reduce
+              reduce = Reduce,
+              mbb_orig = MbbO
             } = Node,
     BinReduce = ?term_to_bin(Reduce),
     SizeReduce = erlang:iolist_size(BinReduce),
+    BinMbbO = ?term_to_bin(MbbO),
+    SizeMbbO = erlang:size(BinMbbO),
+    % 12 would be enough for MbbO, but we like to have it padded to full bytes
     BinValue = <<PointerNode:48, TreeSize:48, SizeReduce:16,
-                 BinReduce:SizeReduce/binary>>,
+                 BinReduce:SizeReduce/binary, SizeMbbO:16, BinMbbO/binary>>,
     % Return `0` as no additional bytes are written. The bytes that will
     % be written are accounted when the whole chunk gets written.
     {BinValue, 0}.
@@ -189,14 +193,16 @@ decode_kvnode_value(Fd, BinValue) ->
 % Decode the value of a KP-node pair
 -spec decode_kpnode_value(BinValue :: binary()) -> #kp_node{}.
 decode_kpnode_value(BinValue) ->
-    <<PointerNode:48, TreeSize:48, SizeReduce:16,
-      BinReduce:SizeReduce/binary>> = BinValue,
+    <<PointerNode:48, TreeSize:48, SizeReduce:16, BinReduce:SizeReduce/binary,
+      SizeMbbO:16, BinMbbO:SizeMbbO/binary>> = BinValue,
     Reduce = erlang:binary_to_term(BinReduce),
+    MbbO = erlang:binary_to_term(BinMbbO),
     %{PointerNode, TreeSize, Reduce}.
     #kp_node{
               childpointer = PointerNode,
               treesize = TreeSize,
-              reduce = Reduce
+              reduce = Reduce,
+              mbb_orig = MbbO
             }.
 
 

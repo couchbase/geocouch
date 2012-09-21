@@ -54,7 +54,8 @@ random_kpnode(I) ->
                key = Mbb,
                childpointer = I,
                treesize = random:uniform(Max),
-               reduce = nil
+               reduce = nil,
+               mbb_orig = Mbb
              }.
 
 

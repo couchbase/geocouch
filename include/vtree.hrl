@@ -60,7 +60,8 @@
           key = [] :: mbb(),
           childpointer = [] :: non_neg_integer(),
           treesize = 0 :: non_neg_integer(),
-          reduce = nil :: any()
+          reduce = nil :: any(),
+          mbb_orig = [] :: mbb()
 }).
 
 -record(vtree, {

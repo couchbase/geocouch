@@ -51,7 +51,7 @@ insert(#vtree{root=nil}=Vt, Nodes) when length(Nodes) > Vt#vtree.fill_max ->
 
     {Nodes2, Rest} = lists:split(Vt#vtree.fill_max, Nodes),
     KpNodes = write_nodes(Vt, Nodes2, MbbO),
-    Root = write_new_root(Vt, KpNodes, MbbO),
+    Root = write_new_root(Vt, KpNodes),
     Vt2 = Vt#vtree{root=Root},
 
     % NOTE vmx 2012-09-20: The value `math:log(Vt#vtree.fill_max)*50` is
@@ -79,10 +79,7 @@ insert(Vt, Nodes) ->
 
     PartitionedNodes = partition_nodes([Root], Nodes, Less),
     KpNodes = insert_multiple(Vt, PartitionedNodes, [Root], []),
-
-    % XXX vmx 2012-09-13: think about a real MbbO
-    MbbO = get_key(hd(Nodes)),
-    NewRoot = write_new_root(Vt, KpNodes, MbbO),
+    NewRoot = write_new_root(Vt, KpNodes),
     ?LOG_DEBUG("Insertion into existing tree took: ~ps~n",
                [timer:now_diff(now(), T1)/1000000]),
     ?LOG_DEBUG("Root pos: ~p~n", [NewRoot#kp_node.childpointer]),
@@ -150,7 +147,11 @@ insert_multiple(Vt, [Nodes|SiblingPartitions], [Child|Siblings], Acc) ->
             fd = Fd,
             less = Less
           } = Vt,
-    Children = vtree_io:read_node(Fd, Child#kp_node.childpointer),
+    #kp_node{
+              childpointer = ChildPointer,
+              mbb_orig = MbbO
+            } = Child,
+    Children = vtree_io:read_node(Fd, ChildPointer),
     NewChildren = case Children of
                       [#kv_node{}|_] ->
                           Nodes ++ Children;
@@ -160,8 +161,6 @@ insert_multiple(Vt, [Nodes|SiblingPartitions], [Child|Siblings], Acc) ->
                           insert_multiple(Vt, Partitions, Children, [])
     end,
 
-    % XXX vmx 2012-09-13: Use real MbbO
-    MbbO = get_key(hd(NewChildren)),
     WrittenNodes = write_nodes(Vt, NewChildren, MbbO),
     % Moving sideways
     insert_multiple(Vt, SiblingPartitions, Siblings, WrittenNodes ++ Acc).
@@ -193,16 +192,17 @@ partition_nodes(KpNodes, ToPartition, Less) ->
 % Write a new root node for the given nodes. In case there are more than
 % `fill_max` nodes, write a new root recursively. Stop when the root is a
 % single node.
--spec write_new_root(Vt :: #vtree{}, Nodes :: [#kp_node{} | #kv_node{}],
-                     MbbO :: mbb()) -> #kp_node{}.
-write_new_root(_Vt, [Root], _MbbO) ->
+-spec write_new_root(Vt :: #vtree{}, Nodes :: [#kp_node{} | #kv_node{}]) ->
+                            #kp_node{}.
+write_new_root(_Vt, [Root]) ->
     Root;
 % The `write_nodes/3` call will handle the splitting if needed. It could
 % happen that the number of nodes returned by `write_nodes/3` is bigger
 % than `fill_max`, hence the recursive call.
-write_new_root(Vt, Nodes, MbbO) ->
+write_new_root(Vt, Nodes) ->
+    MbbO = vtree_util:nodes_mbb(Nodes, Vt#vtree.less),
     WrittenNodes = write_nodes(Vt, Nodes, MbbO),
-    write_new_root(Vt, WrittenNodes, MbbO).
+    write_new_root(Vt, WrittenNodes).
 
 
 % Add a list of nodes one by one into a list of nodes (think of the latter
@@ -274,11 +274,20 @@ write_nodes(#vtree{fill_max = FillMax} = Vt, Nodes, MbbO) when
     {FirstNodes, Rest} = lists:split(FillMax, Nodes),
     NewNodes = insert_into_nodes(Vt, [FirstNodes], MbbO, Rest),
     write_multiple_nodes(Vt, NewNodes);
-write_nodes(Vt, Nodes, _MbbO) ->
-    write_multiple_nodes(Vt, [Nodes]).
+write_nodes(Vt, Nodes, MbbO) ->
+    % `write_multiple_nodes/2` isn't used here, as it's the only case, where
+    % we use the supplied MBBO and don't calculate a new one.
+    %write_multiple_nodes(Vt, [Nodes], [MbbO]).
+    #vtree{
+            fd = Fd,
+            less = Less
+          } = Vt,
+    {ok, WrittenNode} = vtree_io:write_node(Fd, Nodes, Less),
+    [WrittenNode#kp_node{mbb_orig = MbbO}].
 
 
-% Write multiple nodes at once
+% Write multiple nodes at once. It is only called when a split happened, hence
+% the original MBB (`MbbO`) is reset.
 -spec write_multiple_nodes(Vt :: #vtree{},
                            NodeList :: [[#kp_node{} | #kv_node{}]]) ->
                                   [#kp_node{}].
@@ -289,8 +298,8 @@ write_multiple_nodes(Vt, NodeList) ->
           } = Vt,
     lists:map(
       fun(Nodes) ->
-              {ok, WrittenNodes} = vtree_io:write_node(Fd, Nodes, Less),
-              WrittenNodes
+              {ok, WrittenNode} = vtree_io:write_node(Fd, Nodes, Less),
+              WrittenNode#kp_node{mbb_orig = WrittenNode#kp_node.key}
       end, NodeList).
 
 
