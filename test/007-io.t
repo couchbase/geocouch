@@ -23,7 +23,7 @@ main(_) ->
     random:seed(1, 11, 91),
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(10),
+    etap:plan(16),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -42,6 +42,8 @@ test() ->
     test_encode_decode_kvnodes(),
     test_encode_decode_kpnodes(),
     test_write_read_nodes(),
+    test_encode_mbb(),
+    test_decode_mbb(),
     ok.
 
 
@@ -68,7 +70,6 @@ test_encode_decode_kvnode_value() ->
 test_encode_decode_kpnode_value() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     [Node1, Node2] = vtree_test_util:generate_kpnodes(2),
-
     {Encoded1, _Size1} = ?MOD:encode_value(Fd, Node1),
     % We flush as late as possible, hence for testing it needs to be done
     % manually
@@ -145,3 +146,34 @@ test_write_read_nodes() ->
 
     couch_file:close(Fd).
 
+
+test_encode_mbb() ->
+    Mbb1 = [{39.93, 48.9483}, {20, 90}, {-29.4, 83}],
+    Mbb2 = [{8,9}],
+    Mbb3 = [{-39.42, -4.2}, {48, 48}, {0, 3}],
+
+    etap:is(?MOD:encode_mbb(Mbb1),
+            <<"[[39.93,48.9483],[20,90],[-29.4,83]]">>,
+            "MBB got correctly encoded (a)"),
+    etap:is(?MOD:encode_mbb(Mbb2),
+            <<"[[8,9]]">>,
+            "MBB got correctly encoded (b)"),
+    etap:is(?MOD:encode_mbb(Mbb3),
+            <<"[[-39.42,-4.2],[48,48],[0,3]]">>,
+            "MBB got correctly encoded (c)").
+
+
+test_decode_mbb() ->
+    Mbb1 = <<"[[39.93,48.9483],[20,90],[-29.4,83]]">>,
+    Mbb2 = <<"[[8,9]]">>,
+    Mbb3 =  <<"[[-39.42,-4.2],[48,48],[0,3]]">>,
+
+    etap:is(?MOD:decode_mbb(Mbb1),
+            [{39.93, 48.9483}, {20, 90}, {-29.4, 83}],
+            "MBB got correctly decoded (a)"),
+    etap:is(?MOD:decode_mbb(Mbb2),
+            [{8,9}],
+            "MBB got correctly decoded (b)"),
+    etap:is(?MOD:decode_mbb(Mbb3),
+            [{-39.42, -4.2}, {48, 48}, {0, 3}],
+            "MBB got correctly decoded (c)").

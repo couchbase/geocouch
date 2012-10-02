@@ -81,9 +81,6 @@ encode_node(Fd, [#kp_node{}|_]=Nodes) ->
 encode_node(_Fd, [], Acc) ->
     Acc;
 encode_node(Fd, [Node|T], {BinAcc, TreeSizeAcc}) ->
-    % TODO vmx 2012-09-05: The key is JSON, store it the same way as the views
-    %     do and not as erlang terms
-    %BinK = ?term_to_bin(Node#kv_node.key),
     BinK = encode_key(Node),
     SizeK = erlang:size(BinK),
     case SizeK < 4096 of
@@ -105,11 +102,9 @@ encode_node(Fd, [Node|T], {BinAcc, TreeSizeAcc}) ->
 
 
 encode_key(#kv_node{}=Node) ->
-    % TODO vmx 2012-09-05: The key is JSON, store it the same way as the views
-    %     do and not as erlang terms
-    ?term_to_bin(Node#kv_node.key);
+    encode_mbb(Node#kv_node.key);
 encode_key(#kp_node{}=Node) ->
-    ?term_to_bin(Node#kp_node.key).
+    encode_mbb(Node#kp_node.key).
 
 
 % Encode the value of a Key-Value pair. It returns the encoded value and the
@@ -156,7 +151,7 @@ encode_value(_Fd, #kp_node{}=Node) ->
             } = Node,
     BinReduce = ?term_to_bin(Reduce),
     SizeReduce = erlang:iolist_size(BinReduce),
-    BinMbbO = ?term_to_bin(MbbO),
+    BinMbbO = encode_mbb(MbbO),
     SizeMbbO = erlang:size(BinMbbO),
     % 12 would be enough for MbbO, but we like to have it padded to full bytes
     BinValue = <<PointerNode:48, TreeSize:48, SizeReduce:16,
@@ -196,7 +191,7 @@ decode_kpnode_value(BinValue) ->
     <<PointerNode:48, TreeSize:48, SizeReduce:16, BinReduce:SizeReduce/binary,
       SizeMbbO:16, BinMbbO:SizeMbbO/binary>> = BinValue,
     Reduce = erlang:binary_to_term(BinReduce),
-    MbbO = erlang:binary_to_term(BinMbbO),
+    MbbO = decode_mbb(BinMbbO),
     %{PointerNode, TreeSize, Reduce}.
     #kp_node{
               childpointer = PointerNode,
@@ -223,7 +218,7 @@ decode_kvnode_pairs(_Fd, <<>>, Acc) ->
 decode_kvnode_pairs(Fd, Bin, Acc) ->
     <<SizeK:12, SizeV:28, BinK:SizeK/binary, BinV:SizeV/binary,
       Rest/binary>> = Bin,
-    Key = erlang:binary_to_term(BinK),
+    Key = decode_mbb(BinK),
     Node0 = decode_kvnode_value(Fd, BinV),
     Node = Node0#kv_node{key = Key},
     decode_kvnode_pairs(Fd, Rest, [Node|Acc]).
@@ -237,7 +232,19 @@ decode_kpnode_pairs(<<>>, Acc) ->
 decode_kpnode_pairs(Bin, Acc) ->
     <<SizeK:12, SizeV:28, BinK:SizeK/binary, BinV:SizeV/binary,
       Rest/binary>> = Bin,
-    Key = erlang:binary_to_term(BinK),
+    Key = decode_mbb(BinK),
     Node0 = decode_kpnode_value(BinV),
     Node = Node0#kp_node{key = Key},
     decode_kpnode_pairs(Rest, [Node|Acc]).
+
+
+% Transforms the 2-tuples of the MBB to lists and encode the result as raw JSON
+-spec encode_mbb(Mbb :: mbb()) -> binary().
+encode_mbb(Mbb) ->
+    ?JSON_ENCODE([[Min, Max] || {Min, Max} <- Mbb]).
+
+
+% Transforms raw JSON (list of lists_ back to a list of 2-tuples
+-spec decode_mbb(BinMbb :: binary()) -> mbb().
+decode_mbb(BinMbb) ->
+    [{Min, Max} || [Min, Max] <- ?JSON_DECODE(BinMbb)].
