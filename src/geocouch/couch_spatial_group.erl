@@ -17,7 +17,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, request_group/2, open_db_group/2]).
+-export([start_link/1, request_group/2, open_db_group/2, get_signature/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -352,6 +352,13 @@ open_db_group(DbName, GroupId) ->
     Else ->
         Else
     end.
+
+
+% Return the signature of a group without the need to request
+% the group, but purely from the design document
+get_signature(DDoc) ->
+    #spatial_group{sig = Sig} = design_doc_to_spatial_group(DDoc),
+    couch_util:to_hex(Sig).
 
 
 design_doc_to_spatial_group(Doc) ->

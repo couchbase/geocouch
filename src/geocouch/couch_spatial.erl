@@ -118,30 +118,36 @@ get_group_info(DbName, GroupId) ->
     couch_view_group:request_group_info(get_group_server(DbName, GroupId)).
 
 
-% The only reason why couch_view:cleanup_index_files can't be used is the
-% call to get_group_info
 cleanup_index_files(Db) ->
     % load all ddocs
-    {ok, DesignDocs} = couch_db:get_design_docs(Db),
-
+    {ok, DesignDocs} = couch_db:get_design_docs(Db, no_deletes),
     % make unique list of group sigs
-    Sigs = lists:map(fun(#doc{id = GroupId}) ->
-        {ok, Info} = get_group_info(Db, GroupId),
-        ?b2l(couch_util:get_value(signature, Info))
-    end, [DD||DD <- DesignDocs, DD#doc.deleted == false]),
+    Sigs = lists:map(fun couch_spatial_group:get_signature/1, DesignDocs),
     FileList = list_index_files(Db),
+
     % regex that matches all ddocs
     RegExp = "("++ string:join(Sigs, "|") ++")",
 
     % filter out the ones in use
-    DeleteFiles = [FilePath
-           || FilePath <- FileList,
-              re:run(FilePath, RegExp, [{capture, none}]) =:= nomatch],
+    DeleteFiles = case Sigs of
+    [] ->
+        FileList;
+    _ ->
+        [FilePath || FilePath <- FileList,
+            re:run(FilePath, RegExp, [{capture, none}]) =:= nomatch]
+    end,
     % delete unused files
-    ?LOG_DEBUG("deleting unused view index files: ~p",[DeleteFiles]),
+    case DeleteFiles of
+    [] ->
+        ok;
+    _ ->
+        ?LOG_INFO("Deleting unused (old) spatial index files:~n~n~s",
+            [string:join(DeleteFiles, "\n")])
+    end,
     RootDir = couch_config:get("couchdb", "view_index_dir"),
-    [couch_file:delete(RootDir,File,false)||File <- DeleteFiles],
-    ok.
+    lists:foreach(
+        fun(File) -> couch_file:delete(RootDir, File, false) end,
+        DeleteFiles).
 
 delete_index_dir(RootDir, DbName) ->
     couch_view:nuke_dir(RootDir ++ "/." ++ ?b2l(DbName) ++ "_design").
