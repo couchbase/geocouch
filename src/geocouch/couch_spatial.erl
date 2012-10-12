@@ -36,22 +36,74 @@ start_link() ->
 
 init([]) ->
     RootDir = couch_config:get("couchdb", "view_index_dir"),
-    ets:new(couch_spatial_groups_by_db, [bag, private, named_table]),
+    ets:new(couch_spatial_groups_by_db, [bag, protected, named_table]),
     ets:new(spatial_group_servers_by_sig, [set, protected, named_table]),
     ets:new(couch_spatial_groups_by_updater, [set, private, named_table]),
+
+    couch_db_update_notifier:start_link(
+        fun({deleted, DbName}) ->
+            gen_server:cast(couch_spatial, {reset_indexes, DbName});
+        ({created, DbName}) ->
+            gen_server:cast(couch_spatial, {reset_indexes, DbName});
+        ({ddoc_updated, {DbName, #doc{id = DDocId} = DDoc}}) ->
+            % In Coucbase, the ddoc_updated event is only triggered on the the
+            % master database. This means that we need to keep track of all
+            % the spatial indexes on the vBucket databases. Hence the
+            % `couch_spatial_groups_by_db` ets table keeps track not only of
+            % the databases the spatial groups belong to, but also of the
+            % master database which contains the design document
+            % (`ForeignDbName`).
+            % In case there is no foreign database (non Couchbase spatial
+            % groups), the database the group belongs to, is used (as it
+            % contains the design document).
+            % When the ddoc_updated event is triggered, we loop through the
+            % `couch_spatial_groups_by_db` ets table matching the
+            % *databases that contain the design document* to get all the
+            % groups that belong to that one (which is one for every vBucket
+            % in Couchbase).
+            case ets:match_object(couch_spatial_groups_by_db,
+                    {{'_', DbName}, {DDocId, '$1'}}) of
+            [] ->
+                ok;
+            Groups ->
+                lists:foreach(fun({{DbName1, _}, {_, Sig}}) ->
+                    update_group(DbName1, DDoc, Sig)
+                end, Groups)
+            end;
+        (_Else) ->
+            ok
+        end),
     process_flag(trap_exit, true),
+    ok = couch_file:init_delete_dir(RootDir),
     {ok, #spatial{root_dir=RootDir}}.
 
-add_to_ets(Pid, DbName, Sig) ->
+update_group(DbName, DDoc, Sig) ->
+    case ets:lookup(spatial_group_servers_by_sig, {DbName, Sig}) of
+    [{_, GroupPid}] ->
+        NewSig = case DDoc#doc.deleted of
+        true ->
+            <<>>;
+        false ->
+            DDoc2 = couch_doc:with_ejson_body(DDoc),
+            list_to_binary(couch_spatial_group:get_signature(DDoc2))
+        end,
+        (catch gen_server:cast(GroupPid, {ddoc_updated, NewSig}));
+    [] ->
+        ok
+    end.
+
+add_to_ets(Pid, DbName, ForeignDbName, DDocId, Sig) ->
     true = ets:insert(couch_spatial_groups_by_updater, {Pid, {DbName, Sig}}),
     true = ets:insert(spatial_group_servers_by_sig, {{DbName, Sig}, Pid}),
-    true = ets:insert(couch_spatial_groups_by_db, {DbName, Sig}).
+    true = ets:insert(
+        couch_spatial_groups_by_db, {{DbName, ForeignDbName}, {DDocId, Sig}}).
 
 
-delete_from_ets(Pid, DbName, Sig) ->
+delete_from_ets(Pid, DbName, ForeignDbName, DDocId, Sig) ->
     true = ets:delete(couch_spatial_groups_by_updater, Pid),
     true = ets:delete(spatial_group_servers_by_sig, {DbName, Sig}),
-    true = ets:delete_object(couch_spatial_groups_by_db, {DbName, Sig}).
+    true = ets:delete_object(
+        couch_spatial_groups_by_db, {{DbName, ForeignDbName}, {DDocId, Sig}}).
 
 % For foreign Design Documents (stored in a different DB)
 get_group_server({DbName, GroupDbName}, GroupId) when is_binary(GroupId) ->
@@ -150,7 +202,8 @@ cleanup_index_files(Db) ->
         DeleteFiles).
 
 delete_index_dir(RootDir, DbName) ->
-    couch_view:nuke_dir(RootDir ++ "/." ++ ?b2l(DbName) ++ "_design").
+    geocouch_duplicates:nuke_dir(
+        RootDir, RootDir ++ "/." ++ ?b2l(DbName) ++ "_design").
 
 list_index_files(Db) ->
     % call server to fetch the index files
@@ -158,21 +211,19 @@ list_index_files(Db) ->
     filelib:wildcard(RootDir ++ "/." ++ ?b2l(couch_db:name(Db)) ++
         "_design"++"/*.spatial").
 
-% XXX NOTE vmx: I don't know when this case happens
 do_reset_indexes(DbName, Root) ->
     % shutdown all the updaters and clear the files, the db got changed
-    Names = ets:lookup(couch_spatial_groups_by_db, DbName),
+    Names = ets:lookup(couch_spatial_groups_by_db, {DbName, '_'}),
     lists:foreach(
-        fun({_DbName, Sig}) ->
+        fun({{_DbName, ForeignDbName}, {DDocId, Sig}}) ->
             ?LOG_DEBUG("Killing update process for spatial group ~s. in database ~s.", [Sig, DbName]),
             [{_, Pid}] = ets:lookup(spatial_group_servers_by_sig, {DbName, Sig}),
-            exit(Pid, kill),
-            receive {'EXIT', Pid, _} ->
-                delete_from_ets(Pid, DbName, Sig)
-            end
+            couch_util:shutdown_sync(Pid),
+            delete_from_ets(Pid, DbName, ForeignDbName, DDocId, Sig)
         end, Names),
     delete_index_dir(Root, DbName),
-    file:delete(Root ++ "/." ++ ?b2l(DbName) ++ "_temp").
+    RootDelDir = couch_config:get("couchdb", "view_index_dir"),
+    couch_file:delete(RootDelDir, Root ++ "/." ++ ?b2l(DbName) ++ "_temp").
 
 % counterpart in couch_view is get_map_view/4
 get_spatial_index(Db, GroupId, Name, Stale) ->
@@ -201,36 +252,47 @@ get_spatial_index0(Name, [#spatial{index_names=IndexNames}=Index|Rest]) ->
 terminate(_Reason, _Srv) ->
     ok.
 
-handle_call({get_group_server, DbName,
-    #spatial_group{name=GroupId,sig=Sig}=Group}, _From,
-            #spatial{root_dir=Root}=Server) ->
+handle_call({get_group_server, DbName, #spatial_group{sig=Sig} = Group}, From,
+            #spatial{root_dir=Root} = Server) ->
     case ets:lookup(spatial_group_servers_by_sig, {DbName, Sig}) of
     [] ->
-        ?LOG_DEBUG("Spawning new group server for spatial group ~s in database ~s.",
-            [GroupId, DbName]),
-        case (catch couch_spatial_group:start_link({Root, DbName, Group})) of
-        {ok, NewPid} ->
-            add_to_ets(NewPid, DbName, Sig),
-           {reply, {ok, NewPid}, Server};
-        {error, invalid_view_seq} ->
-            do_reset_indexes(DbName, Root),
-            case (catch couch_spatial_group:start_link({Root, DbName, Group})) of
-            {ok, NewPid} ->
-                add_to_ets(NewPid, DbName, Sig),
-                {reply, {ok, NewPid}, Server};
-            Error ->
-                {reply, Error, Server}
-            end;
-        Error ->
-            {reply, Error, Server}
-        end;
+        spawn_monitor(fun() -> new_group(Root, DbName, Group) end),
+        ets:insert(spatial_group_servers_by_sig, {{DbName, Sig}, [From]}),
+        {noreply, Server};
+    [{_, WaitList}] when is_list(WaitList) ->
+        ets:insert(spatial_group_servers_by_sig, {{DbName, Sig}, [From | WaitList]}),
+        {noreply, Server};
     [{_, ExistingPid}] ->
         {reply, {ok, ExistingPid}, Server}
+    end;
+
+handle_call({reset_indexes, DbName}, _From, #spatial{root_dir=Root}=Server) ->
+    do_reset_indexes(DbName, Root),
+    {reply, ok, Server}.
+
+handle_cast({reset_indexes, DbName}, #spatial{root_dir=Root}=Server) ->
+    do_reset_indexes(DbName, Root),
+    {noreply, Server}.
+
+new_group(Root, DbName, Group) ->
+    #spatial_group{
+        name = GroupId,
+        sig = Sig,
+        dbname = ForeignDbName
+    } = Group,
+    ?LOG_DEBUG("Spawning new group server for spatial group ~s in database ~s.",
+        [GroupId, DbName]),
+    case (catch couch_spatial_group:start_link({Root, DbName, Group})) of
+    {ok, NewPid} ->
+        unlink(NewPid),
+        exit({DbName, ForeignDbName, GroupId, Sig, {ok, NewPid}});
+    {error, invalid_view_seq} ->
+        ok = gen_server:call(couch_spatial, {reset_indexes, DbName}),
+        new_group(Root, DbName, Group);
+    Error ->
+        exit({DbName, ForeignDbName, GroupId, Sig, Error})
     end.
 
-
-handle_cast(foo,State) ->
-    {noreply, State}.
 
 % Cleanup on exit, e.g. resetting the group information stored in ETS tables 
 handle_info({'EXIT', FromPid, Reason}, Server) ->
@@ -242,12 +304,20 @@ handle_info({'EXIT', FromPid, Reason}, Server) ->
             exit(Reason);
         true -> ok
         end;
-    [{_, {DbName, GroupId}}] ->
-        delete_from_ets(FromPid, DbName, GroupId)
+    [{_, {DbName, Sig}}] ->
+        [{{DbName, ForeignDbName}, {DDocId, Sig}}] = ets:match_object(
+            couch_spatial_groups_by_db, {{DbName, '_'}, {'$1', Sig}}),
+        delete_from_ets(FromPid, DbName, ForeignDbName, DDocId, Sig)
     end,
     {noreply, Server};
 
-handle_info(_Msg, Server) ->
+handle_info({'DOWN', _, _, _, {DbName, ForeignDbName, DDocId, Sig, Reply}}, Server) ->
+    [{_, WaitList}] = ets:lookup(spatial_group_servers_by_sig, {DbName, Sig}),
+    [gen_server:reply(From, Reply) || From <- WaitList],
+    case Reply of {ok, NewPid} ->
+        link(NewPid),
+        add_to_ets(NewPid, DbName, ForeignDbName, DDocId, Sig);
+     _ -> ok end,
     {noreply, Server}.
 
 code_change(_OldVsn, State, _Extra) ->

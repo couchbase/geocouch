@@ -18,7 +18,8 @@
 
 -include("couch_db.hrl").
 -export([start_list_resp/6, send_non_empty_chunk/2, sort_lib/1,
-    make_arity_3_fun/1, parse_int_param/1, parse_positive_int_param/1]).
+    make_arity_3_fun/1, parse_int_param/1, parse_positive_int_param/1,
+    nuke_dir/2]).
 
 % From couch_httpd_show
 start_list_resp(QServer, LName, Req, Db, Head, Etag) ->
@@ -103,4 +104,29 @@ parse_positive_int_param(Val) ->
         Fmt = "Invalid value for positive integer parameter: ~p",
         Msg = io_lib:format(Fmt, [Val]),
         throw({query_parse_error, ?l2b(Msg)})
+    end.
+
+% From couch_view
+nuke_dir(RootDelDir, Dir) ->
+    case file:list_dir(Dir) of
+    {error, enoent} -> ok; % doesn't exist
+    {ok, Files} ->
+        lists:foreach(
+            fun(File)->
+                Full = Dir ++ "/" ++ File,
+                case couch_file:delete(RootDelDir, Full, false) of
+                ok -> ok;
+                % Directory doesn't exist
+                {error, enoent} -> ok;
+                {error, eperm} ->
+                    ok = nuke_dir(RootDelDir, Full)
+                end
+            end,
+            Files),
+        case file:del_dir(Dir) of
+        ok -> ok;
+        % Directory doesn't exist (might have been deleted by some other
+        % process already)
+        {error, enoent} -> ok
+        end
     end.

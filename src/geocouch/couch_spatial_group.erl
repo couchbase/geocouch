@@ -35,7 +35,8 @@
     compactor_pid=nil,
     waiting_commit=false,
     waiting_list=[],
-    ref_counter=nil
+    ref_counter=nil,
+    shutdown=false
 }).
 
 
@@ -244,8 +245,31 @@ handle_cast({partial_update, Pid, NewGroup}, #group_state{updater_pid=Pid}
     true -> ok
     end,
     {noreply, State#group_state{group=NewGroup, waiting_commit=true}};
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+
+handle_cast({ddoc_updated, NewSig}, State) ->
+    #group_state{
+        waiting_list = Waiters,
+        group = #spatial_group{sig = CurSig} = Group
+    } = State,
+    ?LOG_INFO("Spatial view group `~s`, signature `~s', "
+              "design document was updated~n"
+              "  new signature:   ~s~n"
+              "  shutdown flag:   ~s~n"
+              "  waiting clients: ~p~n",
+              [Group#spatial_group.name, couch_util:to_hex(?b2l(CurSig)),
+               couch_util:to_hex(?b2l(NewSig)), State#group_state.shutdown,
+               length(Waiters)]),
+    case NewSig of
+    CurSig ->
+        {noreply, State#group_state{shutdown = false}};
+    _ ->
+        case Waiters of
+        [] ->
+            {stop, normal, State};
+        _ ->
+            {noreply, State#group_state{shutdown = true}}
+        end
+    end.
 
 handle_info(delayed_commit, #group_state{db_name=DbName,group=Group}=State) ->
     {ok, Db} = couch_db:open_int(DbName, []),
@@ -272,6 +296,7 @@ handle_info({'EXIT', FromPid, {new_group, #spatial_group{db=Db}=Group}},
             updater_pid=UpPid,
             ref_counter=RefCounter,
             waiting_list=WaitList,
+            shutdown=Shutdown,
             waiting_commit=WaitingCommit}=State) when UpPid == FromPid ->
     ok = couch_db:close(Db),
     if not WaitingCommit ->
@@ -280,8 +305,13 @@ handle_info({'EXIT', FromPid, {new_group, #spatial_group{db=Db}=Group}},
     end,
     case reply_with_group(Group, WaitList, [], RefCounter) of
     [] ->
-        {noreply, State#group_state{waiting_commit=true, waiting_list=[],
-                group=Group#spatial_group{db=nil}, updater_pid=nil}};
+        case Shutdown of
+        true ->
+            {stop, normal, State};
+        false ->
+            {noreply, State#group_state{waiting_commit=true, waiting_list=[],
+                    group=Group#spatial_group{db=nil}, updater_pid=nil}}
+        end;
     StillWaiting ->
         % we still have some waiters, reopen the database and reupdate the index
         {ok, Db2} = couch_db:open_int(DbName, []),
@@ -344,7 +374,8 @@ open_db_group(DbName, GroupId) ->
         case couch_db:open_doc(Db, GroupId, [ejson_body]) of
         {ok, Doc} ->
             couch_db:close(Db),
-            {ok, design_doc_to_spatial_group(Doc)};
+            DbGroup = design_doc_to_spatial_group(Doc),
+            {ok, DbGroup#spatial_group{dbname=DbName}};
         Else ->
             couch_db:close(Db),
             Else
@@ -453,7 +484,7 @@ get_index_header_data(#spatial_group{current_seq=Seq, purge_seq=PurgeSeq,
     }.
 
 delete_index_file(RootDir, DbName, GroupSig) ->
-    file:delete(index_file_name(RootDir, DbName, GroupSig)).
+    couch_file:delete(RootDir, index_file_name(RootDir, DbName, GroupSig)).
 
 index_file_name(RootDir, DbName, GroupSig) ->
     couch_view_group:design_root(RootDir, DbName) ++
