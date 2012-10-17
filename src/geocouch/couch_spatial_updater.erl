@@ -17,7 +17,7 @@
 -endif.
 
 
--export([update/2]).
+-export([update/3]).
 
 % for benchmark script
 -export([geojson_get_bbox/1]).
@@ -31,9 +31,17 @@
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
 
-update(Owner, Group) ->
+
+update(Owner, Group, DbName) when is_binary(DbName) ->
+    {ok, Db} = couch_db:open_int(DbName, []),
+    try
+        update(Owner, Group, Db)
+    after
+        couch_db:close(Db)
+    end;
+
+update(Owner, Group, #db{name=DbName} = Db) ->
     #spatial_group{
-        db = #db{name=DbName} = Db,
         name = GroupName,
         current_seq = Seq,
         indexes = Indexes

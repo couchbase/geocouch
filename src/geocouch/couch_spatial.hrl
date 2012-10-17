@@ -15,9 +15,6 @@
 % The counterpart to #spatial_group in the view server is #group
 -record(spatial_group, {
     sig=nil,
-    % XXX vmx 2011-11-30: CouchDB doesn't need 'db' any more.
-    %     Check if/why GeoCouch still needs it.
-    db=nil,
     % Store the name of the database where the design doc came
     % from. This is used to determine if a foreign design doc was used
     dbname = nil,

@@ -73,19 +73,20 @@ request_group(Pid, Seq) ->
 
 
 
-init({InitArgs, ReturnPid, Ref}) ->
+init({{_, DbName, _}=InitArgs, ReturnPid, Ref}) ->
     process_flag(trap_exit, true),
     case prepare_group(InitArgs, false) of
-    {ok, #spatial_group{db=Db, fd=Fd, current_seq=Seq}=Group} ->
+    {ok, Db, #spatial_group{fd=Fd, current_seq=Seq}=Group} ->
         case Seq > couch_db:get_update_seq(Db) of
         true ->
             ReturnPid ! {Ref, self(), {error, invalid_view_seq}},
             ignore;
         _ ->
             couch_db:monitor(Db),
+            couch_db:close(Db),
             {ok, RefCounter} = couch_ref_counter:start([Fd]),
             {ok, #group_state{
-                    db_name=couch_db:name(Db),
+                    db_name=DbName,
                     init_args=InitArgs,
                     group=Group,
                     ref_counter=RefCounter}}
@@ -103,14 +104,10 @@ handle_call({request_group, RequestSeq}, From,
             updater_pid=nil,
             waiting_list=WaitList
             }=State) when RequestSeq > GroupSeq ->
-    {ok, Db} = couch_db:open_int(DbName, []),
-    Group2 = Group#spatial_group{db=Db},
-    Owner = self(),
-    Pid = spawn_link(fun()-> couch_spatial_updater:update(Owner, Group2) end),
+    Pid = spawn_link(couch_spatial_updater, update, [self(), Group, DbName]),
 
     {noreply, State#group_state{
         updater_pid=Pid,
-        group=Group2,
         waiting_list=[{From,RequestSeq}|WaitList]
         }, infinity};
 
@@ -147,6 +144,7 @@ handle_cast({start_compact, CompactFun}, #group_state{compactor_pid=nil}
     {ok, Db} = couch_db:open_int(DbName, []),
     {ok, Fd} = open_index_file(compact, RootDir, DbName, GroupSig),
     NewGroup = reset_file(Db, Fd, DbName, Group),
+    couch_db:close(Db),
     CompactFd = NewGroup#spatial_group.fd,
     unlink(CompactFd),
     Pid = spawn_link(fun() ->
@@ -163,17 +161,12 @@ handle_cast({compact_done, #spatial_group{current_seq=NewSeq} = NewGroup},
         #group_state{group = #spatial_group{current_seq=OldSeq}} = State)
         when NewSeq >= OldSeq ->
     #group_state{
-        group = #spatial_group{name=GroupId, fd=OldFd, sig=GroupSig} = Group,
+        group = #spatial_group{name=GroupId, fd=OldFd, sig=GroupSig},
         init_args = {RootDir, DbName, _},
         updater_pid = UpdaterPid,
+        compactor_pid = CompactorPid,
         ref_counter = RefCounter
     } = State,
-
-    if is_pid(UpdaterPid) ->
-        couch_util:shutdown_sync(UpdaterPid);
-    true ->
-        ok
-    end,
 
     ?LOG_INFO("Spatial index compaction complete for ~s ~s",
         [DbName, GroupId]),
@@ -185,20 +178,19 @@ handle_cast({compact_done, #spatial_group{current_seq=NewSeq} = NewGroup},
     %% if an updater is running, kill it and start a new one
     NewUpdaterPid =
     if is_pid(UpdaterPid) ->
-        Owner = self(),
-        spawn_link(fun()-> couch_spatial_updater:update(Owner, NewGroup) end);
+        unlink(UpdaterPid),
+        exit(UpdaterPid, spatial_compaction_complete),
+        spawn_link(couch_spatial_updater, update, [self(), NewGroup, DbName]);
     true ->
         nil
     end,
 
     %% cleanup old group
+    unlink(CompactorPid),
+    receive {'EXIT', CompactorPid, normal} -> ok after 0 -> ok end,
     unlink(OldFd),
     couch_ref_counter:drop(RefCounter),
     {ok, NewRefCounter} = couch_ref_counter:start([NewGroup#spatial_group.fd]),
-    case Group#spatial_group.db of
-        nil -> ok;
-        Else -> couch_db:close(Else)
-    end,
 
     self() ! delayed_commit,
     {noreply, State#group_state{
@@ -215,12 +207,9 @@ handle_cast({compact_done, NewGroup}, State) ->
     ?LOG_INFO("Spatial index compaction still behind for ~s ~s -- " ++
         "current: ~p compact: ~p",
         [DbName, GroupId, CurrentSeq, NewGroup#spatial_group.current_seq]),
-    couch_db:close(NewGroup#spatial_group.db),
-    {ok, Db} = couch_db:open_int(DbName, []),
     Pid = spawn_link(fun() ->
-        {_,Ref} = erlang:spawn_monitor(fun() ->
-            couch_spatial_updater:update(nil, NewGroup#spatial_group{db = Db})
-        end),
+        {_, Ref} = erlang:spawn_monitor(
+            couch_spatial_updater, update, [nil, NewGroup, DbName]),
         receive
             {'DOWN', Ref, _, _, {new_group, NewGroup2}} ->
                 #spatial_group{name=GroupId} = NewGroup2,
@@ -291,14 +280,13 @@ handle_info(delayed_commit, #group_state{db_name=DbName,group=Group}=State) ->
         {noreply, State#group_state{waiting_commit=true}}
     end;
 
-handle_info({'EXIT', FromPid, {new_group, #spatial_group{db=Db}=Group}},
+handle_info({'EXIT', FromPid, {new_group, Group}},
         #group_state{db_name=DbName,
             updater_pid=UpPid,
             ref_counter=RefCounter,
             waiting_list=WaitList,
             shutdown=Shutdown,
             waiting_commit=WaitingCommit}=State) when UpPid == FromPid ->
-    ok = couch_db:close(Db),
     if not WaitingCommit ->
         erlang:send_after(1000, self(), delayed_commit);
     true -> ok
@@ -310,16 +298,14 @@ handle_info({'EXIT', FromPid, {new_group, #spatial_group{db=Db}=Group}},
             {stop, normal, State};
         false ->
             {noreply, State#group_state{waiting_commit=true, waiting_list=[],
-                    group=Group#spatial_group{db=nil}, updater_pid=nil}}
+                    group=Group, updater_pid=nil}}
         end;
     StillWaiting ->
         % we still have some waiters, reopen the database and reupdate the index
-        {ok, Db2} = couch_db:open_int(DbName, []),
-        Group2 = Group#spatial_group{db=Db2},
-        Owner = self(),
-        Pid = spawn_link(fun() -> couch_view_updater:update(Owner, Group2) end),
+        Pid = spawn_link(
+            couch_spatial_updater, update, [self(), Group, DbName]),
         {noreply, State#group_state{waiting_commit=true,
-                waiting_list=StillWaiting, group=Group2, updater_pid=Pid}}
+                waiting_list=StillWaiting, updater_pid=Pid}}
     end;
 
 handle_info({'EXIT', _FromPid, normal}, State) ->
@@ -341,7 +327,11 @@ handle_info({'DOWN',_,_,_,_}, State) ->
 handle_info(_Msg, Server) ->
     {noreply, Server}.
 
-terminate(_Reason, _Srv) ->
+
+terminate(Reason, #group_state{updater_pid=Update, compactor_pid=Compact}=S) ->
+    reply_all(S, Reason),
+    couch_util:shutdown_sync(Update),
+    couch_util:shutdown_sync(Compact),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -446,15 +436,15 @@ prepare_group({RootDir, DbName, #spatial_group{sig=Sig}=Group}, ForceReset)->
         {ok, Fd} ->
             if ForceReset ->
                 % this can happen if we missed a purge
-                {ok, reset_file(Db, Fd, DbName, Group)};
+                {ok, Db, reset_file(Db, Fd, DbName, Group)};
             true ->
                 case (catch couch_file:read_header(Fd)) of
                 {ok, {Sig, HeaderInfo}} ->
                     % sigs match!
-                    {ok, init_group(Db, Fd, Group, HeaderInfo)};
+                    {ok, Db, init_group(Db, Fd, Group, HeaderInfo)};
                 _ ->
                     % this happens on a new file
-                    {ok, reset_file(Db, Fd, DbName, Group)}
+                    {ok, Db, reset_file(Db, Fd, DbName, Group)}
                 end
             end;
         Error ->
@@ -541,7 +531,7 @@ get_group_info(State) ->
 
 reset_group(#spatial_group{indexes=Indexes}=Group) ->
     Indexes2 = [Index#spatial{treepos=nil,treeheight=0} || Index <- Indexes],
-    Group#spatial_group{db=nil,fd=nil,current_seq=0,indexes=Indexes2}.
+    Group#spatial_group{fd=nil, current_seq=0, indexes=Indexes2}.
 
 reset_file(Db, Fd, DbName, #spatial_group{sig=Sig,name=Name} = Group) ->
     ?LOG_DEBUG("Resetting spatial group index \"~s\" in db ~s", [Name, DbName]),
@@ -555,7 +545,7 @@ init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group, nil) ->
     init_group(Db, Fd, Group,
         #spatial_index_header{seq=0, purge_seq=couch_db:get_purge_seq(Db),
             id_btree_state=nil, index_states=[#spatial{} || _ <- Indexes]});
-init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group, IndexHeader) ->
+init_group(_Db, Fd, #spatial_group{indexes=Indexes}=Group, IndexHeader) ->
     #spatial_index_header{
         seq=Seq,
         purge_seq=PurgeSeq,
@@ -573,5 +563,5 @@ init_group(Db, Fd, #spatial_group{indexes=Indexes}=Group, IndexHeader) ->
                 fd=Fd}
         end,
         IndexStates, Indexes),
-    Group#spatial_group{db=Db, fd=Fd, current_seq=Seq, purge_seq=PurgeSeq,
+    Group#spatial_group{fd=Fd, current_seq=Seq, purge_seq=PurgeSeq,
         id_btree=IdBtree, indexes=Indexes2}.
