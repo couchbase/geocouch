@@ -103,7 +103,6 @@ spatial_row_obj({{Bbox, DocId}, {{Type, Coords}, Value}}) ->
       ",\"bbox\":", (?JSON_ENCODE(tuple_to_list(Bbox)))/binary,
       ",\"geometry\":",
       (?JSON_ENCODE({[{type, Type}, {coordinates, Coords}]}))/binary,
-      ",\"node\":\"", (?LOCAL)/binary, "\"",
       ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>.
 
 spatial_less_fun(A, B) ->
