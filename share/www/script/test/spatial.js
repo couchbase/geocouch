@@ -156,7 +156,7 @@ couchTests.spatial = function(debug) {
           "should return geometries with id>5");
 
   xhr = CouchDB.request("GET", url_pre + "emitNothing?bbox=" + bbox.join(","));
-  TEquals('{\"rows\":[]}\n', xhr.responseText, "nothing emitted at all");
+  TEquals(JSON.parse(xhr.responseText).rows, [], "nothing emitted at all");
 
 
   // bounding box tests
@@ -173,7 +173,7 @@ couchTests.spatial = function(debug) {
 
   bbox = [0, 4, 180, 90];
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
-  TEquals("{\"rows\":[]}\n", xhr.responseText,
+  TEquals(JSON.parse(xhr.responseText).rows, [],
           "should return no geometries");
 
   bbox = [-18, 17, -14, 21];
