@@ -11,146 +11,220 @@
 % the License.
 
 -module(couch_httpd_spatial_list).
+
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
 
--export([handle_spatial_list_req/3]).
+-export([handle_view_list_req/3]).
 % deprecated API
--export([handle_spatial_list_req_deprecated/3]).
-
--import(couch_httpd, [send_json/2, send_method_not_allowed/2,
-                      send_error/4, send_chunked_error/2]).
+-export([handle_view_list_req_deprecated/3]).
 
 
-% spatial-list request with spatial index and list from same design doc.
-handle_spatial_list_req(#httpd{method='GET',
-        path_parts=[_, _, DesignName, _, _, ListName, SpatialName]}=Req, Db, DDoc) ->
-    handle_spatial_list(Req, Db, DDoc, ListName, {DesignName, SpatialName});
+-record(acc, {
+    db,
+    req,
+    resp,
+    query_server,
+    list_name,
+    etag
+}).
 
-% spatial-list request with spatial index and list from different design docs.
-handle_spatial_list_req(#httpd{method='GET',
-        path_parts=[_, _, _, _, _, ListName, DesignName, SpatialName]}=Req,
-        Db, DDoc) ->
-    handle_spatial_list(Req, Db, DDoc, ListName, {DesignName, SpatialName});
 
-handle_spatial_list_req(#httpd{method='GET'}=Req, _Db, _DDoc) ->
-    send_error(Req, 404, <<"list_error">>, <<"Invalid path.">>);
-
+handle_view_list_req(#httpd{method=Method}=Req, Db, DDoc)
+        when Method =:= 'GET' orelse Method =:= 'OPTIONS' ->
+    case Req#httpd.path_parts of
+    % spatial-list request with spatial index and list from same design doc.
+    [_, _, _DesignName, _, _, ListName, ViewName] ->
+        % Same design doc for view and list
+        handle_view_list(Req, Db, DDoc, ListName, DDoc, ViewName);
+    % spatial-list request with spatial index and list from different design
+    % doc.
+    [_, _, _, _, _, ListName, DesignName, ViewName] ->
+        % Different design docs for view and list
+        ViewDocId = <<"_design/", DesignName/binary>>,
+        {ok, ViewDDoc} = couch_db:open_doc(Db, ViewDocId, [ejson_body]),
+        handle_view_list(Req, Db, DDoc, ListName, ViewDDoc, ViewName);
+    _ ->
+        couch_httpd:send_error(Req, 404, <<"list_error">>, <<"Bad path.">>)
+    end;
 % POST isn't supported as spatial indexes don't support mutli-key fetch
-handle_spatial_list_req(Req, _Db, _DDoc) ->
-    send_method_not_allowed(Req, "GET,HEAD").
-
-handle_spatial_list(Req, Db, DDoc, LName, {SpatialDesignName, SpatialName}) ->
-    SpatialDesignId = <<"_design/", SpatialDesignName/binary>>,
-    {ok, Index, Group, QueryArgs} = couch_httpd_spatial:load_index(
-            Req, Db, {SpatialDesignId, SpatialName}),
-    Etag = list_etag(Req, Db, Group, Index, couch_httpd:doc_etag(DDoc)),
-    couch_httpd:etag_respond(Req, Etag, fun() ->
-        output_list(Req, Db, DDoc, LName, Index, QueryArgs, Etag, Group)
-    end).
+handle_view_list_req(Req, _Db, _DDoc) ->
+    couch_httpd:send_method_not_allowed(Req, "GET,HEAD").
 
 % Deprecated API call
-handle_spatial_list_req_deprecated(#httpd{method='GET',
-        path_parts=[A, B, DesignName, C, ListName, SpatialName]}=Req, Db, DDoc) ->
-    Req2 = Req#httpd{path_parts=
-        [A, B, DesignName, C, <<"foo">>, ListName, SpatialName]},
+handle_view_list_req_deprecated(#httpd{method=Method}=Req, Db, DDoc)
+        when Method =:= 'GET' orelse Method =:= 'OPTIONS' ->
+    Req2 = case Req#httpd.path_parts of
+    [A, B, DesignName, C, ListName, SpatialName] ->
+        Req#httpd{path_parts=
+            [A, B, DesignName, C, <<"foo">>, ListName, SpatialName]};
+    [A, B, C, D, ListName, DesignName, SpatialName] ->
+        Req#httpd{path_parts=
+            [A, B, C, D, <<"foo">>, ListName, DesignName, SpatialName]}
+    end,
     ?LOG_INFO("WARNING: Request to deprecated _spatiallist handler, " ++
               "please use _spatial/_list instead!", []),
-    handle_spatial_list_req(Req2, Db, DDoc);
-handle_spatial_list_req_deprecated(#httpd{method='GET',
-        path_parts=[A, B, C, D, ListName, DesignName, SpatialName]}=Req,
-        Db, DDoc) ->
-    Req2 = Req#httpd{path_parts=
-        [A, B, C, D, <<"foo">>, ListName, DesignName, SpatialName]},
-    ?LOG_INFO("WARNING: Request to deprecated _spatiallist handler, " ++
-              "please use _spatial/_list instead!", []),
-    handle_spatial_list_req(Req2, Db, DDoc);
-handle_spatial_list_req_deprecated(#httpd{method='GET'}=Req, _Db, _DDoc) ->
-    send_error(Req, 404, <<"list_error">>, <<"Invalid path.">>);
-handle_spatial_list_req_deprecated(Req, _Db, _DDoc) ->
-    send_method_not_allowed(Req, "GET,HEAD").
+    handle_view_list_req(Req2, Db, DDoc);
+handle_view_list_req_deprecated(#httpd{method='GET'}=Req, _Db, _DDoc) ->
+    couch_httpd:send_error(Req, 404, <<"list_error">>, <<"Invalid path.">>);
+handle_view_list_req_deprecated(Req, _Db, _DDoc) ->
+    couch_httpd:send_method_not_allowed(Req, "GET,HEAD").
 
 
-list_etag(#httpd{user_ctx=UserCtx}=Req, Db, Group, Index, More) ->
-    Accept = couch_httpd:header_value(Req, "Accept"),
-    couch_httpd_spatial:spatial_etag(
-        Db, Group, Index, {More, Accept, UserCtx#user_ctx.roles}).
-
-output_list(Req, Db, DDoc, LName, Index, QueryArgs, Etag, Group) ->
-    #spatial_query_args{
-        bbox = Bbox,
-        bounds = Bounds,
-        limit = Limit,
-        skip = SkipCount
-    } = QueryArgs,
-
-    couch_query_servers:with_ddoc_proc(DDoc, fun(QServer) ->
-        CurrentSeq = Group#spatial_group.current_seq,
-        HelperFuns = #spatial_fold_helper_funs{
-            start_response = StartListRespFun = make_spatial_start_resp_fun(
-                QServer, Db, LName),
-            send_row = make_spatial_get_row_fun(QServer)
-        },
-        FoldFun = couch_httpd_spatial:make_spatial_fold_funs(Req, QueryArgs,
-            Etag, Db, CurrentSeq, HelperFuns),
-        FoldAccInit = {Limit, SkipCount, undefined, ""},
-        {ok, FoldResult} = couch_spatial:fold(Index, FoldFun, FoldAccInit,
-            Bbox, Bounds),
-        finish_list(Req, QServer, Etag, FoldResult, StartListRespFun,
-            CurrentSeq)
+handle_view_list(Req, Db, DDoc, ListName, ViewDDoc, ViewName) ->
+    Args0 = couch_httpd_spatial:parse_qs(Req),
+    ETagFun = fun(BaseSig, Acc0) ->
+        UserCtx = Req#httpd.user_ctx,
+        Name = UserCtx#user_ctx.name,
+        Roles = UserCtx#user_ctx.roles,
+        Accept = couch_httpd:header_value(Req, "Accept"),
+        Parts = {couch_httpd:doc_etag(DDoc), Accept, {Name, Roles}},
+        ETag = couch_httpd:make_etag({BaseSig, Parts}),
+        case couch_httpd:etag_match(Req, ETag) of
+            true -> throw({etag_match, ETag});
+            false -> {ok, Acc0#acc{etag=ETag}}
+        end
+    end,
+    Args = Args0#spatial_args{preflight_fun=ETagFun},
+    couch_httpd:etag_maybe(Req, fun() ->
+        couch_query_servers:with_ddoc_proc(DDoc, fun(QueryServer) ->
+            Acc = #acc{
+                db = Db,
+                req = Req,
+                query_server = QueryServer,
+                list_name = ListName
+            },
+            couch_spatial:query_view(
+                Db, ViewDDoc, ViewName, Args, fun list_cb/2, Acc)
+        end)
     end).
 
 
-% Counterpart to make_map_start_resp_fun/3 in couch_http_show.
-make_spatial_start_resp_fun(QueryServer, Db, LName) ->
-    fun(Req, Etag, UpdateSeq) ->
-        Head = {[{<<"update_seq">>, UpdateSeq}]},
-        geocouch_duplicates:start_list_resp(QueryServer, LName, Req, Db,
-            Head, Etag)
-    end.
-
-% Counterpart to make_map_send_row_fun/1 in couch_http_show.
-make_spatial_get_row_fun(QueryServer) ->
-    fun(Resp, {{_Bbox, _DocId}, {_Geom, _Value}}=Row, RowFront) ->
-        send_list_row(Resp, QueryServer, Row, RowFront)
-    end.
-
-send_list_row(Resp, QueryServer, Row, RowFront) ->
-    try
-        [Go, Chunks] = prompt_list_row(QueryServer, Row),
-        Chunk = RowFront ++ ?b2l(?l2b(Chunks)),
-        geocouch_duplicates:send_non_empty_chunk(Resp, Chunk),
-        case Go of
-            <<"chunks">> ->
-                {ok, ""};
-            <<"end">> ->
-                {stop, stop}
-        end
-    catch
-        throw:Error ->
-            send_chunked_error(Resp, Error),
-            throw({already_sent, Resp, Error})
-    end.
-
-prompt_list_row({Proc, _DDocId}, {{Bbox, DocId}, {Geom, Value}}) ->
-    JsonRow = {[{id, DocId}, {value, Value}, {bbox, tuple_to_list(Bbox)},
-        {geometry, couch_spatial_updater:geocouch_to_geojsongeom(Geom)}]},
-    couch_query_servers:proc_prompt(Proc, [<<"list_row">>, JsonRow]).
-
-% Counterpart to finish_list/7 in couch_http_show.
-finish_list(Req, {Proc, _DDocId}, Etag, FoldResult, StartFun, CurrentSeq) ->
-    case FoldResult of
-    {_, _, undefined, _} ->
-        {ok, Resp, BeginBody} = StartFun(Req, Etag, CurrentSeq),
-        [<<"end">>, Chunks] = couch_query_servers:proc_prompt(
-            Proc, [<<"list_end">>]),
-        Chunk = BeginBody ++ ?b2l(?l2b(Chunks)),
-        geocouch_duplicates:send_non_empty_chunk(Resp, Chunk);
-    {_, _, Resp, stop} ->
-        ok;
-    {_, _, Resp, _} ->
-        [<<"end">>, Chunks] = couch_query_servers:proc_prompt(
-            Proc, [<<"list_end">>]),
-        geocouch_duplicates:send_non_empty_chunk(Resp, ?b2l(?l2b(Chunks)))
+% This is basically a copy of the start_list_resp/2 in couch_mrview_show,
+% the major difference is that the send_list_row function is different.
+list_cb({meta, Meta}, #acc{resp=undefined} = Acc) ->
+    MetaProps = case couch_util:get_value(offset, Meta) of
+        undefined -> [];
+        Offset -> [{offset, Offset}]
+    end ++ case couch_util:get_value(update_seq, Meta) of
+        undefined -> [];
+        UpdateSeq -> [{update_seq, UpdateSeq}]
     end,
-    couch_httpd:last_chunk(Resp).
+    start_list_resp({MetaProps}, Acc);
+list_cb({row, Row}, #acc{resp=undefined} = Acc) ->
+    {ok, NewAcc} = start_list_resp({[]}, Acc),
+    send_list_row(Row, NewAcc);
+list_cb({row, Row}, Acc) ->
+    send_list_row(Row, Acc);
+list_cb(complete, Acc) ->
+    #acc{
+        query_server = {Proc, _},
+        resp = Resp0
+    } = Acc,
+    if Resp0 =:= nil ->
+        {ok, #acc{resp = Resp}} = start_list_resp({[]}, Acc);
+    true ->
+        Resp = Resp0
+    end,
+    [<<"end">>, Data] = couch_query_servers:proc_prompt(Proc, [<<"list_end">>]),
+    send_non_empty_chunk(Resp, Data),
+    couch_httpd:last_chunk(Resp),
+    {ok, Resp}.
+
+
+% This is basically a copy of the start_list_resp/2 in couch_mrview_show,
+% perhaps this should be the default for all indexers (or at least be exported)
+start_list_resp(Head, Acc) ->
+    #acc{
+        db = Db,
+        req = Req,
+        query_server = QueryServer,
+        list_name = ListName,
+        etag = Etag
+    } = Acc,
+    JsonReq = couch_httpd_external:json_req_obj(Req, Db),
+
+    [<<"start">>,Chunk,JsonResp] = couch_query_servers:ddoc_proc_prompt(
+        QueryServer, [<<"lists">>, ListName], [Head, JsonReq]),
+    JsonResp2 = apply_etag(JsonResp, Etag),
+    #extern_resp_args{
+        code = Code,
+        ctype = CType,
+        headers = ExtHeaders
+    } = couch_httpd_external:parse_external_response(JsonResp2),
+    JsonHeaders = couch_httpd_external:default_or_content_type(
+        CType, ExtHeaders),
+    {ok, Resp} = couch_httpd:start_chunked_response(Req, Code, JsonHeaders),
+    send_non_empty_chunk(Resp, Chunk),
+    {ok, Acc#acc{resp=Resp}}.
+
+
+send_list_row(Row, Acc) ->
+    #acc{
+        query_server = {Proc, _},
+        resp = Resp
+    } = Acc,
+    {{Bbox, DocId}, {Geom, Value}} = Row,
+    RowObj = [
+        {<<"id">>, DocId},
+        {<<"bbox">>, erlang:tuple_to_list(Bbox)},
+        {<<"geometry">>, couch_spatial_updater:geocouch_to_geojsongeom(Geom)},
+        {<<"value">>, Value}],
+    try couch_query_servers:proc_prompt(Proc, [<<"list_row">>, {RowObj}]) of
+    [<<"chunks">>, Chunk] ->
+        send_non_empty_chunk(Resp, Chunk),
+        {ok, Acc};
+    [<<"end">>, Chunk] ->
+        send_non_empty_chunk(Resp, Chunk),
+        couch_httpd:last_chunk(Resp),
+        {stop, Acc}
+    catch Error ->
+        couch_httpd:send_chunked_error(Resp, Error),
+        {stop, Acc}
+    end.
+
+
+% This is a verbatim copy from couch_mrview_show
+send_non_empty_chunk(_, []) ->
+    ok;
+send_non_empty_chunk(Resp, Chunk) ->
+    couch_httpd:send_chunk(Resp, Chunk).
+
+% This is a verbatim copy from couch_mrview_show
+apply_etag({ExternalResponse}, CurrentEtag) ->
+    % Here we embark on the delicate task of replacing or creating the
+    % headers on the JsonResponse object. We need to control the Etag and
+    % Vary headers. If the external function controls the Etag, we'd have to
+    % run it to check for a match, which sort of defeats the purpose.
+    case couch_util:get_value(<<"headers">>, ExternalResponse, nil) of
+    nil ->
+        % no JSON headers
+        % add our Etag and Vary headers to the response
+        {[{<<"headers">>, {[{<<"Etag">>, CurrentEtag}, {<<"Vary">>, <<"Accept">>}]}} | ExternalResponse]};
+    JsonHeaders ->
+        {[case Field of
+        {<<"headers">>, JsonHeaders} -> % add our headers
+            JsonHeadersEtagged = json_apply_field({<<"Etag">>, CurrentEtag}, JsonHeaders),
+            JsonHeadersVaried = json_apply_field({<<"Vary">>, <<"Accept">>}, JsonHeadersEtagged),
+            {<<"headers">>, JsonHeadersVaried};
+        _ -> % skip non-header fields
+            Field
+        end || Field <- ExternalResponse]}
+    end.
+
+% This is a verbatim copy from couch_mrview_show
+% Maybe this is in the proplists API
+% todo move to couch_util
+json_apply_field(H, {L}) ->
+    json_apply_field(H, L, []).
+
+
+json_apply_field({Key, NewValue}, [{Key, _OldVal} | Headers], Acc) ->
+    % drop matching keys
+    json_apply_field({Key, NewValue}, Headers, Acc);
+json_apply_field({Key, NewValue}, [{OtherKey, OtherVal} | Headers], Acc) ->
+    % something else is next, leave it alone.
+    json_apply_field({Key, NewValue}, Headers, [{OtherKey, OtherVal} | Acc]);
+json_apply_field({Key, NewValue}, [], Acc) ->
+    % end of list, add ours
+    {[{Key, NewValue}|Acc]}.

@@ -19,7 +19,7 @@ the correct one:
    (https://github.com/couchbase/couchdb)
  - couchdb1.1.x: works with Apache CouchDB 1.1.x
  - couchdb1.2.x: works with Apache CouchDB 1.2.x
- - there is currently no branch for Apache CouchDB 1.3.x
+ - couchdb1.3.x: works with Apache CouchDB 1.3.x
 
 Installation
 ------------

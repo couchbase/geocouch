@@ -15,107 +15,247 @@
 -include ("couch_db.hrl").
 -include ("couch_spatial.hrl").
 
--export([start_compact/2]).
+-export([compact/3, swap_compacted/2]).
 
-%% @spec start_compact(DbName::binary(), GroupId:binary()) -> ok
-%% @doc Compacts the spatial indexes.  GroupId must not include the _design/
-%% prefix
-start_compact(DbName, GroupId) ->
-    Pid = couch_spatial:get_group_server(
-        DbName, <<"_design/",GroupId/binary>>),
-    gen_server:cast(Pid, {start_compact, fun compact_group/2}).
+-record(acc, {
+    btree = nil,
+    kvs = [],
+    kvs_size = 0,
+    changes = 0,
+    total_changes
+}).
 
-%%=============================================================================
-%% internal functions
-%%=============================================================================
+-record(spatial_acc, {
+    treepos = nil,
+    treeheight = 0,
+    kvs = [],
+    kvs_size = 0,
+    changes = 0,
+    total_changes
+}).
 
-%% @spec compact_group(Group, NewGroup) -> ok
-compact_group(Group, EmptyGroup) ->
-    #spatial_group{
-        current_seq = Seq,
+
+
+compact(_Db, State, Opts) ->
+    case lists:member(recompact, Opts) of
+        false -> compact(State);
+        true -> recompact(State)
+    end.
+
+compact(State) ->
+    #spatial_state{
+        db_name = DbName,
+        idx_name = IdxName,
+        sig = Sig,
+        update_seq = UpdateSeq,
         id_btree = IdBtree,
-        name = GroupId,
-        indexes = Indexes,
-        fd = Fd
-    } = Group,
+        views = Views
+    } = State,
 
-    #spatial_group{
-        db = Db,
+    EmptyState = couch_util:with_db(DbName, fun(Db) ->
+        CompactFName = couch_spatial_util:compaction_file(DbName, Sig),
+        {ok, CompactFd} = couch_spatial_util:open_file(CompactFName),
+        couch_spatial_util:reset_index(Db, CompactFd, State)
+    end),
+
+    #spatial_state{
         id_btree = EmptyIdBtree,
-        indexes = EmptyIndexes,
+        views = EmptyViews,
         fd = EmptyFd
-    } = EmptyGroup,
+    } = EmptyState,
 
-    {ok, DbReduce} = couch_btree:full_reduce(Db#db.fulldocinfo_by_id_btree),
-    Count = element(1, DbReduce),
+    % XXX vmx 2012-10-22: Not sure why the [] case happens
+    Count = case couch_btree:full_reduce(IdBtree) of
+        {ok, []} -> 0;
+        {ok, Count2} -> Count2
+    end,
 
-    DbName = couch_db:name(Db),
-
+    TotalChanges = lists:foldl(
+        fun(View, Acc) ->
+            % NOTE vmx 2012-10-18: This can be slow, as it traverses the
+            %     whole tree.
+            {ok, Num} = couch_spatial_util:get_row_count(View),
+            Acc + Num
+        end,
+        Count, Views),
     % Use "view_compaction" for now, that it shows up in Futons active tasks
     % screen. Think about a more generic way for the future.
     couch_task_status:add_task([
         {type, view_compaction},
         {database, DbName},
-        {design_document, GroupId},
+        {design_document, IdxName},
         {progress, 0}
     ]),
-    % Create a new version of the lookup tree (the ID B-tree)
-    Fun = fun({DocId, _IndexIdKeys} = KV, {Bt, Acc, TotalCopied, _LastId}) ->
-        % NOTE vmx (2011-01-18): use the same value as for view compaction,
-        %     though wondering why a value of 10000 is hard-coded
-        if TotalCopied rem 10000 =:= 0 ->
-            couch_task_status:update([
-                {progress, (TotalCopied*100) div Count}]),
-            {ok, Bt2} = couch_btree:add(Bt, lists:reverse([KV|Acc])),
-            {ok, {Bt2, [], TotalCopied+1, DocId}};
-        true ->
-            {ok, {Bt, [KV|Acc], TotalCopied+1, DocId}}
+
+    BufferSize0 = couch_config:get(
+        "view_compaction", "keyvalue_buffer_size", "2097152"
+    ),
+    BufferSize = list_to_integer(BufferSize0),
+
+    FoldFun = fun(Kv, Acc) ->
+        #acc{
+            btree = Bt,
+            kvs = Kvs,
+            kvs_size = KvsSize0
+        } = Acc,
+        KvsSize = KvsSize0 + ?term_size(Kv),
+        case KvsSize >= BufferSize of
+            true ->
+                {ok, Bt2} = couch_btree:add(Bt, lists:reverse([Kv | Kvs])),
+                Acc2 = update_task(Acc, 1 + length(Kvs)),
+                {ok, Acc2#acc{btree = Bt2, kvs = [], kvs_size = 0}};
+            _ ->
+                {ok, Acc#acc{kvs = [Kv | Kvs], kvs_size = KvsSize}}
         end
     end,
-    {ok, _, {Bt3, Uncopied, _Total, _LastId}} = couch_btree:foldl(IdBtree, Fun,
-        {EmptyIdBtree, [], 0, nil}),
+
+    InitAcc = #acc{
+        total_changes = TotalChanges,
+        btree = EmptyIdBtree
+    },
+    {ok, _, FinalAcc} = couch_btree:foldl(IdBtree, FoldFun, InitAcc),
+    #acc{
+        btree = Bt3,
+        kvs = Uncopied
+    } = FinalAcc,
     {ok, NewIdBtree} = couch_btree:add(Bt3, lists:reverse(Uncopied)),
-
-    NewIndexes = lists:map(fun({Index, EmptyIndex}) ->
-        case Index#spatial.treepos of
-            % Tree is empty, just grab the the FD
-            nil -> EmptyIndex#spatial{fd = EmptyFd};
-            _ -> compact_spatial(Fd, EmptyFd, Index, EmptyIndex)
-        end
-    end, lists:zip(Indexes, EmptyIndexes)),
-
-    NewGroup = EmptyGroup#spatial_group{
-        id_btree=NewIdBtree,
-        indexes=NewIndexes,
-        current_seq=Seq
+    FinalAcc2 = update_task(FinalAcc, length(Uncopied)),
+    SpatialAcc = #spatial_acc{
+        kvs = FinalAcc2#acc.kvs,
+        kvs_size = FinalAcc2#acc.kvs_size,
+        changes = FinalAcc2#acc.changes,
+        total_changes = FinalAcc2#acc.total_changes
     },
 
-    Pid = couch_spatial:get_group_server(DbName, GroupId),
-    gen_server:cast(Pid, {compact_done, NewGroup}).
+    {NewViews, _} = lists:mapfoldl(fun({View, EmptyView}, Acc) ->
+        case View#spatial.treepos of
+            % Tree is empty, just grab the the FD
+            nil -> {EmptyView#spatial{fd = EmptyFd}, Acc};
+            _ -> compact_spatial(View, EmptyView, BufferSize, Acc)
+        end
+    end, SpatialAcc, lists:zip(Views, EmptyViews)),
 
-%% @spec compact_spatial(Index, EmptyIndex) -> CompactView
-compact_spatial(OldFd, NewFd, Index, EmptyIndex) ->
-    {ok, Count} = couch_spatial:get_item_count(OldFd, Index#spatial.treepos),
+    unlink(EmptyFd),
+    {ok, EmptyState#spatial_state{
+        id_btree = NewIdBtree,
+        views = NewViews,
+        update_seq = UpdateSeq
+    }}.
 
-    Fun = fun(Node, {TreePos, TreeHeight, Acc, TotalCopied}) ->
-        if TotalCopied rem 10000 =:= 0 ->
-            couch_task_status:update([
-                {progress, (TotalCopied*100) div Count}]),
-            {ok, TreePos2, TreeHeight2} = vtree_bulk:bulk_load(
-                NewFd, TreePos, TreeHeight, [Node|Acc]),
-            {TreePos2, TreeHeight2, [], TotalCopied + 1};
+
+recompact(State) ->
+    #spatial_state{
+        fd = Fd
+    } = State,
+    link(Fd),
+    {Pid, Ref} = erlang:spawn_monitor(fun() ->
+        couch_index_updater:update(couch_spatial_index, State)
+    end),
+    receive
+        {'DOWN', Ref, _, _, {updated, Pid, State2}} ->
+            unlink(Fd),
+            {ok, State2}
+    end.
+
+
+compact_spatial(View, EmptyView, BufferSize, Acc0) ->
+    #spatial{
+        fd = OldFd,
+        treepos = OrigTreepos
+    } = View,
+    #spatial{
+        fd = NewFd,
+        treepos = EmptyTreepos,
+        treeheight = EmptyTreeheight
+    } = EmptyView,
+
+    Fun = fun(Kv, Acc) ->
+        #spatial_acc{
+            treepos = TreePos,
+            treeheight = TreeHeight,
+            kvs = Kvs,
+            kvs_size = KvsSize0
+        } = Acc,
+        KvsSize = KvsSize0 + ?term_size(Kv),
+        case KvsSize >= BufferSize of
         true ->
-            {TreePos, TreeHeight, [Node|Acc], TotalCopied + 1}
+            {ok, TreePos2, TreeHeight2} = vtree_bulk:bulk_load(
+                NewFd, TreePos, TreeHeight, [Kv|Kvs]),
+            Acc2 = update_task(Acc, 1 + length(Kvs)),
+            Acc2#spatial_acc{
+                treepos = TreePos2,
+                treeheight = TreeHeight2,
+                kvs = [],
+                kvs_size = 0
+            };
+        false ->
+            Acc#spatial_acc{
+                kvs = [Kv|Kvs],
+                kvs_size = KvsSize
+            }
         end
     end,
 
-    {TreePos3, TreeHeight3, Uncopied, _Total} = vtree:foldl(
-        OldFd, Index#spatial.treepos, Fun,
-        {EmptyIndex#spatial.treepos, EmptyIndex#spatial.treeheight, [], 0}),
+    InitAcc = Acc0#spatial_acc{
+        kvs = [],
+        kvs_size = 0,
+        treepos = EmptyTreepos,
+        treeheight = EmptyTreeheight
+    },
+
+    %{TreePos3, TreeHeight3, Uncopied, _Total} = vtree:foldl(
+    FinalAcc = vtree:foldl(OldFd, OrigTreepos, Fun, InitAcc),
+    #spatial_acc{
+        treepos = TreePos3,
+        treeheight = TreeHeight3,
+        kvs = Uncopied
+    } = FinalAcc,
     {ok, NewTreePos, NewTreeHeight} = vtree_bulk:bulk_load(
         NewFd, TreePos3, TreeHeight3, Uncopied),
-    EmptyIndex#spatial{
+    FinalAcc2 = update_task(FinalAcc, length(Uncopied)),
+    NewView = EmptyView#spatial{
         treepos = NewTreePos,
         treeheight = NewTreeHeight,
         fd = NewFd
-    }.
+    },
+    {NewView, FinalAcc2}.
+
+
+update_task(#acc{}=Acc, ChangesInc) ->
+    #acc{
+        changes = Changes0,
+        total_changes = Total
+    } = Acc,
+    Changes = Changes0 + ChangesInc,
+    couch_task_status:update([{progress, (Changes * 100) div Total}]),
+    Acc#acc{changes = Changes};
+update_task(#spatial_acc{}=Acc, ChangesInc) ->
+    #spatial_acc{
+        changes = Changes0,
+        total_changes = Total
+    } = Acc,
+    Changes = Changes0 + ChangesInc,
+    couch_task_status:update([{progress, (Changes * 100) div Total}]),
+    Acc#spatial_acc{changes = Changes}.
+
+
+swap_compacted(OldState, NewState) ->
+    #spatial_state{
+        sig = Sig,
+        db_name = DbName,
+        fd = Fd
+    } = NewState,
+
+    link(Fd),
+
+    RootDir = couch_index_util:root_dir(),
+    IndexFName = couch_spatial_util:index_file(DbName, Sig),
+    CompactFName = couch_spatial_util:compaction_file(DbName, Sig),
+    ok = couch_file:delete(RootDir, IndexFName),
+    ok = file:rename(CompactFName, IndexFName),
+
+    unlink(OldState#spatial_state.fd),
+    couch_ref_counter:drop(OldState#spatial_state.ref_counter),
+    {ok, NewRefCounter} = couch_ref_counter:start([Fd]),
+
+    {ok, NewState#spatial_state{ref_counter=NewRefCounter}}.

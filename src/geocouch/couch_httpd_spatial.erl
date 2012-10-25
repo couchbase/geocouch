@@ -11,17 +11,20 @@
 % the License.
 
 -module(couch_httpd_spatial).
+
+-export([handle_spatial_req/3, handle_info_req/3, handle_compact_req/3,
+    handle_cleanup_req/2, parse_qs/1]).
+
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
 
--export([handle_spatial_req/3, spatial_etag/3, spatial_etag/4,
-         load_index/3, handle_compact_req/3, handle_design_info_req/3,
-         handle_spatial_cleanup_req/2, parse_spatial_params/1,
-         make_spatial_fold_funs/6]).
-
--import(couch_httpd,
-        [send_json/2, send_json/3, send_method_not_allowed/2, send_chunk/2,
-         start_json_response/2, start_json_response/3, end_json_response/1]).
+-record(acc, {
+    db,
+    req,
+    resp,
+    prepend,
+    etag
+}).
 
 % Either answer a normal spatial query, or keep dispatching if the path part
 % after _spatial starts with an underscore.
@@ -41,230 +44,159 @@ dispatch_sub_spatial_req(#httpd{
         Db, DDoc) ->
     Conf = couch_config:get("httpd_design_handlers",
         ?b2l(<<Spatial/binary, "/", SpatialDisp/binary>>)),
-    Fun = geocouch_duplicates:make_arity_3_fun(Conf),
+    Fun = couch_httpd:make_arity_3_fun(Conf),
     apply(Fun, [Req, Db, DDoc]).
 
-handle_spatial(#httpd{method='GET',
-        path_parts=[_, _, DName, _, SpatialName]}=Req, Db, DDoc) ->
+
+handle_spatial(#httpd{method='GET'}=Req, Db, DDoc) ->
+    [_, _, DName, _, ViewName] = Req#httpd.path_parts,
     ?LOG_DEBUG("Spatial query (~p): ~n~p", [DName, DDoc#doc.id]),
-    #spatial_query_args{
-        stale = Stale
-    } = QueryArgs = parse_spatial_params(Req),
-    {ok, Index, Group} = couch_spatial:get_spatial_index(
-                           Db, DDoc#doc.id, SpatialName, Stale),
-    output_spatial_index(Req, Index, Group, Db, QueryArgs);
+    couch_stats_collector:increment({httpd, spatial_view_reads}),
+    design_doc_view(Req, Db, DDoc, ViewName);
 handle_spatial(Req, _Db, _DDoc) ->
-    send_method_not_allowed(Req, "GET,HEAD").
+    couch_httpd:send_method_not_allowed(Req, "GET,HEAD").
 
-% pendant is in couch_httpd_db
-handle_compact_req(#httpd{method='POST',
-        path_parts=[DbName, _ , DName|_]}=Req, Db, _DDoc) ->
-    ok = couch_db:check_is_admin(Db),
-    couch_httpd:validate_ctype(Req, "application/json"),
-    ok = couch_spatial_compactor:start_compact(DbName, DName),
-    send_json(Req, 202, {[{ok, true}]});
-handle_compact_req(Req, _Db, _DDoc) ->
-    send_method_not_allowed(Req, "POST").
 
-% pendant is in couch_httpd_db
-handle_spatial_cleanup_req(#httpd{method='POST'}=Req, Db) ->
-    % delete unreferenced index files
-    ok = couch_db:check_is_admin(Db),
-    couch_httpd:validate_ctype(Req, "application/json"),
-    ok = couch_spatial:cleanup_index_files(Db),
-    send_json(Req, 202, {[{ok, true}]});
-
-handle_spatial_cleanup_req(Req, _Db) ->
-    send_method_not_allowed(Req, "POST").
-
-% pendant is in couch_httpd_db
-handle_design_info_req(#httpd{
-            method='GET',
-            path_parts=[_DbName, _Design, DesignName, _, _]
-        }=Req, Db, _DDoc) ->
-    DesignId = <<"_design/", DesignName/binary>>,
-    {ok, GroupInfoList} = couch_spatial:get_group_info(Db, DesignId),
-    send_json(Req, 200, {[
+handle_info_req(#httpd{method='GET'}=Req, Db, DDoc) ->
+    [_, _, DesignName, _, _] = Req#httpd.path_parts,
+    {ok, GroupInfoList} = couch_spatial:get_info(Db, DDoc),
+    couch_httpd:send_json(Req, 200, {[
         {name, DesignName},
         {spatial_index, {GroupInfoList}}
     ]});
-handle_design_info_req(Req, _Db, _DDoc) ->
-    send_method_not_allowed(Req, "GET").
+handle_info_req(Req, _Db, _DDoc) ->
+    couch_httpd:send_method_not_allowed(Req, "GET").
 
 
-load_index(Req, Db, {DesignId, SpatialName}) ->
-    QueryArgs = parse_spatial_params(Req),
-    Stale = QueryArgs#spatial_query_args.stale,
-    case couch_spatial:get_spatial_index(Db, DesignId, SpatialName, Stale) of
-    {ok, Index, Group} ->
-          {ok, Index, Group, QueryArgs};
-    {not_found, Reason} ->
-        throw({not_found, Reason})
-    end.
+handle_compact_req(#httpd{method='POST'}=Req, Db, DDoc) ->
+    ok = couch_db:check_is_admin(Db),
+    couch_httpd:validate_ctype(Req, "application/json"),
+    ok = couch_spatial:compact(Db, DDoc),
+    couch_httpd:send_json(Req, 202, {[{ok, true}]});
+handle_compact_req(Req, _Db, _DDoc) ->
+    couch_httpd:send_method_not_allowed(Req, "POST").
 
-%output_spatial_index(Req, Index, Group, Db,
-%                     QueryArgs#spatial_query_args{count=true}) ->
-output_spatial_index(Req, Index, Group, _Db, QueryArgs) when
-        QueryArgs#spatial_query_args.count == true ->
-    Count = vtree:count_lookup(Group#spatial_group.fd,
-                               Index#spatial.treepos,
-                               QueryArgs#spatial_query_args.bbox),
-    send_json(Req, {[{"count",Count}]});
 
-% counterpart in couch_httpd_view is output_map_view/6
-output_spatial_index(Req, Index, Group, Db, QueryArgs) ->
-    #spatial_query_args{
-        bbox = Bbox,
-        bounds = Bounds,
-        limit = Limit,
-        skip = SkipCount
-    } = QueryArgs,
-    CurrentEtag = spatial_etag(Db, Group, Index),
-    HelperFuns = #spatial_fold_helper_funs{
-        start_response = fun json_spatial_start_resp/3,
-        send_row = fun send_json_spatial_row/3
-    },
-    couch_httpd:etag_respond(Req, CurrentEtag, fun() ->
-        FoldFun = make_spatial_fold_funs(
-                    Req, QueryArgs, CurrentEtag, Db,
-                    Group#spatial_group.current_seq, HelperFuns),
-        FoldAccInit = {Limit, SkipCount, undefined, ""},
-        % In this case the accumulator consists of the response (which
-        % might be undefined) and the actual accumulator we only care
-        % about in spatiallist functions)
-        {ok, {_, _, Resp, _}} = couch_spatial:fold(
-            Index, FoldFun, FoldAccInit, Bbox, Bounds),
-        finish_spatial_fold(Req, Resp)
-    end).
+handle_cleanup_req(#httpd{method='POST'}=Req, Db) ->
+    % delete unreferenced index files
+    ok = couch_db:check_is_admin(Db),
+    couch_httpd:validate_ctype(Req, "application/json"),
+    ok = couch_spatial:cleanup(Db),
+    couch_httpd:send_json(Req, 202, {[{ok, true}]});
+handle_cleanup_req(Req, _Db) ->
+    couch_httpd:send_method_not_allowed(Req, "POST").
 
-% counterpart in couch_httpd_view is make_view_fold/7
-make_spatial_fold_funs(Req, _QueryArgs, Etag, _Db, UpdateSeq, HelperFuns) ->
-    #spatial_fold_helper_funs{
-        start_response = StartRespFun,
-        send_row = SendRowFun
-    } = HelperFuns,
-    % The Acc is there to output characters that belong to the previous line,
-    % but only if one line follows (think of a comma separated list which
-    % doesn't have a comma at the last item)
-    fun({{Bbox, DocId}, {Geom, Value}}, {AccLimit, AccSkip, Resp, Acc}) ->
-        case {AccLimit, AccSkip, Resp} of
-        {0, _, _} ->
-            % we've done "limit" rows, stop foldling
-            {stop, {0, 0, Resp, Acc}};
-        {_, AccSkip, _} when AccSkip > 0 ->
-            % just keep skipping
-            {ok, {AccLimit, AccSkip - 1, Resp, Acc}};
-        {_, _, undefined} ->
-            % rendering the first row, first we start the response
-            {ok, Resp2, BeginBody} = StartRespFun(Req, Etag, UpdateSeq),
-            {Go, Acc2} = SendRowFun(
-                Resp2, {{Bbox, DocId}, {Geom, Value}}, BeginBody),
-            {Go, {AccLimit - 1, 0, Resp2, Acc2}};
-        {AccLimit, _, Resp} when (AccLimit > 0) ->
-            % rendering all other rows
-            {Go, Acc2} = SendRowFun(Resp, {{Bbox, DocId}, {Geom, Value}}, Acc),
-            {Go, {AccLimit - 1, 0, Resp, Acc2}}
+
+
+design_doc_view(Req, Db, DDoc, ViewName) ->
+    Args = parse_qs(Req),
+    design_doc_view(Req, Db, DDoc, ViewName, Args).
+
+design_doc_view(Req, Db, DDoc, ViewName, #spatial_args{count=true}=Args) ->
+    Count = couch_spatial:query_view_count(Db, DDoc, ViewName, Args),
+    couch_httpd:send_json(Req, {[{"count", Count}]});
+design_doc_view(Req, Db, DDoc, ViewName, Args0) ->
+    EtagFun = fun(Sig, Acc0) ->
+        Etag = couch_httpd:make_etag(Sig),
+        case couch_httpd:etag_match(Req, Etag) of
+            true -> throw({etag_match, Etag});
+            false -> {ok, Acc0#acc{etag=Etag}}
         end
+    end,
+    Args = Args0#spatial_args{preflight_fun=EtagFun},
+    {ok, Resp} = couch_httpd:etag_maybe(Req, fun() ->
+        VAcc = #acc{db=Db, req=Req},
+        couch_spatial:query_view(
+            Db, DDoc, ViewName, Args, fun spatial_cb/2, VAcc)
+    end),
+    case is_record(Resp, acc) of
+        true -> {ok, Resp#acc.resp};
+        _ -> {ok, Resp}
     end.
 
-% counterpart in couch_httpd_view is finish_view_fold/5
-finish_spatial_fold(Req, Resp) ->
-    case Resp of
-    % no response was sent yet
-    undefined ->
-        send_json(Req, 200, {[{"rows", []}]});
-    Resp ->
-        % end the index
-        send_chunk(Resp, "\r\n]}"),
-        end_json_response(Resp)
-    end.
 
-% counterpart in couch_httpd_view is json_view_start_resp/6
-json_spatial_start_resp(Req, Etag, UpdateSeq) ->
-    {ok, Resp} = start_json_response(Req, 200, [{"Etag", Etag}]),
-    BeginBody = io_lib:format(
-            "{\"update_seq\":~w,\"rows\":[\r\n", [UpdateSeq]),
-    {ok, Resp, BeginBody}.
+spatial_cb({meta, Meta}, #acc{resp=undefined}=Acc) ->
+    Headers = [{"ETag", Acc#acc.etag}],
+    {ok, Resp} = couch_httpd:start_json_response(Acc#acc.req, 200, Headers),
+    % Map function starting
+    Parts = case couch_util:get_value(offset, Meta) of
+        undefined -> [];
+        Offset -> [io_lib:format("\"offset\":~p", [Offset])]
+    end ++ case couch_util:get_value(update_seq, Meta) of
+        undefined -> [];
+        UpdateSeq -> [io_lib:format("\"update_seq\":~p", [UpdateSeq])]
+    end ++ ["\"rows\":["],
+    Chunk = lists:flatten("{" ++ string:join(Parts, ",") ++ "\r\n"),
+    couch_httpd:send_chunk(Resp, Chunk),
+    {ok, Acc#acc{resp=Resp, prepend=""}};
+spatial_cb({row, Row}, Acc) ->
+    % Adding another row
+    couch_httpd:send_chunk(
+        Acc#acc.resp, [Acc#acc.prepend, row_to_json(Row)]),
+    {ok, Acc#acc{prepend=",\r\n"}};
+spatial_cb(complete, #acc{resp=undefined}=Acc) ->
+    % Nothing in view
+    {ok, Resp} = couch_httpd:send_json(Acc#acc.req, 200, {[{rows, []}]}),
+    {ok, Acc#acc{resp=Resp}};
+spatial_cb(complete, Acc) ->
+    % Finish view output
+    couch_httpd:send_chunk(Acc#acc.resp, "\r\n]}"),
+    couch_httpd:end_json_response(Acc#acc.resp),
+    {ok, Acc}.
 
-% counterpart in couch_httpd_view is send_json_view_row/5
-send_json_spatial_row(Resp, {{Bbox, DocId}, {Geom, Value}}, RowFront) ->
-    JsonObj = {[
+row_to_json({{Bbox, DocId}, {Geom, Value}}) ->
+    Obj = {[
         {<<"id">>, DocId},
         {<<"bbox">>, erlang:tuple_to_list(Bbox)},
         {<<"geometry">>, couch_spatial_updater:geocouch_to_geojsongeom(Geom)},
         {<<"value">>, Value}]},
-    send_chunk(Resp, RowFront ++  ?JSON_ENCODE(JsonObj)),
-    {ok, ",\r\n"}.
+    ?JSON_ENCODE(Obj).
 
-% counterpart in couch_httpd_view is view_group_etag/3 resp. /4
-spatial_etag(Db, Group, Index) ->
-    spatial_etag(Db, Group, Index, nil).
-spatial_etag(_Db, #spatial_group{sig=Sig},
-        #spatial{update_seq=UpdateSeq, purge_seq=PurgeSeq}, Extra) ->
-    couch_httpd:make_etag({Sig, UpdateSeq, PurgeSeq, Extra}).
 
-parse_spatial_params(Req) ->
-    QueryList = couch_httpd:qs(Req),
-    QueryParams = lists:foldl(fun({K, V}, Acc) ->
-        parse_spatial_param(K, V) ++ Acc
-    end, [], QueryList),
-    QueryArgs = lists:foldl(fun({K, V}, Args2) ->
-        validate_spatial_query(K, V, Args2)
-    end, #spatial_query_args{}, lists:reverse(QueryParams)),
+parse_qs(Req) ->
+    lists:foldl(fun({K, V}, Acc) ->
+        parse_qs(K, V, Acc)
+    end, #spatial_args{}, couch_httpd:qs(Req)).
 
-    #spatial_query_args{
-        bbox = Bbox,
-        bounds = Bounds
-    } = QueryArgs,
-    case {Bbox, Bounds} of
-    % Coordinates of the bounding box are flipped and no bounds for the
-    % cartesian plane were set
-    {{W, S, E, N}, nil} when E < W; N < S ->
-        Msg = <<"Coordinates of the bounding box are flipped, but no bounds "
-                "for the cartesian plane were specified "
-                "(use the `plane_bounds` parameter)">>,
-        throw({query_parse_error, Msg});
+
+parse_qs(Key, Val, Args) ->
+    case Key of
+    "" ->
+        Args;
+    "bbox" ->
+        Args#spatial_args{
+            bbox=list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]"))};
+    "stale" when Val == "ok" ->
+        Args#spatial_args{stale=ok};
+    "stale" when Val == "update_after" ->
+        Args#spatial_args{stale=update_after};
+    "stale" ->
+        throw({query_parse_error,
+            <<"stale only available as stale=ok or as stale=update_after">>});
+    "count" when Val == "true" ->
+        Args#spatial_args{count=true};
+    "count" ->
+        throw({query_parse_error, <<"count only available as count=true">>});
+    "plane_bounds" ->
+        Args#spatial_args{
+            bounds=list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]"))};
+    "limit" ->
+        Args#spatial_args{limit=parse_int(Val)};
+    "skip" ->
+        Args#spatial_args{skip=parse_int(Val)};
     _ ->
-        QueryArgs
+        BKey = list_to_binary(Key),
+        BVal = list_to_binary(Val),
+        Args#spatial_args{extra=[{BKey, BVal} | Args#spatial_args.extra]}
     end.
 
-parse_spatial_param("bbox", Bbox) ->
-    [{bbox, list_to_tuple(?JSON_DECODE("[" ++ Bbox ++ "]"))}];
-parse_spatial_param("stale", "ok") ->
-    [{stale, ok}];
-parse_spatial_param("stale", "update_after") ->
-    [{stale, update_after}];
-parse_spatial_param("stale", _Value) ->
-    throw({query_parse_error,
-            <<"stale only available as stale=ok or as stale=update_after">>});
-parse_spatial_param("count", "true") ->
-    [{count, true}];
-parse_spatial_param("count", _Value) ->
-    throw({query_parse_error, <<"count only available as count=true">>});
-parse_spatial_param("plane_bounds", Bounds) ->
-    [{bounds, list_to_tuple(?JSON_DECODE("[" ++ Bounds ++ "]"))}];
-parse_spatial_param("limit", Value) ->
-    [{limit, geocouch_duplicates:parse_positive_int_param(Value)}];
-parse_spatial_param("skip", Value) ->
-    [{skip, geocouch_duplicates:parse_int_param(Value)}];
-parse_spatial_param(Key, Value) ->
-    [{extra, {Key, Value}}].
 
-validate_spatial_query(bbox, Value, Args) ->
-    Args#spatial_query_args{bbox=Value};
-validate_spatial_query(stale, ok, Args) ->
-    Args#spatial_query_args{stale=ok};
-validate_spatial_query(stale, update_after, Args) ->
-    Args#spatial_query_args{stale=update_after};
-validate_spatial_query(stale, _, Args) ->
-    Args;
-validate_spatial_query(count, true, Args) ->
-    Args#spatial_query_args{count=true};
-validate_spatial_query(bounds, Value, Args) ->
-    Args#spatial_query_args{bounds=Value};
-validate_spatial_query(limit, Value, Args) ->
-    Args#spatial_query_args{limit=Value};
-validate_spatial_query(skip, Value, Args) ->
-    Args#spatial_query_args{skip=Value};
-validate_spatial_query(extra, _Value, Args) ->
-    Args.
+% Verbatim copy from couch_mrview_http
+parse_int(Val) ->
+    case (catch list_to_integer(Val)) of
+    IntVal when is_integer(IntVal) ->
+        IntVal;
+    _ ->
+        Msg = io_lib:format("Invalid value for integer parameter: ~p", [Val]),
+        throw({query_parse_error, ?l2b(Msg)})
+    end.

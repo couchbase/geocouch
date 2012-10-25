@@ -16,11 +16,7 @@
 -compile(export_all).
 -endif.
 
-
--export([update/2]).
-
-% for benchmark script
--export([geojson_get_bbox/1]).
+-export([start_update/3, process_doc/3, finish_update/1]).
 
 % for output (couch_http_spatial, couch_http_spatial_list)
 -export([geocouch_to_geojsongeom/1]).
@@ -31,256 +27,270 @@
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
 
-update(Owner, Group) ->
-    #spatial_group{
-        db = #db{name=DbName} = Db,
-        name = GroupName,
-        current_seq = Seq
-        %purge_seq = PurgeSeq
-    } = Group,
-    % XXX vmx: what are purges? when do they happen?
-    %DbPurgeSeq = couch_db:get_purge_seq(Db),
-    %Group2 =
-    %if DbPurgeSeq == PurgeSeq ->
-    %    Group;
-    %DbPurgeSeq == PurgeSeq + 1 ->
-    %    couch_task_status:update(<<"Removing purged entries from view index.">>),
-    %    purge_index(Group);
-    %true ->
-    %    couch_task_status:update(<<"Resetting view index due to lost purge entries.">>),
-    %    % NOTE vmx:probably  needs handle_info({'EXIT', FromPid, reset}
-    %    %     in couch_spatial_group.erl
-    %    exit(reset)
-    %end,
 
-    %ViewEmptyKVs = [{View, []} || View <- Group2#group.views],
-    % List of indexes with their (initially empty) results
-    IndexEmptyKVs = [{Index, []} || Index <- Group#spatial_group.indexes],
-    % compute on all docs modified since we last computed.
-    TotalChanges = couch_db:count_changes_since(Db, Seq),
-    couch_task_status:add_task([
-        {type, indexer},
-        {database, DbName},
-        {design_document, GroupName},
-        {progress, 0},
-        {changes_done, 0},
-        {total_changes, TotalChanges}
-    ]),
-    couch_task_status:set_update_frequency(500),
+start_update(Partial, State, NumChanges) ->
+    QueueOpts = [{max_size, 100000}, {max_items, 500}],
+    {ok, DocQueue} = couch_work_queue:new(QueueOpts),
+    {ok, WriteQueue} = couch_work_queue:new(QueueOpts),
 
-    {ok, _, {_,{UncomputedDocs, Group3, ViewKVsToAdd, DocIdViewIdKeys}}}
-        = couch_db:enum_docs_since(Db, Seq,
-        fun(DocInfo, _, {ChangesProcessed, Acc}) ->
-            Progress = (ChangesProcessed*100) div TotalChanges,
-            couch_task_status:update([
-                {progress, Progress},
-                {changes_done, ChangesProcessed}
-            ]),
-            %?LOG_DEBUG("enum_doc_since: ~p", [Acc]),
-            {ok, {ChangesProcessed+1, process_doc(Db, Owner, DocInfo, Acc)}}
-        end, {0, {[], Group, IndexEmptyKVs, []}}, []),
-     %?LOG_DEBUG("enum_doc_since results: ~p~n~p~n~p", [UncomputedDocs, ViewKVsToAdd, DocIdViewIdKeys]),
-    {Group4, Results} = spatial_compute(Group3, UncomputedDocs),
-    % Output is way to huge
-    %?LOG_DEBUG("spatial_compute results: ~p", [Results]),
-    {ViewKVsToAdd2, DocIdViewIdKeys2} = view_insert_query_results(
-            UncomputedDocs, Results, ViewKVsToAdd, DocIdViewIdKeys),
-    couch_query_servers:stop_doc_map(Group4#spatial_group.query_server),
-    NewSeq = couch_db:get_update_seq(Db),
-    {ok, Group5} = write_changes(Group4, ViewKVsToAdd2, DocIdViewIdKeys2,
-                NewSeq),
-    exit({new_group, Group5#spatial_group{query_server=nil}}).
+    #spatial_state{
+        update_seq = UpdateSeq,
+        db_name = DbName,
+        idx_name = IdxName
+    } = State,
 
+    InitState = State#spatial_state{
+        first_build = UpdateSeq == 0,
+        partial_resp_pid = Partial,
+        doc_acc = [],
+        doc_queue = DocQueue,
+        write_queue = WriteQueue
+    },
 
-
-
-% NOTE vmx: whatever it does, it seems to be doing a good job
-view_insert_query_results([], [], ViewKVs, DocIdViewIdKeysAcc) ->
-    {ViewKVs, DocIdViewIdKeysAcc};
-view_insert_query_results([Doc|RestDocs], [QueryResults | RestResults], ViewKVs, DocIdViewIdKeysAcc) ->
-    {NewViewKVs, NewViewIdKeys} = view_insert_doc_query_results(Doc, QueryResults, ViewKVs, [], []),
-    NewDocIdViewIdKeys = [{Doc#doc.id, NewViewIdKeys} | DocIdViewIdKeysAcc],
-    view_insert_query_results(RestDocs, RestResults, NewViewKVs, NewDocIdViewIdKeys).
-
-
-view_insert_doc_query_results(_Doc, [], [], ViewKVsAcc, ViewIdKeysAcc) ->
-    {lists:reverse(ViewKVsAcc), lists:reverse(ViewIdKeysAcc)};
-view_insert_doc_query_results(#doc{id=DocId}=Doc, [ResultKVs|RestResults], [{View, KVs}|RestViewKVs], ViewKVsAcc, ViewIdKeysAcc) ->
-    % Take any identical keys and combine the values
-    ResultKVs2 = lists:foldl(
-        % Key is the bounding box of the geometry,
-        % Value is a tuple of the the geometry and the actual value
-        fun({Key,Value}, [{PrevKey,PrevVal}|AccRest]) ->
-            case Key == PrevKey of
-            true ->
-                case PrevVal of
-                {dups, Dups} ->
-                    [{PrevKey, {dups, [Value|Dups]}} | AccRest];
-                _ ->
-                    [{PrevKey, {dups, [Value,PrevVal]}} | AccRest]
-                end;
-            false ->
-                [{Key,Value},{PrevKey,PrevVal}|AccRest]
-            end;
-        (KV, []) ->
-           [KV]
-        end, [], lists:sort(ResultKVs)),
-    NewKVs = [{{Key, DocId}, Value} || {Key, Value} <- ResultKVs2],
-    NewViewKVsAcc = [{View, NewKVs ++ KVs} | ViewKVsAcc],
-    NewViewIdKeys = [{View#spatial.id_num, Key} || {Key, _Value} <- ResultKVs2],
-    NewViewIdKeysAcc = NewViewIdKeys ++ ViewIdKeysAcc,
-    view_insert_doc_query_results(Doc, RestResults, RestViewKVs, NewViewKVsAcc, NewViewIdKeysAcc).
-
-
-% Pendant to couch_view_updater:view_compute/2
-spatial_compute(Group, []) ->
-    {Group, []};
-spatial_compute(#spatial_group{def_lang=DefLang, lib=Lib, query_server=QueryServerIn}=Group, Docs) ->
-    {ok, QueryServer} =
-    case QueryServerIn of
-    nil -> % spatial funs not started
-        Functions = [Index#spatial.def || Index <- Group#spatial_group.indexes],
-        couch_query_servers:start_doc_map(DefLang, Functions, Lib);
-    _ ->
-        {ok, QueryServerIn}
+    Self = self(),
+    SpatialFun = fun() ->
+        couch_task_status:add_task([
+            {type, indexer},
+            {database, DbName},
+            {design_document, IdxName},
+            {progress, 0},
+            {changes_done, 0},
+            {total_changes, NumChanges}
+        ]),
+        couch_task_status:set_update_frequency(500),
+        map_docs(Self, InitState)
     end,
-    {ok, Results} = spatial_docs(QueryServer, Docs),
-    {Group#spatial_group{query_server=QueryServer}, Results}.
+    WriteFun = fun() -> write_results(Self, InitState) end,
 
-% Pendant to couch_query_servers:map_docs/2
-spatial_docs(Proc, Docs) ->
-    % send the documents
-    Results = lists:map(
-        fun(Doc) ->
-            Json = couch_doc:to_json_obj(Doc, []),
+    spawn_link(SpatialFun),
+    spawn_link(WriteFun),
 
-            % NOTE vmx: perhaps should map_doc renamed to something more
-            % general as it can be used for most indexers
-            FunsResults = couch_query_servers:proc_prompt(Proc, [<<"map_doc">>, Json]),
-            % the results are a json array of function map yields like this:
-            % [FunResults1, FunResults2 ...]
-            % where funresults is are json arrays of key value pairs:
-            % [[Geom1, Value1], [Geom2, Value2]]
-            % Convert the key, value pairs to tuples like
-            % [{Bbox1, {Geom1, Value1}}, {Bbox, {Geom2, Value2}}]
-            lists:map(
-                fun(FunRs) ->
-                    case FunRs of
-                        [] -> [];
-                        % do some post-processing of the result documents
-                        FunRs -> process_results(FunRs)
-                    end
-                end,
-            FunsResults)
-        end,
-        Docs),
-    {ok, Results}.
+    {ok, InitState}.
 
 
-% This fun computes once for each document
-% This is from an old revision (796805) of couch_view_updater
-process_doc(Db, Owner, DocInfo, {Docs, Group, IndexKVs, DocIdIndexIdKeys}) ->
-    #spatial_group{ design_options = DesignOptions } = Group,
-    #doc_info{id=DocId, revs=[#rev_info{deleted=Deleted}|_]} = DocInfo,
-    LocalSeq = proplists:get_value(<<"local_seq">>,
-        DesignOptions, false),
-    DocOpts = case LocalSeq of
-        true ->
-            [conflicts, deleted_conflicts, local_seq];
-        _ ->
-            [conflicts, deleted_conflicts]
+process_doc(Doc, Seq, #spatial_state{doc_acc=Acc}=State) when
+        length(Acc) > 100 ->
+    couch_work_queue:queue(State#spatial_state.doc_queue, lists:reverse(Acc)),
+    process_doc(Doc, Seq, State#spatial_state{doc_acc=[]});
+process_doc(nil, Seq, #spatial_state{doc_acc=Acc}=State) ->
+    {ok, State#spatial_state{doc_acc=[{nil, Seq, nil} | Acc]}};
+process_doc(#doc{id=Id, deleted=true}, Seq,
+        #spatial_state{doc_acc=Acc}=State) ->
+    {ok, State#spatial_state{doc_acc=[{Id, Seq, deleted} | Acc]}};
+process_doc(#doc{id=Id}=Doc, Seq, #spatial_state{doc_acc=Acc}=State) ->
+    {ok, State#spatial_state{doc_acc=[{Id, Seq, Doc} | Acc]}}.
+
+
+finish_update(State) ->
+    #spatial_state{
+        doc_acc = Acc,
+        doc_queue = DocQueue
+    } = State,
+    if Acc /= [] ->
+        couch_work_queue:queue(DocQueue, Acc);
+        true -> ok
     end,
-    case DocId of
-    <<?DESIGN_DOC_PREFIX, _/binary>> -> % we skip design docs
-        {Docs, Group, IndexKVs, DocIdIndexIdKeys};
-    _ ->
-        {Docs2, DocIdIndexIdKeys2} =
-        if Deleted ->
-            {Docs, [{DocId, []} | DocIdIndexIdKeys]};
-        true ->
-            {ok, Doc} = couch_db:open_doc_int(Db, DocInfo,
-                DocOpts),
-            {[Doc | Docs], DocIdIndexIdKeys}
-        end,
-
-        case couch_util:should_flush() of
-        true ->
-            {Group1, Results} = spatial_compute(Group, Docs2),
-            {ViewKVs3, DocIdViewIdKeys3} = view_insert_query_results(Docs2,
-                Results, IndexKVs, DocIdIndexIdKeys2),
-            {ok, Group2} = write_changes(Group1, ViewKVs3, DocIdViewIdKeys3,
-                DocInfo#doc_info.high_seq),
-            if is_pid(Owner) ->
-                ok = gen_server:cast(Owner, {partial_update, self(), Group2});
-            true -> ok end,
-            garbage_collect(),
-            IndexEmptyKVs = [{Index, []} || Index <- Group#spatial_group.indexes],
-            {[], Group2, IndexEmptyKVs, []};
-        false ->
-            {Docs2, Group, IndexKVs, DocIdIndexIdKeys2}
-        end
+    couch_work_queue:close(DocQueue),
+    receive
+        {new_state, NewState} ->
+            {ok, NewState#spatial_state{
+                first_build = undefined,
+                partial_resp_pid = undefined,
+                doc_acc = undefined,
+                doc_queue = undefined,
+                write_queue = undefined,
+                query_server = nil
+            }}
     end.
 
 
-write_changes(Group, IndexKeyValuesToAdd, DocIdIndexIdKeys, NewSeq) ->
-    #spatial_group{id_btree=IdBtree, fd=Fd} = Group,
-    AddDocIdIndexIdKeys = [{DocId, IndexIdKeys} || {DocId, IndexIdKeys} <- DocIdIndexIdKeys, IndexIdKeys /= []],
-    RemoveDocIds = [DocId || {DocId, IndexIdKeys} <- DocIdIndexIdKeys, IndexIdKeys == []],
-    LookupDocIds = [DocId || {DocId, _IndexIdKeys} <- DocIdIndexIdKeys],
-    {ok, LookupResults, IdBtree2}
-        = couch_btree:query_modify(IdBtree, LookupDocIds, AddDocIdIndexIdKeys, RemoveDocIds),
-    KeysToRemoveByIndex = lists:foldl(
-        fun(LookupResult, KeysToRemoveByIndexAcc) ->
-            case LookupResult of
-            {ok, {DocId, IndexIdKeys}} ->
-                lists:foldl(
-                    fun({IndexId, Key}, KeysToRemoveByIndexAcc2) ->
-                        dict:append(IndexId, {Key, DocId}, KeysToRemoveByIndexAcc2)
-                    end,
-                    KeysToRemoveByIndexAcc, IndexIdKeys);
-            {not_found, _} ->
-                KeysToRemoveByIndexAcc
-            end
-        end,
-        dict:new(), LookupResults),
-    Indexes2 = lists:zipwith(fun(Index, {_Index, AddKeyValues}) ->
-        KeysToRemove = couch_util:dict_find(Index#spatial.id_num, KeysToRemoveByIndex, []),
-        %?LOG_DEBUG("storing spatial data: ~n~p~n~p~n~p",
-        %           [Index, AddKeyValues, KeysToRemove]),
+map_docs(Parent, State0) ->
+    #spatial_state{
+        doc_queue = DocQueue,
+        write_queue = WriteQueue,
+        query_server = QueryServer
+    }= State0,
+    case couch_work_queue:dequeue(DocQueue) of
+        closed ->
+            couch_query_servers:stop_doc_map(QueryServer),
+            couch_work_queue:close(WriteQueue);
+        {ok, Dequeued} ->
+            State1 = case QueryServer of
+                nil -> start_query_server(State0);
+                _ -> State0
+            end,
+            {ok, MapResults} = compute_spatial_results(State1, Dequeued),
+            couch_work_queue:queue(WriteQueue, MapResults),
+            map_docs(Parent, State1)
+    end.
+
+
+compute_spatial_results(#spatial_state{query_server = Qs}, Dequeued) ->
+    % Run all the non deleted docs through the view engine and
+    % then pass the results on to the writer process.
+    DocFun = fun
+        ({nil, Seq, _}, {SeqAcc, AccDel, AccNotDel}) ->
+            {erlang:max(Seq, SeqAcc), AccDel, AccNotDel};
+        ({Id, Seq, deleted}, {SeqAcc, AccDel, AccNotDel}) ->
+            {erlang:max(Seq, SeqAcc), [{Id, []} | AccDel], AccNotDel};
+        ({_Id, Seq, Doc}, {SeqAcc, AccDel, AccNotDel}) ->
+            {erlang:max(Seq, SeqAcc), AccDel, [Doc | AccNotDel]}
+    end,
+    FoldFun = fun(Docs, Acc) ->
+        lists:foldl(DocFun, Acc, Docs)
+    end,
+    {MaxSeq, DeletedResults, Docs} =
+        lists:foldl(FoldFun, {0, [], []}, Dequeued),
+    {ok, MapResultList} = couch_query_servers:map_docs_raw(Qs, Docs),
+    NotDeletedResults = lists:zipwith(
+        fun(#doc{id = Id}, MapResults) -> {Id, MapResults} end,
+        Docs,
+        MapResultList),
+    AllMapResults = DeletedResults ++ NotDeletedResults,
+    update_task(length(AllMapResults)),
+    {ok, {MaxSeq, AllMapResults}}.
+
+
+write_results(Parent, State) ->
+    #spatial_state{
+        write_queue = WriteQueue,
+        views = Views
+    } = State,
+    case couch_work_queue:dequeue(WriteQueue) of
+        closed ->
+            Parent ! {new_state, State};
+        {ok, Info} ->
+            EmptyKVs = [{View#spatial.id_num, []} || View <- Views],
+            {Seq, ViewKVs, DocIdKeys} = merge_results(Info, 0, EmptyKVs, []),
+            NewState = write_kvs(State, Seq, ViewKVs, DocIdKeys),
+            send_partial(NewState#spatial_state.partial_resp_pid, NewState),
+            write_results(Parent, NewState)
+    end.
+
+
+start_query_server(State) ->
+    #spatial_state{
+        language = Language,
+        lib = Lib,
+        views = Views
+    } = State,
+    Defs = [View#spatial.def || View <- Views],
+    {ok, QServer} = couch_query_servers:start_doc_map(Language, Defs, Lib),
+    State#spatial_state{query_server=QServer}.
+
+
+% This is a verbatim copy from couch_mrview_updater
+merge_results([], SeqAcc, ViewKVs, DocIdKeys) ->
+    {SeqAcc, ViewKVs, DocIdKeys};
+merge_results([{Seq, Results} | Rest], SeqAcc, ViewKVs, DocIdKeys) ->
+    Fun = fun(RawResults, {VKV, DIK}) ->
+        merge_results(RawResults, VKV, DIK)
+    end,
+    {ViewKVs1, DocIdKeys1} = lists:foldl(Fun, {ViewKVs, DocIdKeys}, Results),
+    merge_results(Rest, erlang:max(Seq, SeqAcc), ViewKVs1, DocIdKeys1).
+
+
+% The processing of the results is different for each indexer
+merge_results({DocId, []}, ViewKVs, DocIdKeys) ->
+    {ViewKVs, [{DocId, []} | DocIdKeys]};
+merge_results({DocId, RawResults}, ViewKVs, DocIdKeys) ->
+    JsonResults = couch_query_servers:raw_to_ejson(RawResults),
+    Results = [[process_result(Res) || Res <- FunRs] || FunRs <- JsonResults],
+    {ViewKVs1, ViewIdKeys} = insert_results(DocId, Results, ViewKVs, [], []),
+    {ViewKVs1, [ViewIdKeys | DocIdKeys]}.
+
+
+% This is a verbatim copy from couch_mrview_updater
+insert_results(DocId, [], [], ViewKVs, ViewIdKeys) ->
+    {lists:reverse(ViewKVs), {DocId, ViewIdKeys}};
+insert_results(DocId, [KVs | RKVs], [{Id, VKVs} | RVKVs], VKVAcc, VIdKeys) ->
+    CombineDupesFun = fun
+        ({Key, Val}, {[{Key, {dups, Vals}} | Rest], IdKeys}) ->
+            {[{Key, {dups, [Val | Vals]}} | Rest], IdKeys};
+        ({Key, Val1}, {[{Key, Val2} | Rest], IdKeys}) ->
+            {[{Key, {dups, [Val1, Val2]}} | Rest], IdKeys};
+        ({Key, _}=KV, {Rest, IdKeys}) ->
+            {[KV | Rest], [{Id, Key} | IdKeys]}
+    end,
+    InitAcc = {[], VIdKeys},
+    {Duped, VIdKeys0} = lists:foldl(CombineDupesFun, InitAcc, lists:sort(KVs)),
+    FinalKVs = [{{Key, DocId}, Val} || {Key, Val} <- Duped] ++ VKVs,
+    insert_results(DocId, RKVs, RVKVs, [{Id, FinalKVs} | VKVAcc], VIdKeys0).
+
+
+write_kvs(State, UpdateSeq, ViewKVs, DocIdKeys) ->
+    #spatial_state{
+        id_btree=IdBtree,
+        first_build=FirstBuild,
+        fd = Fd,
+        views = Views
+    } = State,
+
+    {ok, ToRemove, IdBtree2} = update_id_btree(IdBtree, DocIdKeys, FirstBuild),
+    ToRemByView = collapse_rem_keys(ToRemove, dict:new()),
+
+    UpdateView = fun(#spatial{id_num = ViewId} = View, {ViewId, KVs}) ->
+        ToRem = couch_util:dict_find(ViewId, ToRemByView, []),
         {ok, IndexTreePos, IndexTreeHeight} = vtree:add_remove(
-                Fd, Index#spatial.treepos, Index#spatial.treeheight,
-                AddKeyValues, KeysToRemove),
-        case IndexTreePos =/= Index#spatial.treepos of
-        true ->
-             Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight,
-                 update_seq=NewSeq};
+            Fd, View#spatial.treepos, View#spatial.treeheight, KVs, ToRem),
+        NewUpdateSeq = case IndexTreePos =/= View#spatial.treepos of
+            true -> UpdateSeq;
+            false -> View#spatial.update_seq
+        end,
+        View#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight,
+            update_seq=NewUpdateSeq}
+    end,
+
+    State#spatial_state{
+        views = lists:zipwith(UpdateView, Views, ViewKVs),
+        update_seq = UpdateSeq,
+        id_btree = IdBtree2
+    }.
+
+
+% This is a verbatim copy from couch_mrview_updater
+update_id_btree(Btree, DocIdKeys, true) ->
+    ToAdd = [{Id, DIKeys} || {Id, DIKeys} <- DocIdKeys, DIKeys /= []],
+    couch_btree:query_modify(Btree, [], ToAdd, []);
+update_id_btree(Btree, DocIdKeys, _) ->
+    ToFind = [Id || {Id, _} <- DocIdKeys],
+    ToAdd = [{Id, DIKeys} || {Id, DIKeys} <- DocIdKeys, DIKeys /= []],
+    ToRem = [Id || {Id, DIKeys} <- DocIdKeys, DIKeys == []],
+    couch_btree:query_modify(Btree, ToFind, ToAdd, ToRem).
+
+
+% This is a verbatim copy from couch_mrview_updater
+collapse_rem_keys([], Acc) ->
+    Acc;
+collapse_rem_keys([{ok, {DocId, ViewIdKeys}} | Rest], Acc) ->
+    NewAcc = lists:foldl(fun({ViewId, Key}, Acc2) ->
+        dict:append(ViewId, {Key, DocId}, Acc2)
+    end, Acc, ViewIdKeys),
+    collapse_rem_keys(Rest, NewAcc);
+collapse_rem_keys([{not_found, _} | Rest], Acc) ->
+    collapse_rem_keys(Rest, Acc).
+
+
+% This is a verbatim copy from couch_mrview_updater
+send_partial(Pid, State) when is_pid(Pid) ->
+    gen_server:cast(Pid, {new_state, State});
+send_partial(_, _) ->
+    ok.
+
+
+% This is a verbatim copy from couch_mrview_updater
+update_task(NumChanges) ->
+    [Changes, Total] = couch_task_status:get([changes_done, total_changes]),
+    Changes2 = Changes + NumChanges,
+    Progress = case Total of
+        0 ->
+            % updater restart after compaction finishes
+            0;
         _ ->
-             Index#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight}
-        end
-    end, Group#spatial_group.indexes, IndexKeyValuesToAdd),
-    Group2 = Group#spatial_group{indexes=Indexes2, current_seq=NewSeq, id_btree=IdBtree2},
-    lists:foreach(fun(Index) ->
-        ?LOG_INFO("Position of the spatial index (~p) root node: ~p",
-                [Index#spatial.id_num, Index#spatial.treepos])
-    end, Indexes2),
-    {ok, Group2}.
+            (Changes2 * 100) div Total
+    end,
+    couch_task_status:update([{progress, Progress}, {changes_done, Changes2}]).
 
-
-% NOTE vmx: This is kind of ugly. This function is needed for a benchmark for
-%     the replication filter
-% Return the bounding box of a GeoJSON geometry. "Geo" is wrapped in
-% brackets ({}) as returned from proplists:get_value()
-geojson_get_bbox(Geo) ->
-    {Bbox, {_, nil}} = process_result([Geo|[nil]]),
-    Bbox.
-
-
-process_results(Results) ->
-    % NOTE vmx (2011-02-01): the ordering of the results doesn't matter
-    %     therefore we don't need to reverse the list.
-    lists:foldl(fun(Result, Acc) ->
-        [process_result(Result)|Acc]
-    end, [], Results).
 
 process_result([{Geo}|[Value]]) ->
     Type = binary_to_atom(proplists:get_value(<<"type">>, Geo), utf8),
