@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(couch_httpd_spatial_list).
+-module(couch_spatial_list).
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
@@ -72,7 +72,7 @@ handle_view_list_req_deprecated(Req, _Db, _DDoc) ->
 
 
 handle_view_list(Req, Db, DDoc, ListName, ViewDDoc, ViewName) ->
-    Args0 = couch_httpd_spatial:parse_qs(Req),
+    Args0 = couch_spatial_http:parse_qs(Req),
     ETagFun = fun(BaseSig, Acc0) ->
         UserCtx = Req#httpd.user_ctx,
         Name = UserCtx#user_ctx.name,

@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(couch_httpd_spatial).
+-module(couch_spatial_http).
 
 -export([handle_spatial_req/3, handle_info_req/3, handle_compact_req/3,
     handle_cleanup_req/2, parse_qs/1]).
