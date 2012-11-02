@@ -265,7 +265,9 @@ spatial_qs(SpatialArgs) ->
         bbox = Bbox,
         stale = Stale,
         count = Count,
-        bounds = Bounds
+        bounds = Bounds,
+        limit = Limit,
+        skip = Skip
     } = SpatialArgs,
     QsList = case Bbox =:= DefSpatialArgs#spatial_query_args.bbox of
     true ->
@@ -292,6 +294,12 @@ spatial_qs(SpatialArgs) ->
     false ->
         ["bounds=" ++ ?b2l(iolist_to_binary(
             lists:nth(2, hd(io_lib:format("~p", [Bounds])))))]
+    end ++
+    case Limit =:= DefSpatialArgs#spatial_query_args.limit of
+    true ->
+        [];
+    false ->
+        ["limit=" ++ integer_to_list(Limit + Skip)]
     end,
     case QsList of
     [] ->
