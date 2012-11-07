@@ -32,7 +32,7 @@ choose_subtree(Nodes, NewMbb, Less) ->
     % Return all nodes that completely enclose the node that will be inserted,
     % hence don't need any expansion.
     Cov = lists:filter(fun({Mbb, _}) ->
-                               within_mbb(NewMbb, Mbb, Less)
+                               vtree_util:within_mbb(NewMbb, Mbb, Less)
                        end, Nodes),
     case Cov of
         % Any node needs to be expanded to include the new one
@@ -279,21 +279,4 @@ min_size(Nodes) ->
             MinNode2;
         false ->
             MinNode
-    end.
-
-% Returns true if MBB `A` is completely within `B`, i.E. merging `A` with `B`
-% wouldn't expand `B` and just return `B`.
--spec within_mbb(A :: mbb(), B :: mbb(), Less :: lessfun()) -> true | false.
-within_mbb(A, B, Less) ->
-    within_mbb0(lists:zip(A, B), Less).
--spec within_mbb0([{{keyval(), keyval()}, {keyval(), keyval()}}],
-                  Less :: lessfun()) -> true | false.
-within_mbb0([], _Less) ->
-    true;
-within_mbb0([{{MinA, MaxA}, {MinB, MaxB}}|T], Less) ->
-    case Less(MinA, MinB) orelse Less(MaxB, MaxA) of
-        true ->
-            false;
-        _ ->
-            within_mbb0(T, Less)
     end.

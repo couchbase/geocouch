@@ -18,7 +18,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(51),
+    etap:plan(44),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -41,7 +41,6 @@ test() ->
     test_calc_delta_common_overlap_perimeter(),
     test_calc_delta_common_overlap_volume(),
     test_min_size(),
-    test_within_mbb(),
     ok.
 
 
@@ -391,30 +390,3 @@ test_min_size() ->
     etap:is(?MOD:min_size([Node1, Node5, Node4, Node6]), Node6,
             "min perimeter: two zero volume nodes, one with smallest "
             "perimeter").
-
-
-test_within_mbb() ->
-    Less = fun(A, B) -> A < B end,
-
-    Mbb1 = [{-38, 74.2}, {38, 948}],
-    Mbb2 = [{-37.3, 50}, {43, 428.74}],
-    Mbb3 = [{-37.3, 74.2}, {43, 428.74}],
-    Mbb4 = [{400.72, 593}, {-472, -390.3}],
-    Mbb5 = [{4.72, 593}, {72, 390.3}],
-    Mbb6 = [{-48, 84.2}, {28, 958}],
-    Mbb7 = [{-48.4, -38}, {28, 958}],
-
-    etap:is(?MOD:within_mbb(Mbb2, Mbb1, Less), true,
-            "The MBB is completely within the other"),
-    etap:is(?MOD:within_mbb(Mbb3, Mbb1, Less), true,
-            "The MBB is completely within the other, but touches the other"),
-    etap:is(?MOD:within_mbb(Mbb1, Mbb1, Less), true,
-            "The MBB is the same as the other"),
-    etap:is(?MOD:within_mbb(Mbb4, Mbb1, Less), false,
-            "The MBB is complely outside the other"),
-    etap:is(?MOD:within_mbb(Mbb5, Mbb1, Less), false,
-            "The MBB intersects the other"),
-    etap:is(?MOD:within_mbb(Mbb6, Mbb1, Less), false,
-            "The MBB encloses the other"),
-    etap:is(?MOD:within_mbb(Mbb7, Mbb1, Less), false,
-            "The MBB is outside, but touches the other").

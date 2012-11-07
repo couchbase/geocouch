@@ -15,7 +15,7 @@
 -include("vtree.hrl").
 
 -export([calc_mbb/2, nodes_mbb/2, min/2, max/2, calc_perimeter/1,
-         calc_volume/1, intersect_mbb/3, find_min_value/2]).
+         calc_volume/1, intersect_mbb/3, find_min_value/2, within_mbb/3]).
 
 
 -spec min(Tuple::{any(), any()} | [any()], Less::fun()) -> Min::any().
@@ -146,3 +146,21 @@ find_min_value(MinFun, [_|_]=Data) ->
               end
       end,
       {nil, []}, Data).
+
+
+% Returns true if MBB `A` is completely within `B`, i.E. merging `A` with `B`
+% wouldn't expand `B` and just return `B`.
+-spec within_mbb(A :: mbb(), B :: mbb(), Less :: lessfun()) -> true | false.
+within_mbb(A, B, Less) ->
+    within_mbb0(lists:zip(A, B), Less).
+-spec within_mbb0([{{keyval(), keyval()}, {keyval(), keyval()}}],
+                  Less :: lessfun()) -> true | false.
+within_mbb0([], _Less) ->
+    true;
+within_mbb0([{{MinA, MaxA}, {MinB, MaxB}}|T], Less) ->
+    case Less(MinA, MinB) orelse Less(MaxB, MaxA) of
+        true ->
+            false;
+        _ ->
+            within_mbb0(T, Less)
+    end.
