@@ -2,7 +2,8 @@
 
 -include_lib("../include/vtree.hrl").
 
--export([generate_kvnodes/1, generate_kpnodes/1, create_file/1]).
+-export([generate_kvnodes/1, generate_kpnodes/1, create_file/1,
+         get_kvnodes/2]).
 
 
 -spec generate_kvnodes(Num :: pos_integer()) -> [#kv_node{}].
@@ -68,3 +69,20 @@ create_file(Filename) ->
                   [Reason, Filename])
     end,
     Fd.
+
+
+% Return a 2-tuple with a list of the depths of the KV-nodes and the
+% KV-nodes themselves
+get_kvnodes(Fd, RootPos) ->
+    Children = vtree_io:read_node(Fd, RootPos),
+    get_kvnodes(Fd, Children, 0, {[], []}).
+get_kvnodes(_Fd, [], _Depth, Acc) ->
+    Acc;
+get_kvnodes(_Fd, [#kv_node{}|_]=Children, Depth, {Depths, Nodes}) ->
+    {[Depth|Depths], Children ++ Nodes};
+get_kvnodes(Fd, [#kp_node{}=Node|Rest], Depth, Acc) ->
+    Children = vtree_io:read_node(Fd, Node#kp_node.childpointer),
+    % Move down
+    Acc2 = get_kvnodes(Fd, Children, Depth+1, Acc),
+    % Move sideways
+    get_kvnodes(Fd, Rest, Depth, Acc2).
