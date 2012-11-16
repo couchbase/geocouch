@@ -23,6 +23,8 @@
 
 
 -spec insert(Vt :: #vtree{}, Nodes :: [#kv_node{}]) -> #vtree{}.
+insert(Vt, []) ->
+    Vt;
 insert(#vtree{root=nil}=Vt, Nodes) when length(Nodes) > Vt#vtree.fill_max ->
     T1 = now(),
     % If we would do single inserts, the first node that was inserted would

@@ -24,7 +24,7 @@ main(_) ->
     random:seed(1, 11, 91),
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(34),
+    etap:plan(35),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -101,6 +101,9 @@ test_insert() ->
     etap:is(lists:sort(KvNodes5), lists:sort([hd(Nodes1)|Nodes5]),
             "Inserted single node into existing tree: node got inserted. "
             "Root has < fill_min nodes"),
+
+    etap:is(?MOD:insert(NewVtree2, []), NewVtree2,
+            "Not adding any nodes returns the original tree"),
 
     couch_file:close(Fd).
 
