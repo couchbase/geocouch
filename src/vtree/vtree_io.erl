@@ -123,6 +123,9 @@ encode_value(Fd, #kv_node{}=Node) ->
     % Geom is not a WKB yet, hence store it as external terms
     {ok, PointerGeom, SizeGeom} = geocouch_file:append_chunk(
                                     Fd, ?term_to_bin(Geom)),
+    % The body is expected to be a binary already. In case of Couchbase it is
+    % the binary version of JSON.stringify(), in Apache CouchDB it is binary
+    % encoded Erlang terms.
     {ok, PointerBody, SizeBody} = geocouch_file:append_chunk(Fd, Body),
     % The `SizeDoc` is used to get the actual size stored in disk, hence it
     % includes the body and the geometry
