@@ -23,6 +23,13 @@ main(_) ->
     % Set the random seed once. It might be reset a certain tests
     random:seed(1, 11, 91),
 
+    % Apache CouchDB doesn't have the couch_file_write_guard module
+    try
+        couch_file_write_guard:sup_start_link()
+    catch error:undef ->
+        ok
+    end,
+
     code:add_pathz(filename:dirname(escript:script_name())),
     etap:plan(40),
     case (catch test()) of
@@ -37,7 +44,6 @@ main(_) ->
 
 
 test() ->
-    couch_file_write_guard:sup_start_link(),
     test_delete(),
     test_delete_multiple(),
     test_delete_nodes(),

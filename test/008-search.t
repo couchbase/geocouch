@@ -20,6 +20,13 @@
 -define(FILENAME, "/tmp/vtree_search_vtree.bin").
 
 main(_) ->
+    % Apache CouchDB doesn't have the couch_file_write_guard module
+    try
+        couch_file_write_guard:sup_start_link()
+    catch error:undef ->
+        ok
+    end,
+
     code:add_pathz(filename:dirname(escript:script_name())),
     etap:plan(48),
     case (catch test()) of
@@ -34,7 +41,6 @@ main(_) ->
 
 
 test() ->
-    couch_file_write_guard:sup_start_link(),
     test_search(),
     test_all(),
     test_count_search(),

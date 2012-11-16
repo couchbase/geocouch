@@ -22,6 +22,13 @@ main(_) ->
     % Set the random seed once, for the whole test suite
     random:seed(1, 11, 91),
 
+    % Apache CouchDB doesn't have the couch_file_write_guard module
+    try
+        couch_file_write_guard:sup_start_link()
+    catch error:undef ->
+        ok
+    end,
+
     code:add_pathz(filename:dirname(escript:script_name())),
     etap:plan(16),
     case (catch test()) of
@@ -36,7 +43,6 @@ main(_) ->
 
 
 test() ->
-    couch_file_write_guard:sup_start_link(),
     test_encode_decode_kvnode_value(),
     test_encode_decode_kpnode_value(),
     test_encode_decode_kvnodes(),
