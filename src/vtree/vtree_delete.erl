@@ -25,6 +25,10 @@
 % The nodes that should get deleted don't need to be KV-nodes with every
 % record field set. It's enough to have the `key` and the `docid` set.
 -spec delete(Vt :: #vtree{}, Nodes :: [#kv_node{}]) -> #vtree{}.
+delete(Vt, []) ->
+    Vt;
+delete(#vtree{root=nil}=Vt, _Nodes) ->
+    Vt;
 delete(Vt, Nodes) ->
     T1 = now(),
     #vtree{

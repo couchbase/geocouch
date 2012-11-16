@@ -24,7 +24,7 @@ main(_) ->
     random:seed(1, 11, 91),
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(38),
+    etap:plan(40),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -84,6 +84,12 @@ test_delete() ->
 
     Vtree7 = ?MOD:delete(Vtree5, Nodes2),
     etap:is(Vtree4#vtree.root, nil, "174 nodes inserted, all deleted"),
+
+    etap:is(?MOD:delete(Vtree2, []), Vtree2,
+            "Not deleting any nodes returns the original tree"),
+    etap:is(?MOD:delete(Vtree1, Nodes1), Vtree1,
+            "Deleting something from an empty tree, returns the original "
+            "empty tree"),
 
     couch_file:close(Fd).
 
