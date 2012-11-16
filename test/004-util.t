@@ -157,10 +157,10 @@ test_intersect_mbb() ->
             overlapfree,
             "One MBBs has zero volume and doesn't overlap (is overlap-free)"),
     etap:is(?MOD:intersect_mbb(Mbb5, Mbb10, Less),
-            overlapfree,
+            [{593, 593}, {-432.39, -390.3}],
             "One MBB touches another MBB"),
     etap:is(?MOD:intersect_mbb(Mbb5, Mbb11, Less),
-            overlapfree,
+            [{593, 593}, {-432.39, -390.3}],
             "A zero volume MBB touches another MBB").
 
 

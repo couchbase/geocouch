@@ -104,7 +104,7 @@ nodes_mbb(Nodes, Less) ->
     vtree_util:calc_mbb(Mbbs, Less).
 
 
-% Returns the intersection of two MBBs
+% Returns the intersection of two MBBs. Touching also counts as intersection.
 -spec intersect_mbb(A :: mbb(), B :: mbb(), Less :: lessfun()) ->
                            mbb() | overlapfree.
 intersect_mbb(A, B, Less) ->
@@ -117,17 +117,9 @@ intersect_mbb0([{{MinA, MaxA}, {MinB, MaxB}}|T], Less, Acc) ->
     Min = vtree_util:max({MinA, MinB}, Less),
     Max = vtree_util:min({MaxA, MaxB}, Less),
 
-    case {Min, Max} of
-        {Min, Max} when Min > Max -> overlapfree;
-        {Min, Max} when Min < Max -> intersect_mbb0(T, Less, [{Min, Max}|Acc]);
-        % The MBBs either touch eachother, or one has zero length
-        {Min, Max} when Min == Max ->
-            case (MinA /= MaxB) and (MaxA /= MinB) of
-                % The MBBs don't touch eachother
-                true -> intersect_mbb0(T, Less, [{Min, Max}|Acc]);
-                % The Mbbs touch eachother
-                false -> overlapfree
-            end
+    case Less(Max, Min) of
+        true -> overlapfree;
+        false -> intersect_mbb0(T, Less, [{Min, Max}|Acc])
     end.
 
 
