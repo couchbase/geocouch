@@ -158,14 +158,14 @@ test_encode_mbb() ->
     Mbb2 = [{8,9}],
     Mbb3 = [{-39.42, -4.2}, {48, 48}, {0, 3}],
 
-    etap:is(?MOD:encode_mbb(Mbb1),
-            <<"[[39.93,48.9483],[20,90],[-29.4,83]]">>,
+    etap:is(ejson:decode(?MOD:encode_mbb(Mbb1)),
+            [[39.93, 48.9483], [20, 90], [-29.4, 83]],
             "MBB got correctly encoded (a)"),
-    etap:is(?MOD:encode_mbb(Mbb2),
-            <<"[[8,9]]">>,
+    etap:is(ejson:decode(?MOD:encode_mbb(Mbb2)),
+            [[8, 9]],
             "MBB got correctly encoded (b)"),
-    etap:is(?MOD:encode_mbb(Mbb3),
-            <<"[[-39.42,-4.2],[48,48],[0,3]]">>,
+    etap:is(ejson:decode(?MOD:encode_mbb(Mbb3)),
+            [[-39.42, -4.2], [48, 48], [0, 3]],
             "MBB got correctly encoded (c)").
 
 
