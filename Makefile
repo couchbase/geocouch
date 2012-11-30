@@ -2,18 +2,33 @@ ERL=erl
 VERSION=$(shell git describe)
 GEOCOUCH_PLT ?= ../geocouch.plt
 
-all: compile
+couchbase couchbase-check: REBAR_CONFIG := rebar_couchbase.config
+
+
+all:
+	@echo "Try \"make couchbase\" instead."
+
+check:
+	@echo "Try \"make couchbase-check\" instead."
+
+.PHONY: couchbase
+couchbase: compile
+couchbase-check: do-check
 
 compile:
-	./rebar compile
+	./rebar -C $(REBAR_CONFIG) compile
 
 compileforcheck:
-	MAKECHECK=1 ./rebar compile
-
-buildandtest: all test
+	MAKECHECK=1 ./rebar -C $(REBAR_CONFIG) compile
 
 runtests:
 	ERL_LIBS=. ERL_FLAGS="-pa ${COUCH_SRC} -pa ${COUCH_SRC}/../etap -pa ${COUCH_SRC}/../snappy -pa ${COUCH_SRC}/../../test/etap -pa ${COUCH_SRC}/../couch_set_view/ebin -pa ${COUCH_SRC}/../mochiweb -pa ${COUCH_SRC}/../lhttpc -pa ${COUCH_SRC}/../erlang-oauth -pa ${COUCH_SRC}/../ejson -pa ${COUCH_SRC}/../mapreduce" prove ./vtree/test/*.t
+
+do-check: clean compileforcheck dialyzer runtests clean-again
+
+clean clean-again:
+	./rebar -C rebar_couchbase.config clean
+	rm -f *.tar.gz
 
 
 $(GEOCOUCH_PLT):
@@ -22,12 +37,6 @@ $(GEOCOUCH_PLT):
 dialyzer: $(GEOCOUCH_PLT)
 	dialyzer --verbose --plt $(GEOCOUCH_PLT) -r vtree
 
-check: clean compileforcheck dialyzer runtests
-	./rebar clean
-
-clean:
-	./rebar clean
-	rm -f *.tar.gz
 
 geocouch-$(VERSION).tar.gz:
 	git archive --prefix=geocouch-$(VERSION)/ --format tar HEAD | gzip -9vc > $@

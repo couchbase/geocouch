@@ -4,10 +4,12 @@ Welcome to the world of GeoCouch
 GeoCouch is a spatial extension for Couchbase and Apache CouchDB.
 
 
-Checkout the code
------------------
+For Couchbase
+-------------
 
-Either checkout CouchDB and GeoCouch separately or checkout both with repo:
+### Checkout the code
+
+Check the code out with repo:
 
     mkdir newvtree
     cd newvtree
@@ -15,8 +17,7 @@ Either checkout CouchDB and GeoCouch separately or checkout both with repo:
     repo sync
 
 
-Build instructions
-------------------
+### Build instructions
 
 Make sure you have built CouchDB from source including `make dev`. So
 go to your CouchDB directory and run:
@@ -27,12 +28,11 @@ go to your CouchDB directory and run:
 
 After that you can compile GeoCouch from within the GeoCouch directory:
 
-    COUCH_SRC=<path-to-couchdb-source>/src/couchdb make
+    COUCH_SRC=<path-to-couchdb-source>/src/couchdb make couchbase
 
 
-Running tests
--------------
+### Running tests
 
 After you've followed the build instructions you can run the tests with
 
-    COUCH_SRC=<path-to-couchdb-source>/src/couchdb make check
+    COUCH_SRC=<path-to-couchdb-source>/src/couchdb make couchbase-check
