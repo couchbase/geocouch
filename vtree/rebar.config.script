@@ -3,8 +3,13 @@ IncludeDir = case os:getenv("COUCH_SRC") of
     false -> []; % env var not defined
     []    -> []; % env var set to empty string
     Dir ->
-        % vtree is one level deeper than the root directory, hence prepend "../"
-        [{i, filename:absname("../" ++ Dir)}]
+        % If a relative path is given, prepend "../" as we are one level under the root
+        case filename:absname(Dir) of
+            Dir ->
+                [{i, Dir}];
+            _ ->
+                [{i, filename:absname("../" ++ Dir)}]
+        end
 end,
 
 % Add "makecheck" setting for testing
