@@ -26,6 +26,7 @@
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
+-include_lib("vtree/include/vtree.hrl").
 
 
 start_update(Partial, State, NumChanges) ->
@@ -200,21 +201,36 @@ merge_results({DocId, RawResults}, ViewKVs, DocIdKeys) ->
     {ViewKVs1, [ViewIdKeys | DocIdKeys]}.
 
 
-% This is a verbatim copy from couch_mrview_updater
 insert_results(DocId, [], [], ViewKVs, ViewIdKeys) ->
     {lists:reverse(ViewKVs), {DocId, ViewIdKeys}};
 insert_results(DocId, [KVs | RKVs], [{Id, VKVs} | RVKVs], VKVAcc, VIdKeys) ->
     CombineDupesFun = fun
-        ({Key, Val}, {[{Key, {dups, Vals}} | Rest], IdKeys}) ->
-            {[{Key, {dups, [Val | Vals]}} | Rest], IdKeys};
-        ({Key, Val1}, {[{Key, Val2} | Rest], IdKeys}) ->
-            {[{Key, {dups, [Val1, Val2]}} | Rest], IdKeys};
+        ({Key, {Geom, Val}}, {[{Key, {dups, {Geom, Vals}}} | Rest], IdKeys}) ->
+            {[{Key, {dups, {Geom, [Val | Vals]}}} | Rest], IdKeys};
+        ({Key, {Geom, Val1}}, {[{Key, {Geom, Val2}} | Rest], IdKeys}) ->
+            {[{Key, {dups, {Geom, [Val1, Val2]}}} | Rest], IdKeys};
         ({Key, _}=KV, {Rest, IdKeys}) ->
             {[KV | Rest], [{Id, Key} | IdKeys]}
     end,
     InitAcc = {[], VIdKeys},
     {Duped, VIdKeys0} = lists:foldl(CombineDupesFun, InitAcc, lists:sort(KVs)),
-    FinalKVs = [{{Key, DocId}, Val} || {Key, Val} <- Duped] ++ VKVs,
+
+    FinalKVs = lists:map(fun
+        ({Key, {dups, {Geom, Vals}}}) ->
+            #kv_node{
+                key = Key,
+                docid = DocId,
+                geometry = Geom,
+                body = ?term_to_bin({dups, Vals})
+            };
+        ({Key, {Geom, Val}}) ->
+            #kv_node{
+                key = Key,
+                docid = DocId,
+                geometry = Geom,
+                body = ?term_to_bin(Val)
+            }
+        end, Duped) ++ VKVs,
     insert_results(DocId, RKVs, RVKVs, [{Id, FinalKVs} | VKVAcc], VIdKeys0).
 
 
@@ -222,7 +238,6 @@ write_kvs(State, UpdateSeq, ViewKVs, DocIdKeys) ->
     #spatial_state{
         id_btree=IdBtree,
         first_build=FirstBuild,
-        fd = Fd,
         views = Views
     } = State,
 
@@ -231,14 +246,14 @@ write_kvs(State, UpdateSeq, ViewKVs, DocIdKeys) ->
 
     UpdateView = fun(#spatial{id_num = ViewId} = View, {ViewId, KVs}) ->
         ToRem = couch_util:dict_find(ViewId, ToRemByView, []),
-        {ok, IndexTreePos, IndexTreeHeight} = vtree:add_remove(
-            Fd, View#spatial.treepos, View#spatial.treeheight, KVs, ToRem),
-        NewUpdateSeq = case IndexTreePos =/= View#spatial.treepos of
+        Vtree = vtree_delete:delete(View#spatial.vtree, ToRem),
+        Vtree2 = vtree_insert:insert(Vtree, KVs),
+        NewUpdateSeq = case
+                Vtree2#vtree.root =/= (View#spatial.vtree)#vtree.root of
             true -> UpdateSeq;
             false -> View#spatial.update_seq
         end,
-        View#spatial{treepos=IndexTreePos, treeheight=IndexTreeHeight,
-            update_seq=NewUpdateSeq}
+        View#spatial{vtree=Vtree2, update_seq=NewUpdateSeq}
     end,
 
     State#spatial_state{
@@ -259,12 +274,17 @@ update_id_btree(Btree, DocIdKeys, _) ->
     couch_btree:query_modify(Btree, ToFind, ToAdd, ToRem).
 
 
-% This is a verbatim copy from couch_mrview_updater
+% Use this step to convert the data from tuples to KV-nodes where only the
+% `docid` and the `key` is set (that's enough for deleting them from the tree)
 collapse_rem_keys([], Acc) ->
     Acc;
 collapse_rem_keys([{ok, {DocId, ViewIdKeys}} | Rest], Acc) ->
     NewAcc = lists:foldl(fun({ViewId, Key}, Acc2) ->
-        dict:append(ViewId, {Key, DocId}, Acc2)
+        Node = #kv_node{
+            docid = DocId,
+            key = Key
+        },
+        dict:append(ViewId, Node, Acc2)
     end, Acc, ViewIdKeys),
     collapse_rem_keys(Rest, NewAcc);
 collapse_rem_keys([{not_found, _} | Rest], Acc) ->
@@ -292,7 +312,30 @@ update_task(NumChanges) ->
     couch_task_status:update([{progress, Progress}, {changes_done, Changes2}]).
 
 
+% The multidimensional case
+process_result([MultiDim|[Value]]) when is_list(MultiDim) ->
+    [{Geo}|Rest] = MultiDim,
+    % XXX NOTE vmx 2012-11-29: Currently it is expected that the geometry
+    %     is the first value of the emit.
+    Tuples = lists:map(
+        fun([Min, Max]) ->
+            {Min, Max};
+        % `null` is a wildcard a will return all values
+        (<<"null">>) ->
+            nil;
+        % A single value means that the mininum and the maximum are the same
+        (Single) ->
+            {Single, Single}
+    end, Rest),
+    {Bbox, Geom} = process_geometry(Geo),
+    {Bbox ++ Tuples, {Geom, Value}};
+% There old case when only two dimensions were supported
 process_result([{Geo}|[Value]]) ->
+    {Bbox, Geom} = process_geometry(Geo),
+    {Bbox, {Geom, Value}}.
+
+% Returns an Erlang encoded geometry and the corresponding bounding box
+process_geometry(Geo) ->
     Type = binary_to_atom(proplists:get_value(<<"type">>, Geo), utf8),
     Bbox = case Type of
     'GeometryCollection' ->
@@ -317,9 +360,8 @@ process_result([{Geo}|[Value]]) ->
             Bbox2
         end
     end,
-
     Geom = geojsongeom_to_geocouch(Geo),
-    {erlang:list_to_tuple(Bbox), {Geom, Value}}.
+    {Bbox, Geom}.
 
 
 extract_bbox(Type, Coords) ->
@@ -346,17 +388,16 @@ extract_bbox(Type, Coords, InitBbox) ->
         end, InitBbox, Coords)
     end.
 
-bbox([], {Min, Max}) ->
-    Min ++ Max;
-bbox([Coords|Rest], nil) ->
-    bbox(Rest, {Coords, Coords});
-bbox(Coords, Bbox) when is_list(Bbox)->
-    MinMax = lists:split(length(Bbox) div 2, Bbox),
-    bbox(Coords, MinMax);
-bbox([Coords|Rest], {Min, Max}) ->
-    Min2 = lists:zipwith(fun(X, Y) -> erlang:min(X,Y) end, Coords, Min),
-    Max2 = lists:zipwith(fun(X, Y) -> erlang:max(X,Y) end, Coords, Max),
-    bbox(Rest, {Min2, Max2}).
+bbox([], Range) ->
+    Range;
+bbox([[X, Y]|Rest], nil) ->
+    bbox(Rest, [{X, X}, {Y, Y}]);
+bbox([Coords|Rest], Range) ->
+    Range2 = lists:zipwith(
+        fun(Coord, {Min, Max}) ->
+            {erlang:min(Coord, Min), erlang:max(Coord, Max)}
+        end, Coords, Range),
+    bbox(Rest, Range2).
 
 
 % @doc Transforms a GeoJSON geometry (as Erlang terms), to an internal

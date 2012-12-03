@@ -19,6 +19,7 @@
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
+-include_lib("vtree/include/vtree.hrl").
 
 -record(acc, {
     meta_sent = false,
@@ -44,8 +45,12 @@ query_view(Db, DDoc, ViewName, Args, Callback, Acc0) ->
 
 query_view_count(Db, DDoc, ViewName, Args) ->
     {ok, View, _, _} = couch_spatial_util:get_view(Db, DDoc, ViewName, Args),
-    vtree:count_lookup(
-        View#spatial.fd, View#spatial.treepos, Args#spatial_args.bbox).
+    case Args#spatial_args.bbox of
+    nil ->
+        vtree_search:count_all(View#spatial.vtree);
+    Bbox ->
+        vtree_search:count_search(View#spatial.vtree, [Bbox])
+    end.
 
 
 get_info(Db, DDoc) ->
@@ -95,22 +100,43 @@ spatial_fold(View, Args, Callback, UserAcc) ->
         user_acc = UserAcc,
         update_seq = View#spatial.update_seq
     },
-    {ok, Acc2} = fold(View, fun do_fold/2, Acc, Bbox, Bounds),
+    Acc2 = fold(View, fun do_fold/2, Acc, Bbox, Bounds),
     finish_fold(Acc2, []).
 
 
 fold(Index, FoldFun, InitAcc, Bbox, Bounds) ->
     WrapperFun = fun(Node, Acc) ->
-        Expanded = couch_spatial_util:expand_dups([Node], []),
-        lists:foldl(fun(E, {ok, Acc2}) ->
-            FoldFun(E, Acc2)
-        end, {ok, Acc}, Expanded)
+        % NOTE vmx 2012-11-28: in Apache CouchDB the body is stored as
+        %     Erlang terms
+        Value = binary_to_term(Node#kv_node.body),
+        Expanded = couch_spatial_util:expand_dups(
+            [Node#kv_node{body=Value}], []),
+        fold_fun(FoldFun, Expanded, Acc)
     end,
-    {_State, Acc} = vtree:lookup(
-        Index#spatial.fd, Index#spatial.treepos, Bbox,
-        {WrapperFun, InitAcc}, Bounds),
-    {ok, Acc}.
+    case Bbox of
+    nil ->
+        vtree_search:all(Index#spatial.vtree, WrapperFun, InitAcc);
+    Bbox ->
+        Bboxes = case Bounds of
+        nil ->
+            [Bbox];
+        _ ->
+            couch_spatial_util:split_bbox_if_flipped(Bbox, Bounds)
+        end,
+        vtree_search:search(Index#spatial.vtree, Bboxes, WrapperFun, InitAcc)
+    end.
 
+
+% This is like a normal fold that can be interrupted in the middle
+fold_fun(_Fun, [], Acc) ->
+    {ok, Acc};
+fold_fun(Fun, [KV|Rest], Acc) ->
+    case Fun(KV, Acc) of
+    {ok, Acc2} ->
+        fold_fun(Fun, Rest, Acc2);
+    {stop, Acc2} ->
+        {stop, Acc2}
+    end.
 
 do_fold(_Kv, #acc{skip=N}=Acc) when N > 0 ->
     {ok, Acc#acc{skip=N-1, last_go=ok}};
@@ -129,12 +155,19 @@ do_fold(Kv, #acc{meta_sent=false}=Acc) ->
     end;
 do_fold(_Kv, #acc{limit=0}=Acc) ->
     {stop, Acc};
-do_fold({{_Bbox, _DocId}, {_Geom, _Value}}=Row, Acc) ->
+do_fold(#kv_node{}=Node, Acc) ->
+    #kv_node{
+        key = Mbb,
+        docid = DocId,
+        geometry = Geom,
+        body = Value
+    } = Node,
     #acc{
         limit = Limit,
         callback = Callback,
         user_acc = UserAcc
     } = Acc,
+    Row = {Mbb, DocId, Geom, Value},
     {Go, UserAcc2} = Callback({row, Row}, UserAcc),
     {Go, Acc#acc{
         limit = Limit-1,

@@ -26,8 +26,7 @@
 }).
 
 -record(spatial_acc, {
-    treepos = nil,
-    treeheight = 0,
+    vtree = nil,
     kvs = [],
     kvs_size = 0,
     changes = 0,
@@ -60,8 +59,7 @@ compact(State) ->
 
     #spatial_state{
         id_btree = EmptyIdBtree,
-        views = EmptyViews,
-        fd = EmptyFd
+        views = EmptyViews
     } = EmptyState,
 
     % XXX vmx 2012-10-22: Not sure why the [] case happens
@@ -128,14 +126,10 @@ compact(State) ->
     },
 
     {NewViews, _} = lists:mapfoldl(fun({View, EmptyView}, Acc) ->
-        case View#spatial.treepos of
-            % Tree is empty, just grab the the FD
-            nil -> {EmptyView#spatial{fd = EmptyFd}, Acc};
-            _ -> compact_spatial(View, EmptyView, BufferSize, Acc)
-        end
+         compact_spatial(View, EmptyView, BufferSize, Acc)
     end, SpatialAcc, lists:zip(Views, EmptyViews)),
 
-    unlink(EmptyFd),
+    unlink(EmptyState#spatial_state.fd),
     {ok, EmptyState#spatial_state{
         id_btree = NewIdBtree,
         views = NewViews,
@@ -159,32 +153,19 @@ recompact(State) ->
 
 
 compact_spatial(View, EmptyView, BufferSize, Acc0) ->
-    #spatial{
-        fd = OldFd,
-        treepos = OrigTreepos
-    } = View,
-    #spatial{
-        fd = NewFd,
-        treepos = EmptyTreepos,
-        treeheight = EmptyTreeheight
-    } = EmptyView,
-
     Fun = fun(Kv, Acc) ->
         #spatial_acc{
-            treepos = TreePos,
-            treeheight = TreeHeight,
+            vtree = Vt,
             kvs = Kvs,
             kvs_size = KvsSize0
         } = Acc,
         KvsSize = KvsSize0 + ?term_size(Kv),
-        case KvsSize >= BufferSize of
+        Acc3 = case KvsSize >= BufferSize of
         true ->
-            {ok, TreePos2, TreeHeight2} = vtree_bulk:bulk_load(
-                NewFd, TreePos, TreeHeight, [Kv|Kvs]),
+            Vt2 = vtree_insert:insert(Vt, [Kv|Kvs]),
             Acc2 = update_task(Acc, 1 + length(Kvs)),
             Acc2#spatial_acc{
-                treepos = TreePos2,
-                treeheight = TreeHeight2,
+                vtree = Vt2,
                 kvs = [],
                 kvs_size = 0
             };
@@ -193,30 +174,26 @@ compact_spatial(View, EmptyView, BufferSize, Acc0) ->
                 kvs = [Kv|Kvs],
                 kvs_size = KvsSize
             }
-        end
+        end,
+        {ok, Acc3}
     end,
 
     InitAcc = Acc0#spatial_acc{
         kvs = [],
         kvs_size = 0,
-        treepos = EmptyTreepos,
-        treeheight = EmptyTreeheight
+        vtree = EmptyView#spatial.vtree
     },
 
     %{TreePos3, TreeHeight3, Uncopied, _Total} = vtree:foldl(
-    FinalAcc = vtree:foldl(OldFd, OrigTreepos, Fun, InitAcc),
+    FinalAcc = vtree_search:all(View#spatial.vtree, Fun, InitAcc),
     #spatial_acc{
-        treepos = TreePos3,
-        treeheight = TreeHeight3,
+        vtree = Vt3,
         kvs = Uncopied
     } = FinalAcc,
-    {ok, NewTreePos, NewTreeHeight} = vtree_bulk:bulk_load(
-        NewFd, TreePos3, TreeHeight3, Uncopied),
+    NewVt = vtree_insert:insert(Vt3, Uncopied),
     FinalAcc2 = update_task(FinalAcc, length(Uncopied)),
     NewView = EmptyView#spatial{
-        treepos = NewTreePos,
-        treeheight = NewTreeHeight,
-        fd = NewFd
+        vtree = NewVt
     },
     {NewView, FinalAcc2}.
 

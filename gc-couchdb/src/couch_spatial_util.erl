@@ -22,9 +22,11 @@
 -export([get_row_count/1]).
 -export([validate_args/1]).
 -export([expand_dups/2]).
+-export([row_to_ejson/1, split_bbox_if_flipped/2]).
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
+-include_lib("vtree/include/vtree.hrl").
 
 -define(MOD, couch_spatial_index).
 
@@ -119,7 +121,9 @@ init_state(Db, Fd, State, nil) ->
         seq = 0,
         purge_seq = couch_db:get_purge_seq(Db),
         id_btree_state = nil,
-        view_states=[#spatial{} || _ <- State#spatial_state.views]
+        view_states = [
+            % vtree state, update_seq, purge_seq
+            {#vtree_state{}, 0, 0} || _ <- State#spatial_state.views]
     },
     init_state(Db, Fd, State, Header);
 init_state(Db, Fd, State, Header) ->
@@ -130,14 +134,25 @@ init_state(Db, Fd, State, Header) ->
         view_states = ViewStates
     } = Header,
 
+    % There's currently only one less function supported, hence we can
+    % hard-code it
+    Less = fun(A, B) -> A < B end,
+
     Views = lists:zipwith(
-       fun(ViewState, View) ->
+       fun({VtreeState, UpdateSeq, PurgeSeq2}, View) ->
+            Vtree = #vtree{
+                root = VtreeState#vtree_state.root,
+                fill_min = VtreeState#vtree_state.fill_min,
+                fill_max =VtreeState#vtree_state.fill_max,
+                less = Less,
+                fd = Fd
+            },
             View#spatial{
-                treepos = ViewState#spatial.treepos,
-                treeheight = ViewState#spatial.treeheight,
-                update_seq = ViewState#spatial.update_seq,
-                purge_seq = ViewState#spatial.purge_seq,
-                fd = Fd}
+                vtree = Vtree,
+                update_seq = UpdateSeq,
+                purge_seq = PurgeSeq2,
+                fd = Fd
+            }
         end,
         ViewStates, State#spatial_state.views),
 
@@ -154,11 +169,7 @@ init_state(Db, Fd, State, Header) ->
 
 
 get_row_count(View) ->
-    #spatial{
-        fd = Fd,
-        treepos = TreePos
-    } = View,
-    Count = vtree:count_total(Fd, TreePos),
+    Count = vtree_search:count_all(View#spatial.vtree),
     {ok, Count}.
 
 
@@ -166,12 +177,12 @@ validate_args(Args) ->
     % `stale` and `count` got already validated during parsing
 
     case Args#spatial_args.bbox =:= nil orelse
-        tuple_size(Args#spatial_args.bbox) == 4 of
+        length(Args#spatial_args.bbox) == 2 of
     true ->
         case {Args#spatial_args.bbox, Args#spatial_args.bounds} of
         % Coordinates of the bounding box are flipped and no bounds for the
         % cartesian plane were set
-        {{W, S, E, N}, nil} when E < W; N < S ->
+        {[{W, E}, {S, N}], nil} when E < W; N < S ->
             Msg = <<"Coordinates of the bounding box are flipped, but no "
                     "bounds for the cartesian plane were specified "
                     "(use the `plane_bounds` parameter)">>,
@@ -180,13 +191,13 @@ validate_args(Args) ->
             ok
         end;
     false ->
-        parse_error(<<"`bbox` must have 4 values.">>)
+        parse_error(<<"`bbox` must have 2 dimensions.">>)
     end,
 
     case Args#spatial_args.bounds =:= nil orelse
-            tuple_size(Args#spatial_args.bounds) == 4 of
+            length(Args#spatial_args.bounds) == 2 of
         true -> ok;
-        false -> parse_error(<<"`plane_bounds` must have 4 values.">>)
+        false -> parse_error(<<"`plane_bounds` must have 2 dimensions.">>)
     end,
 
     case Args#spatial_args.limit > 0 of
@@ -214,12 +225,15 @@ make_header(State) ->
         views = Views
     } = State,
     ViewStates = [
-        #spatial{
-             treepos = V#spatial.treepos,
-             treeheight = V#spatial.treeheight,
-             update_seq = V#spatial.update_seq,
-             purge_seq = V#spatial.purge_seq} ||
-        V <- Views
+        {
+            #vtree_state{
+                root = V#spatial.vtree#vtree.root,
+                fill_min = V#spatial.vtree#vtree.fill_min,
+                fill_max = V#spatial.vtree#vtree.fill_max
+            },
+            V#spatial.update_seq,
+            V#spatial.purge_seq
+        } || V <- Views
     ],
     #spatial_header{
         seq = Seq,
@@ -282,8 +296,7 @@ reset_index(Db, Fd, State) ->
 
 
 reset_state(State) ->
-    Views = [View#spatial{treepos=nil, treeheight=0} ||
-                View <- State#spatial_state.views],
+    Views = [View#spatial{vtree = #vtree{}} || View <- State#spatial_state.views],
     State#spatial_state{
         fd = nil,
         query_server = nil,
@@ -293,11 +306,68 @@ reset_state(State) ->
     }.
 
 
-% Verbatim copy from couch_mrview_utils
 expand_dups([], Acc) ->
     lists:reverse(Acc);
-expand_dups([{Key, {dups, Vals}} | Rest], Acc) ->
-    Expanded = [{Key, Val} || Val <- Vals],
+expand_dups([#kv_node{body={dups, Vals}}=Node | Rest], Acc) ->
+    Expanded = [Node#kv_node{body=Val} || Val <- Vals],
     expand_dups(Rest, Expanded ++ Acc);
 expand_dups([KV | Rest], Acc) ->
     expand_dups(Rest, [KV | Acc]).
+
+
+row_to_ejson({Mbb, DocId, Geom, Value}) ->
+    % If there's no geometry in the output, there's no bbox to add
+    GeomData = case Geom of
+    nil ->
+        [];
+    _ ->
+        % XXX NOTE vmx 2012-11-28: Currently the first two dimensions are
+        %     expected to be the bounding box of the geometry
+        % XXX vmx 2012-11-28: I'm not sure if a bounding box should be
+        %     emitted at all. It's duplicated information you can get from
+        %     the key yourself.
+        {[{W, E}, {S, N}], _} = lists:split(2, Mbb),
+        [
+            {<<"bbox">>, [W, S, E, N]},
+            {<<"geometry">>,
+                couch_spatial_updater:geocouch_to_geojsongeom(Geom)}
+        ]
+    end,
+    {[
+        {<<"id">>, DocId},
+        {<<"key">>, [[Min, Max] || {Min, Max} <- Mbb]}
+    ] ++ GeomData ++ [{<<"value">>, Value}]}.
+
+
+split_bbox_if_flipped([{W, E}, {S, N}]=Bbox, [{BW, BE}, {BS, BN}]=_Bounds) ->
+    case bbox_is_flipped(Bbox) of
+    {flipped, Direction} ->
+        Bboxes = case Direction of
+        both ->
+            [[{W, BE}, {S, BN}], [{W, BE}, {BS, N}],
+                [{BW, E}, {S, BN}], [{BW, E}, {BS, N}]];
+        x ->
+            [[{W, BE}, {S, N}], [{BW, E}, {S, N}]];
+        y ->
+            [[{W, E}, {S, BN}], [{W, E}, {BS, N}]]
+        end,
+        % if boxes are still flipped, they are out of the bounds
+        lists:foldl(fun(B, Acc) ->
+           case bbox_is_flipped(B) of
+               {flipped, _} -> Acc;
+               not_flipped -> [B|Acc]
+           end
+        end, [], Bboxes);
+    not_flipped ->
+        [Bbox]
+    end.
+
+
+bbox_is_flipped([{W, E}, {S, N}]) when E < W, N < S ->
+    {flipped, both};
+bbox_is_flipped([{W, E}, _]) when E < W ->
+    {flipped, x};
+bbox_is_flipped([_, {S, N}]) when N < S ->
+    {flipped, y};
+bbox_is_flipped(_Bbox) ->
+    not_flipped.

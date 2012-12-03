@@ -1,0 +1,8 @@
+{application, 'gc-couchdb', [
+    {description, "The Apache CouchDB API for GeoCouch"},
+    {vsn, "0.4.0"},
+    {modules, []},
+    {registered, []},
+    {applications, [kernel, stdlib]},
+    {env, []}
+]}.

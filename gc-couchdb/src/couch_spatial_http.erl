@@ -144,13 +144,8 @@ spatial_cb(complete, Acc) ->
     couch_httpd:end_json_response(Acc#acc.resp),
     {ok, Acc}.
 
-row_to_json({{Bbox, DocId}, {Geom, Value}}) ->
-    Obj = {[
-        {<<"id">>, DocId},
-        {<<"bbox">>, erlang:tuple_to_list(Bbox)},
-        {<<"geometry">>, couch_spatial_updater:geocouch_to_geojsongeom(Geom)},
-        {<<"value">>, Value}]},
-    ?JSON_ENCODE(Obj).
+row_to_json(Row) ->
+    ?JSON_ENCODE(couch_spatial_util:row_to_ejson(Row)).
 
 
 parse_qs(Req) ->
@@ -164,8 +159,8 @@ parse_qs(Key, Val, Args) ->
     "" ->
         Args;
     "bbox" ->
-        Args#spatial_args{
-            bbox=list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]"))};
+        {W, S, E, N} = list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]")),
+        Args#spatial_args{bbox=[{W, E}, {S, N}]};
     "stale" when Val == "ok" ->
         Args#spatial_args{stale=ok};
     "stale" when Val == "update_after" ->
@@ -178,8 +173,8 @@ parse_qs(Key, Val, Args) ->
     "count" ->
         throw({query_parse_error, <<"count only available as count=true">>});
     "plane_bounds" ->
-        Args#spatial_args{
-            bounds=list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]"))};
+        {W, S, E, N} = list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]")),
+        Args#spatial_args{bounds=[{W, E}, {S, N}]};
     "limit" ->
         Args#spatial_args{limit=parse_int(Val)};
     "skip" ->

@@ -66,8 +66,7 @@
 -record(spatial, {
     root_dir=nil,
     seq=0,
-    treepos=nil,
-    treeheight=0, % height of the tree
+    vtree = nil,
     def=nil, % The function in the query/view server
     view_names=[],
     id_num=0, % comes from couch_spatial_group requirements
@@ -85,3 +84,13 @@
 %    start_response,
 %    send_row
 %}).
+
+% `#vtree_state` is a subset of the #vtree record that contains the
+% information that is stored in the header. It contains the information
+% that can't be retrieved from other sources (as e.g. the Design Document
+% or some configuration setting.
+-record(vtree_state, {
+          root = nil,
+          fill_min = 1,
+          fill_max = 5
+}).

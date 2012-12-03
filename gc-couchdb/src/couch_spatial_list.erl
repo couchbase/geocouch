@@ -164,13 +164,8 @@ send_list_row(Row, Acc) ->
         query_server = {Proc, _},
         resp = Resp
     } = Acc,
-    {{Bbox, DocId}, {Geom, Value}} = Row,
-    RowObj = [
-        {<<"id">>, DocId},
-        {<<"bbox">>, erlang:tuple_to_list(Bbox)},
-        {<<"geometry">>, couch_spatial_updater:geocouch_to_geojsongeom(Geom)},
-        {<<"value">>, Value}],
-    try couch_query_servers:proc_prompt(Proc, [<<"list_row">>, {RowObj}]) of
+    RowObj = couch_spatial_util:row_to_ejson(Row),
+    try couch_query_servers:proc_prompt(Proc, [<<"list_row">>, RowObj]) of
     [<<"chunks">>, Chunk] ->
         send_non_empty_chunk(Resp, Chunk),
         {ok, Acc};

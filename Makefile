@@ -3,17 +3,22 @@ VERSION=$(shell git describe)
 GEOCOUCH_PLT ?= ../geocouch.plt
 
 couchbase couchbase-check: REBAR_CONFIG := rebar_couchbase.config
+couchdb couchdb-check: REBAR_CONFIG := rebar_couchdb.config
 
 
 all:
-	@echo "Try \"make couchbase\" instead."
+	@echo "Try \"make couchbase\" or \"make couchdb\"instead."
 
 check:
-	@echo "Try \"make couchbase-check\" instead."
+	@echo "Try \"make couchbase-check\" \"make couchdb-check\"instead."
 
 .PHONY: couchbase
 couchbase: compile
 couchbase-check: do-check
+
+.PHONY: couchdb
+couchdb: compile
+couchdb-check: do-check
 
 compile:
 	./rebar -C $(REBAR_CONFIG) compile
@@ -28,6 +33,7 @@ do-check: clean compileforcheck dialyzer runtests clean-again
 
 clean clean-again:
 	./rebar -C rebar_couchbase.config clean
+	./rebar -C rebar_couchdb.config clean
 	rm -f *.tar.gz
 
 
