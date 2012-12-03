@@ -49,6 +49,24 @@ couchTests.spatial_compaction = function(debug) {
     return docs;
   }
 
+   function compareRows(rowsA, rowsB) {
+    function sortById(a, b) {
+      if(a.id < b.id) {
+        return -1;
+      }
+      else if(a.id > b.id) {
+        return 1;
+      }
+      return 0;
+    }
+    TEquals(rowsA.length, rowsB.length, "Number of rows is the same");
+    rowsA.sort(sortById);
+    rowsB.sort(sortById);
+    for (var i=0; i<rowsA.length; i++) {
+      TEquals(rowsA[i], rowsB[i], "Row is the same");
+    }
+  }
+
   var xhr;
   var url_pre = '/test_suite_db/_design/compaction/_spatial/';
   var docs = makeSpatialDocs(0, 1000);
@@ -99,10 +117,12 @@ couchTests.spatial_compaction = function(debug) {
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
   resp = JSON.parse(xhr.responseText);
   T(resp.rows.length === 1000);
+  var basicIndexRows = resp.rows;
 
   xhr = CouchDB.request("GET", url_pre + "fooIndex?bbox=" + bbox.join(","));
   resp = JSON.parse(xhr.responseText);
   T(resp.rows.length === 500);
+  var fooIndexRows = resp.rows;
 
   xhr = CouchDB.request("GET", url_pre + '_info');
   resp = JSON.parse(xhr.responseText);
@@ -125,10 +145,12 @@ couchTests.spatial_compaction = function(debug) {
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
   resp = JSON.parse(xhr.responseText);
   T(resp.rows.length === 1000);
+  compareRows(basicIndexRows, resp.rows);
 
   xhr = CouchDB.request("GET", url_pre + "fooIndex?bbox=" + bbox.join(","));
   resp = JSON.parse(xhr.responseText);
   T(resp.rows.length === 500);
+  compareRows(fooIndexRows, resp.rows);
 
   xhr = CouchDB.request("GET", url_pre + '_info');
   resp = JSON.parse(xhr.responseText);
