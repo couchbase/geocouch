@@ -44,12 +44,14 @@ query_view(Db, DDoc, ViewName, Args, Callback, Acc0) ->
 
 
 query_view_count(Db, DDoc, ViewName, Args) ->
-    {ok, View, _, _} = couch_spatial_util:get_view(Db, DDoc, ViewName, Args),
-    case Args#spatial_args.bbox of
+    {ok, View, _, Args2} = couch_spatial_util:get_view(
+        Db, DDoc, ViewName, Args),
+
+    case Args2#spatial_args.range of
     nil ->
         vtree_search:count_all(View#spatial.vtree);
-    Bbox ->
-        vtree_search:count_search(View#spatial.vtree, [Bbox])
+    Mbb ->
+        vtree_search:count_search(View#spatial.vtree, [Mbb])
     end.
 
 
@@ -90,8 +92,8 @@ spatial_fold(View, Args, Callback, UserAcc) ->
     #spatial_args{
         limit = Limit,
         skip = Skip,
-        bbox = Bbox,
-        bounds = Bounds
+        bounds = Bounds,
+        range = Range
     } = Args,
     Acc = #acc{
         limit = Limit,
@@ -100,11 +102,11 @@ spatial_fold(View, Args, Callback, UserAcc) ->
         user_acc = UserAcc,
         update_seq = View#spatial.update_seq
     },
-    Acc2 = fold(View, fun do_fold/2, Acc, Bbox, Bounds),
+    Acc2 = fold(View, fun do_fold/2, Acc, Range, Bounds),
     finish_fold(Acc2, []).
 
 
-fold(Index, FoldFun, InitAcc, Bbox, Bounds) ->
+fold(Index, FoldFun, InitAcc, Mbb, Bounds) ->
     WrapperFun = fun(Node, Acc) ->
         % NOTE vmx 2012-11-28: in Apache CouchDB the body is stored as
         %     Erlang terms
@@ -113,17 +115,17 @@ fold(Index, FoldFun, InitAcc, Bbox, Bounds) ->
             [Node#kv_node{body=Value}], []),
         fold_fun(FoldFun, Expanded, Acc)
     end,
-    case Bbox of
+    case Mbb of
     nil ->
         vtree_search:all(Index#spatial.vtree, WrapperFun, InitAcc);
-    Bbox ->
-        Bboxes = case Bounds of
+    Mbb ->
+        Mbbs = case Bounds of
         nil ->
-            [Bbox];
+            [Mbb];
         _ ->
-            couch_spatial_util:split_bbox_if_flipped(Bbox, Bounds)
+            couch_spatial_util:split_bbox_if_flipped(Mbb, Bounds)
         end,
-        vtree_search:search(Index#spatial.vtree, Bboxes, WrapperFun, InitAcc)
+        vtree_search:search(Index#spatial.vtree, Mbbs, WrapperFun, InitAcc)
     end.
 
 

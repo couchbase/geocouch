@@ -56,6 +56,7 @@
     bounds = nil,
     limit = 10000000000, % Huge number to simplify logic
     skip = 0,
+    range = nil,
     extra,
     preflight_fun
 }).

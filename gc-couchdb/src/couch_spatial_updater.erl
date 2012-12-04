@@ -312,27 +312,34 @@ update_task(NumChanges) ->
     couch_task_status:update([{progress, Progress}, {changes_done, Changes2}]).
 
 
-% The multidimensional case
-process_result([MultiDim|[Value]]) when is_list(MultiDim) ->
-    [{Geo}|Rest] = MultiDim,
-    % XXX NOTE vmx 2012-11-29: Currently it is expected that the geometry
-    %     is the first value of the emit.
-    Tuples = lists:map(
-        fun([Min, Max]) ->
-            {Min, Max};
-        % `null` is a wildcard a will return all values
-        (<<"null">>) ->
-            nil;
-        % A single value means that the mininum and the maximum are the same
-        (Single) ->
-            {Single, Single}
-    end, Rest),
+% The multidimensional case with a geometry
+% XXX NOTE vmx 2012-11-29: Currently it is expected that the geometry
+%     is the first value of the emit.
+process_result([[{Geo}|Rest]|[Value]]) ->
+    Tuples = process_range(Rest),
     {Bbox, Geom} = process_geometry(Geo),
     {Bbox ++ Tuples, {Geom, Value}};
+% The multidimensional case without a geometry
+process_result([MultiDim|[Value]]) when is_list(MultiDim) ->
+    Tuples = process_range(MultiDim),
+    {Tuples, {nil, Value}};
 % There old case when only two dimensions were supported
 process_result([{Geo}|[Value]]) ->
     {Bbox, Geom} = process_geometry(Geo),
     {Bbox, {Geom, Value}}.
+
+
+% Transform the range from the query (which is JSON based) to a list of tuples
+% that can be used for actual querying
+process_range(Range) ->
+    lists:map(
+        fun([Min, Max]) ->
+            {Min, Max};
+        % A single value means that the mininum and the maximum are the same
+        (Single) ->
+            {Single, Single}
+    end, Range).
+
 
 % Returns an Erlang encoded geometry and the corresponding bounding box
 process_geometry(Geo) ->

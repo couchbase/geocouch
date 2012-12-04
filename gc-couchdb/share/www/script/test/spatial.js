@@ -97,6 +97,12 @@ couchTests.spatial = function(debug) {
     }
   }
 
+  // returns start_range and end_range arguments
+  function rangeArgs(range) {
+      return 'start_range=' + JSON.stringify(range.start) +
+        '&end_range=' + JSON.stringify(range.end);
+  }
+
   var xhr;
   var url_pre = '/test_suite_db/_design/spatial/_spatial/';
   var docs = makeSpatialDocs(0, 10);
@@ -192,6 +198,36 @@ couchTests.spatial = function(debug) {
           extract_ids(xhr.responseText),
           "no bounding box given should return all geometries");
 
+
+  // Test range queries (those tests are the same as the bounding box ones)
+
+  var range = {start: [-180, -90], end: [180, 90]};
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?" + rangeArgs(range));
+  TEquals(['0','1','10','2','3','4','5','6','7','8','9'],
+          extract_ids(xhr.responseText),
+          "should return all geometries");
+
+  range = {start: [-20, 0], end: [16, 20]};
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?" + rangeArgs(range));
+  TEquals(['0','1','10','2'], extract_ids(xhr.responseText),
+          "should return a subset of the geometries");
+
+  range = {start: [-80, 90], end: [0, 180]};
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?" + rangeArgs(range));
+  TEquals(JSON.parse(xhr.responseText).rows, [],
+          "should return no geometries");
+
+  range = {start: [-18, -17], end: [-14, 21]};
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?" + rangeArgs(range));
+  TEquals(['1','2','3'], extract_ids(xhr.responseText),
+          "should also return geometry at the bounds of the bbox");
+
+  range = {start: [-16, 19], end: [-16, 19]};
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?" + rangeArgs(range));
+  TEquals(['2'], extract_ids(xhr.responseText),
+          "bbox collapsed to a point should return the geometries there");
+
+
   // count parameter tests
 
   xhr = CouchDB.request("GET", url_pre + "basicIndex?count=true");
@@ -203,6 +239,12 @@ couchTests.spatial = function(debug) {
                         "&count=true");
   TEquals(4, JSON.parse(xhr.responseText).count,
           "should return the count of a subset (bbox)");
+
+  range = {start: [-20, 0], end: [16, 20]};
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?" + rangeArgs(range) +
+                        "&count=true");
+  TEquals(4, JSON.parse(xhr.responseText).count,
+          "should return the count of a subset (range)");
 
 
   // GeoJSON geometry tests

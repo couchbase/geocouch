@@ -179,6 +179,22 @@ parse_qs(Key, Val, Args) ->
         Args#spatial_args{limit=parse_int(Val)};
     "skip" ->
         Args#spatial_args{skip=parse_int(Val)};
+    "start_range" ->
+        case Args#spatial_args.range of
+        nil ->
+            Args#spatial_args{range=?JSON_DECODE(Val)};
+        % end_range already set the range
+        Range ->
+            Args#spatial_args{range=merge_range(?JSON_DECODE(Val), Range)}
+        end;
+    "end_range" ->
+        case Args#spatial_args.range of
+        nil ->
+            Args#spatial_args{range=?JSON_DECODE(Val)};
+        % start_range already set the range
+        Range ->
+            Args#spatial_args{range=merge_range(Range, ?JSON_DECODE(Val))}
+        end;
     _ ->
         BKey = list_to_binary(Key),
         BVal = list_to_binary(Val),
@@ -195,3 +211,19 @@ parse_int(Val) ->
         Msg = io_lib:format("Invalid value for integer parameter: ~p", [Val]),
         throw({query_parse_error, ?l2b(Msg)})
     end.
+
+
+% Merge the start_range and stop_range values into one list
+merge_range(RangeA, RangeB) ->
+    lists:zipwith(
+        % `null` is a wildcard which will return all values
+        fun(null, null) ->
+            {nil, nil};
+        % `null` means an open range here
+        (A, null) ->
+            {A, nil};
+        (null, B) ->
+            {nil, B};
+        (A, B) ->
+            {A, B}
+    end, RangeA, RangeB).

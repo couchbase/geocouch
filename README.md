@@ -114,3 +114,4 @@ Then add the tests to `<path-to-couchdb-source>/share/www/script/couch_tests.js`
     loadTest("spatial_design_docs.js");
     loadTest("spatial_bugfixes.js");
     loadTest("spatial_offsets.js");
+    loadTest("spatial_range.js");

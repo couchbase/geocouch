@@ -176,17 +176,38 @@ get_row_count(View) ->
 validate_args(Args) ->
     % `stale` and `count` got already validated during parsing
 
-    case Args#spatial_args.bbox =:= nil orelse
-        length(Args#spatial_args.bbox) == 2 of
+    #spatial_args{
+        bbox = Bbox,
+        bounds = Bounds,
+        range = Range
+    } = Args,
+
+    % In case a 'bbox` is given, the value of `bbox` will be stored in `range`
+    % and `bbox` will be set to `nil` after validation.
+    Range2 = case {Bbox, Range} of
+    {nil, nil} ->
+        nil;
+    {Bbox, nil} ->
+        Bbox;
+    {nil, Range} ->
+        Range;
+    {Bbox, Range} ->
+        Msg = <<"A bounding box *and* a range were specified."
+                " Please use either of them.">>,
+        throw({query_parse_error, Msg})
+    end,
+
+    case Bbox =:= nil orelse
+        length(Bbox) == 2 of
     true ->
-        case {Args#spatial_args.bbox, Args#spatial_args.bounds} of
+        case {Bbox, Bounds} of
         % Coordinates of the bounding box are flipped and no bounds for the
         % cartesian plane were set
         {[{W, E}, {S, N}], nil} when E < W; N < S ->
-            Msg = <<"Coordinates of the bounding box are flipped, but no "
+            Msg2 = <<"Coordinates of the bounding box are flipped, but no "
                     "bounds for the cartesian plane were specified "
                     "(use the `plane_bounds` parameter)">>,
-            parse_error(Msg);
+            parse_error(Msg2);
         _ ->
             ok
         end;
@@ -194,8 +215,8 @@ validate_args(Args) ->
         parse_error(<<"`bbox` must have 2 dimensions.">>)
     end,
 
-    case Args#spatial_args.bounds =:= nil orelse
-            length(Args#spatial_args.bounds) == 2 of
+    case Bounds =:= nil orelse
+            length(Bounds) == 2 of
         true -> ok;
         false -> parse_error(<<"`plane_bounds` must have 2 dimensions.">>)
     end,
@@ -210,7 +231,10 @@ validate_args(Args) ->
         false -> parse_error(<<"`skip` must be >= 0.">>)
     end,
 
-    Args.
+    Args#spatial_args{
+        bbox = nil,
+        range = Range2
+    }.
 
 
 parse_error(Msg) ->
