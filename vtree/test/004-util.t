@@ -20,7 +20,7 @@ main(_) ->
     random:seed(1, 11, 91),
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(43),
+    etap:plan(55),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -138,6 +138,21 @@ test_intersect_mbb() ->
     Mbb10 = [{593, 777}, {-432.39, -294.20}],
     Mbb11 = [{593, 593}, {-432.39, -294.20}],
 
+    Mbb12 = [{nil, nil}, {-7, 428.74}],
+    Mbb13 = [{-480, 5}, {nil, nil}],
+    Mbb14 = [{nil, nil}, {nil, nil}],
+    Mbb15 = [{4.72, 593}, {nil, nil}, {-480, 5}, {-7, 428.74}],
+    Mbb16 = [{4.72, 593}, {nil, nil}, {-480, 5}, {nil, nil}],
+    Mbb17 = [{nil, nil}, {nil, nil}, {nil, nil}, {nil, nil}],
+
+    Mbb18 = [{nil, 5}, {-7, 428.74}],
+    Mbb19 = [{-480, 5}, {nil, 428.74}],
+    Mbb20 = [{-480, nil}, {-7, 428.74}],
+    Mbb21 = [{-480, 5}, {-7, nil}],
+    Mbb22 = [{4.72, 593}, {nil, 390.3}, {nil, 5}, {-7, 428.74}],
+    Mbb23 = [{4.72, nil}, {-472, 390.3}, {-480, nil}, {-7, nil}],
+    Mbb24 = [{4.72, nil}, {nil, 390.3}, {nil, nil}, {-7, nil}],
+
 
     etap:is(?MOD:intersect_mbb(Mbb1, Mbb2, Less), [{-38,5},{38,428.74}],
             "MBBs intersect (two dimensions)"),
@@ -161,7 +176,37 @@ test_intersect_mbb() ->
             "One MBB touches another MBB"),
     etap:is(?MOD:intersect_mbb(Mbb5, Mbb11, Less),
             [{593, 593}, {-432.39, -390.3}],
-            "A zero volume MBB touches another MBB").
+            "A zero volume MBB touches another MBB"),
+
+    etap:is(?MOD:intersect_mbb(Mbb1, Mbb12, Less), [{-38,74.2},{38,428.74}],
+            "MBBs intersect (two dimensions, one range is a wildcard) (a)"),
+    etap:is(?MOD:intersect_mbb(Mbb1, Mbb13, Less), [{-38,5},{38,948}],
+            "MBBs intersect (two dimensions, one range is a wildcard) (b)"),
+    etap:is(?MOD:intersect_mbb(Mbb1, Mbb14, Less), Mbb1,
+            "MBBs intersect (two dimensions, one MBB has wildcards only)"),
+    etap:is(?MOD:intersect_mbb(Mbb15, Mbb7, Less),
+            [{84.3,593},{39,938},{-480,5},{-7,82}],
+            "MBBs intersect (4 dimensions, one range is a wildcard)"),
+    etap:is(?MOD:intersect_mbb(Mbb16, Mbb7, Less),
+            [{84.3,593},{39,938},{-480,5},{-1000,82}],
+            "MBBs intersect (4 dimensions, two ranges are a wildcard)"),
+    etap:is(?MOD:intersect_mbb(Mbb17, Mbb7, Less), Mbb7,
+            "MBBs intersect (4 dimensions, one MBB has wildcards only)"),
+
+    etap:is(?MOD:intersect_mbb(Mbb1, Mbb18, Less), [{-38,5},{38,428.74}],
+            "MBBs intersect (two dimensions, open range at start) (a)"),
+    etap:is(?MOD:intersect_mbb(Mbb1, Mbb19, Less), [{-38,5},{38,428.74}],
+            "MBBs intersect (two dimensions, open range at start) (b)"),
+    etap:is(?MOD:intersect_mbb(Mbb1, Mbb20, Less), [{-38,74.2},{38,428.74}],
+            "MBBs intersect (two dimensions, open range at end) (a)"),
+    etap:is(?MOD:intersect_mbb(Mbb1, Mbb21, Less), [{-38,5},{38,948}],
+            "MBBs intersect (two dimensions, open range at end) (b)"),
+    etap:is(?MOD:intersect_mbb(Mbb22, Mbb7, Less),
+            [{84.3,593},{39,390.3},{-937,5},{-7,82}],
+            "MBBs intersect (4 dimensions, two open range at start)"),
+    etap:is(?MOD:intersect_mbb(Mbb24, Mbb7, Less),
+            [{84.3,923.8},{39,390.3},{-937,8424},{-7,82}],
+            "MBBs intersect (4 dimensions, open ranges and wildcard mixed)").
 
 
 test_find_min_value() ->

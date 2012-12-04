@@ -12,8 +12,9 @@
 
 
 % The value a key can have. For the vtree that is either a number or
-% (UTF-8) string
--type keyval() :: number() | string().
+% (UTF-8) string. `nil` is used as a wildcard in queries, to match open or
+% full ranges.
+-type keyval() :: number() | string() | nil.
 
 % The multidimensional bounding box
 -type mbb() :: [{Min :: keyval(), Max :: keyval()}].

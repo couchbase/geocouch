@@ -113,6 +113,24 @@ intersect_mbb(A, B, Less) ->
                      Less :: lessfun(), Acc :: mbb()) -> mbb() | overlapfree.
 intersect_mbb0([], _Less, Acc) ->
     lists:reverse(Acc);
+% If both values are `nil`, it is like a wildcard, it covers the other
+% range completely
+intersect_mbb0([{{nil, nil}, MinMax}|T], Less, Acc) ->
+    intersect_mbb0(T, Less, [MinMax|Acc]);
+intersect_mbb0([{MinMax, {nil, nil}}|T], Less, Acc) ->
+    intersect_mbb0(T, Less, [MinMax|Acc]);
+% If one end of the range is `nil` it's an open range and the intersection
+% will be the one of the other given range. The guards are needed to prevent
+% endless loops.
+intersect_mbb0([{{nil, MaxA}, {MinB, MaxB}}|T], Less, Acc) when MinB =/= nil ->
+    intersect_mbb0([{{MinB, MaxA}, {MinB, MaxB}}|T], Less, Acc);
+intersect_mbb0([{{MinA, nil}, {MinB, MaxB}}|T], Less, Acc) when MaxB =/= nil ->
+    intersect_mbb0([{{MinA, MaxB}, {MinB, MaxB}}|T], Less, Acc);
+intersect_mbb0([{{MinA, MaxA}, {nil, MaxB}}|T], Less, Acc) when MinA =/= nil ->
+    intersect_mbb0([{{MinA, MaxA}, {MinA, MaxB}}|T], Less, Acc);
+intersect_mbb0([{{MinA, MaxA}, {MinB, nil}}|T], Less, Acc) when MaxA =/= nil ->
+    intersect_mbb0([{{MinA, MaxA}, {MinB, MaxA}}|T], Less, Acc);
+% All `nil` cases are resolved, do the actual work
 intersect_mbb0([{{MinA, MaxA}, {MinB, MaxB}}|T], Less, Acc) ->
     Min = vtree_util:max({MinA, MinB}, Less),
     Max = vtree_util:min({MaxA, MaxB}, Less),
