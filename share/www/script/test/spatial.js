@@ -101,6 +101,7 @@ couchTests.spatial = function(debug) {
   var url_pre = '/test_suite_db/_design/spatial/_spatial/';
   var docs = makeSpatialDocs(0, 10);
   db.bulkSave(docs);
+  db.save({_id: '10', string: '10', integer: 10, loc: [1,1]});
   var bbox = [-180, -90, 180, 90];
 
   // stale tests
@@ -152,7 +153,7 @@ couchTests.spatial = function(debug) {
   // spatial function that doesn't always emit
   bbox = [-180, -90, 180, 90];
   xhr = CouchDB.request("GET", url_pre + "dontEmitAll?bbox=" + bbox.join(","));
-  TEquals(['6','7','8','9'], extract_ids(xhr.responseText),
+  TEquals(['10','6','7','8','9'], extract_ids(xhr.responseText),
           "should return geometries with id>5");
 
   xhr = CouchDB.request("GET", url_pre + "emitNothing?bbox=" + bbox.join(","));
@@ -162,21 +163,21 @@ couchTests.spatial = function(debug) {
   // bounding box tests
 
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
-  TEquals(['0','1','2','3','4','5','6','7','8','9'],
+  TEquals(['0','1','10','2','3','4','5','6','7','8','9'],
           extract_ids(xhr.responseText),
           "should return all geometries");
 
-  bbox = [-20, 0, 0, 20];
+  bbox = [-20, 0, 16, 20];
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
-  TEquals(['0','1','2'], extract_ids(xhr.responseText),
+  TEquals(['0','1','10','2'], extract_ids(xhr.responseText),
           "should return a subset of the geometries");
 
-  bbox = [0, 4, 180, 90];
+  bbox = [-80, 90, 0, 180];
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
   TEquals(JSON.parse(xhr.responseText).rows, [],
           "should return no geometries");
 
-  bbox = [-18, 17, -14, 21];
+  bbox = [-18, -17, -14, 21];
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(","));
   TEquals(['1','2','3'], extract_ids(xhr.responseText),
           "should also return geometry at the bounds of the bbox");
@@ -187,17 +188,21 @@ couchTests.spatial = function(debug) {
           "bbox collapsed to a point should return the geometries there");
 
   xhr = CouchDB.request("GET", url_pre + "basicIndex");
-  TEquals(['0','1','2','3','4','5','6','7','8','9', 'stale1', 'stale2'],
+  TEquals(['0','1','10','2','3','4','5','6','7','8','9', 'stale1', 'stale2'],
           extract_ids(xhr.responseText),
           "no bounding box given should return all geometries");
 
   // count parameter tests
 
-  bbox = [-180, -90, 180, 90];
+  xhr = CouchDB.request("GET", url_pre + "basicIndex?count=true");
+  TEquals(13, JSON.parse(xhr.responseText).count,
+          "should return the count of all geometries");
+
+  bbox = [-20, 0, 16, 20];
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
                         "&count=true");
-  TEquals('{"count":10}\n', xhr.responseText,
-          "should return the count of all geometries");
+  TEquals(4, JSON.parse(xhr.responseText).count,
+          "should return the count of a subset (bbox)");
 
 
   // GeoJSON geometry tests
@@ -332,20 +337,21 @@ couchTests.spatial = function(debug) {
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
     "&plane_bounds=" + planeBounds.join(","));
   TEquals(
-    ['0','1','7','8','9','wrap1','wrap2','wrap3','wrap7','wrap8','wrap9'],
+    ['0','1','10','7','8','9','wrap1','wrap2','wrap3','wrap7','wrap8','wrap9'],
     extract_ids(xhr.responseText), "bbox that spans the poles");
 
   bbox = [-10, -90, -20, 90];
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
     "&plane_bounds=" + planeBounds.join(","));
   TEquals(
-    ['0','5','6','7','8','9','wrap1','wrap3','wrap4','wrap6','wrap7','wrap9'],
+    ['0','10','5','6','7','8','9','wrap1','wrap3','wrap4','wrap6','wrap7',
+      'wrap9'],
     extract_ids(xhr.responseText), "bbox that spans the date line");
 
   bbox = [-10, 28, -20, 17];
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
     "&plane_bounds=" + planeBounds.join(","));
-  TEquals(['0','7','8','9','wrap1','wrap3','wrap7','wrap9'],
+  TEquals(['0','10','7','8','9','wrap1','wrap3','wrap7','wrap9'],
     extract_ids(xhr.responseText), "bbox that spans the date line and poles");
 
   // try plane bounds that are smaller than the bounding box
@@ -377,7 +383,7 @@ couchTests.spatial = function(debug) {
   xhr = CouchDB.request("GET", url_pre + "basicIndex?bbox=" + bbox.join(",") +
     "&plane_bounds=" + planeBounds.join(","));
   TEquals(
-    ['5', 'wrap8','wrap9'],
+    ['10', '5', 'wrap8','wrap9'],
     extract_ids(xhr.responseText), "bbox that spans the poles");
 
   bbox = [11, -25, -10, 25];
