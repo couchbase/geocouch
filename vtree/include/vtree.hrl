@@ -71,8 +71,8 @@
           %root = nil ::kp_value() | kv_value()
           root = nil :: #kp_node{} | nil,
           less = fun(A, B) -> A < B end,
-          fill_min = 1,
-          fill_max = 5,
+          fill_min = 25,
+          fill_max = 40,
           reduce = nil :: any(),
           chunk_threshold = 16#4ff
 }).
