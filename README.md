@@ -47,20 +47,20 @@ This version of GeoCouch needs at least Apache CouchDB 1.3.x.
 ### Checkout the code
 
 First checkout the source code for Apache CouchDB into a directory that will
-be referred to as <path-to-couchdb-source>.
+be referred to as `<path-to-couchdb-source>`.
 
 Then checkout the GeoCouch source:
 
     git clone -b newvtree https://github.com/couchbase/geocouch.git
 
 There's a new directory called `geocouch` created. From now on this directory
-will be referred to as <path-to-geocouch-source>.
+will be referred to as `<path-to-geocouch-source>`.
 
 
 ### Build instructions
 
 Make sure you have built Apache CouchDB from source including `make dev`. So
-go to your <path-to-couchdb-source> and run:
+go to your `<path-to-couchdb-source>` and run:
 
     ./bootstrap
     ./configure
@@ -92,7 +92,7 @@ The tests can either be run from the command line or the browser.
 #### From command line
 
 From the command line the easiest way is to use the supplied runner script.
-From within the <path-to-geocouch-source>:
+From within the `<path-to-geocouch-source>`:
 
     cd gc-couchdb
     ./utils/runjstests.sh <path-to-couchdb-source>/test/javascript/run ./share/www/script/test
@@ -102,7 +102,7 @@ From within the <path-to-geocouch-source>:
 
 To run it from the browser first copy the JavaScript tests into the same directory as the other Apache CouchDB tests:
 
-   cp <path-to-geocouch-source>/gc-couchdb/share/www/script/test/* <path-to-couchdb-source>/share/www/script/test/
+    cp <path-to-geocouch-source>/gc-couchdb/share/www/script/test/* <path-to-couchdb-source>/share/www/script/test/
 
 Then add the tests to `<path-to-couchdb-source>/share/www/script/couch_tests.js`
 
