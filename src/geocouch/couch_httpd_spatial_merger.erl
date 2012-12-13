@@ -134,17 +134,16 @@ validate_spatial_param(_) ->
                           "least 1 property.">>}).
 
 parse_spatial_name(Name) ->
-    case string:tokens(couch_util:trim(?b2l(Name)), "/") of
-    [DDocName, ViewName0] ->
-        {nil, <<"_design/", (?l2b(DDocName))/binary>>, ?l2b(ViewName0)};
-    ["_design", DDocName, ViewName0] ->
-        {nil, <<"_design/", (?l2b(DDocName))/binary>>, ?l2b(ViewName0)};
-    [DDocDbName1, DDocName, ViewName0] ->
-        DDocDbName = ?l2b(couch_httpd:unquote(DDocDbName1)),
-        {DDocDbName, <<"_design/", (?l2b(DDocName))/binary>>, ?l2b(ViewName0)};
-    [DDocDbName1, "_design", DDocName, ViewName0] ->
-        DDocDbName = ?l2b(couch_httpd:unquote(DDocDbName1)),
-        {DDocDbName, <<"_design/", (?l2b(DDocName))/binary>>, ?l2b(ViewName0)};
+    Tokens = string:tokens(couch_util:trim(?b2l(Name)), "/"),
+    case [?l2b(couch_httpd:unquote(Token)) || Token <- Tokens] of
+    [DDocName, ViewName] ->
+        {nil, <<"_design/", DDocName/binary>>, ViewName};
+    [<<"_design">>, DDocName, ViewName] ->
+        {nil, <<"_design/", DDocName/binary>>, ViewName};
+    [DDocDbName, DDocName, ViewName] ->
+        {DDocDbName, <<"_design/", DDocName/binary>>, ViewName};
+    [DDocDbName, <<"_design">>, DDocName, ViewName] ->
+        {DDocDbName, <<"_design/", DDocName/binary>>, ViewName};
     _ ->
         throw({bad_request, "A `spatial` property must have the shape"
             " `ddoc_name/spatial_name`."})

@@ -89,8 +89,8 @@ http_index_folder_req_details(#simple_index_spec{} = Spec, MergeParams, _DDoc) -
     } = MergeParams,
     {ok, #httpdb{url = Url, lhttpc_options = Options}} =
         couch_index_merger:open_db(DbUrl, nil, Timeout),
-    SpatialUrl = Url ++ ?b2l(DDocId) ++ "/_spatial/" ++ ?b2l(SpatialName) ++
-        spatial_qs(SpatialArgs),
+    SpatialUrl = Url ++ couch_httpd:quote(DDocId) ++ "/_spatial/" ++
+        couch_httpd:quote(SpatialName) ++ spatial_qs(SpatialArgs),
     put(from_url, DbUrl),
     {SpatialUrl, get, [], [], Options}.
 
