@@ -41,6 +41,7 @@ update(Owner, Group, DbName) when is_binary(DbName) ->
     end;
 
 update(Owner, Group, #db{name=DbName} = Db) ->
+    ok = couch_index_barrier:enter(couch_spatial_index_barrier),
     #spatial_group{
         name = GroupName,
         current_seq = Seq,
@@ -101,6 +102,7 @@ update(Owner, Group, #db{name=DbName} = Db) ->
     ?LOG_DEBUG("new seq num: ~p", [NewSeq]),
     {ok, Group4} = write_changes(Group3, ViewKVsToAdd2, DocIdViewIdKeys2,
                 NewSeq),
+    ok = couch_index_barrier:leave(couch_spatial_index_barrier),
     exit({new_group, Group4}).
 
 
