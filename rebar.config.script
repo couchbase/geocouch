@@ -1,0 +1,21 @@
+% Add the COUCH_SRC directory to include path
+IncludeDir = case os:getenv("COUCH_SRC") of
+    false -> []; % env var not defined
+    []    -> []; % env var set to empty string
+    Dir -> [{i, Dir}, {i, Dir ++ "/../"}]
+end,
+
+% Add "makecheck" setting for testing
+MakeCheck = case os:getenv("MAKECHECK") of
+    false -> []; % env var not defined
+    []    -> []; % env var set to empty string
+    _ -> [{d, makecheck}]
+end,
+
+% Add all variables to erl_opts
+case lists:keytake(erl_opts, 1, CONFIG) of
+    false ->
+        CONFIG ++ [{erl_opts, IncludeDir ++ MakeCheck}];
+    {value, {erl_opts, ErlOpts}, Config2} ->
+        Config2 ++ [{erl_opts, ErlOpts ++ IncludeDir ++ MakeCheck}]
+end.
