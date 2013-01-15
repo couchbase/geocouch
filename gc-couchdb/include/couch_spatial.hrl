@@ -92,6 +92,6 @@
 % or some configuration setting.
 -record(vtree_state, {
           root = nil,
-          fill_min = 1,
-          fill_max = 5
+          fill_min = 20,
+          fill_max = 50
 }).

@@ -71,8 +71,10 @@
           %root = nil ::kp_value() | kv_value()
           root = nil :: #kp_node{} | nil,
           less = fun(A, B) -> A < B end,
-          fill_min = 25,
-          fill_max = 40,
+          % `fill_min` and `fill_max` are normally set by vtree_state (which
+          % is part of the Couchbase/Apache CouchDB API implementation)
+          fill_min = nil,
+          fill_max = nil,
           reduce = nil :: any(),
           chunk_threshold = 16#4ff
 }).
