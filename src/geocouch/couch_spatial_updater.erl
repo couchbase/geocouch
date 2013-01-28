@@ -163,9 +163,15 @@ spatial_docs(MapCtx, [Doc | RestDocs], EmptyResults, Acc) ->
         SpatialResults = lists:map(
             fun(FunRs) ->
                 case FunRs of
-                    [] -> [];
-                    % do some post-processing of the result documents
-                    FunRs -> process_results(FunRs)
+                    {error, Reason} ->
+                        ?LOG_ERROR("Error computing spatial result for document `~s`: ~p",
+                            [Doc#doc.id, Reason]),
+                        [];
+                    [] ->
+                        [];
+                    FunRs ->
+                        % do some post-processing of the result documents
+                        process_results(FunRs)
                 end
             end,
             FunsResults),
