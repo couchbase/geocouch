@@ -23,7 +23,8 @@
 -include("vtree.hrl").
 -include("couch_db.hrl").
 
--export([write_node/3, read_node/2]).
+-export([write_node/3, write_kvnode_external/2, read_node/2,
+         read_kvnode_external/2]).
 
 -ifdef(makecheck).
 -compile(export_all).
@@ -53,6 +54,35 @@ write_node(Fd, Nodes, Less) ->
     {ok, KpNode}.
 
 
+% Writes the body and the geometry of a list of KV-nodes and returns the
+% same KV-node with the body and geometry replaced with a pointer (the offset
+% in the file). This is used to be able to calculate the storage requirements
+% of a node without including the external stored parts.
+-spec write_kvnode_external(Fd :: file:io_device(), Nodes :: [#kv_node{}]) ->
+                                   [#kv_node{}].
+write_kvnode_external(Fd, Nodes) ->
+    lists:map(
+      fun(Node) ->
+              #kv_node{
+                 geometry = Geom,
+                 body = Body
+                } = Node,
+              % Geom is not a WKB yet, hence store it as external terms
+              {ok, PointerGeom, SizeGeom} = geocouch_file:append_chunk(
+                                              Fd, ?term_to_bin(Geom)),
+              % The body is expected to be a binary already. In case of
+              % Couchbase it is the binary version of JSON.stringify(),
+              % in Apache CouchDB it is binary encoded Erlang terms.
+              {ok, PointerBody, SizeBody} = geocouch_file:append_chunk(
+                                              Fd, Body),
+              Node#kv_node{
+                geometry = PointerGeom,
+                body = PointerBody,
+                size = SizeGeom + SizeBody
+               }
+      end, Nodes).
+
+
 % Read a node from a certain disk position and return the key-value pairs it
 % it contains as Erlang records.
 % In case of KV nodes it returns only pointers to the geometry and body. No
@@ -61,7 +91,27 @@ write_node(Fd, Nodes, Less) ->
                        [#kp_node{} | #kv_node{}].
 read_node(Fd, Pointer) ->
     {ok, BinNode} = geocouch_file:pread_chunk(Fd, Pointer),
-    decode_node(Fd, BinNode).
+    decode_node(BinNode).
+
+
+% Resolve the pointer to the body and geometry to the actual values
+-spec read_kvnode_external(Fd :: file:io_device(), Nodes :: [#kv_node{}]) ->
+                                  [#kv_node{}].
+read_kvnode_external(Fd, Nodes) ->
+    lists:map(
+      fun(Node) ->
+              #kv_node{
+                 geometry = PointerGeom,
+                 body = PointerBody
+                } = Node,
+              {ok, Geom} = geocouch_file:pread_chunk(Fd, PointerGeom),
+              {ok, Body} = geocouch_file:pread_chunk(Fd, PointerBody),
+              Node#kv_node{
+                geometry = erlang:binary_to_term(Geom),
+                body = Body,
+                size = 0
+               }
+      end, Nodes).
 
 
 % Returns the binary that will be stored, and the number size of the subtree
@@ -89,7 +139,7 @@ encode_node(Fd, [Node|T], {BinAcc, TreeSizeAcc}) ->
     end,
 
     %{BinV, TreeSize} = encode_value(Fd, NodeType, V),
-    {BinV, TreeSize} = encode_value(Fd, Node),
+    {BinV, TreeSize} = encode_value(Node),
     SizeV = erlang:iolist_size(BinV),
     case SizeV < 268435456 of
         true -> ok;
@@ -111,41 +161,37 @@ encode_key(#kp_node{}=Node) ->
 % size of the subtree (in case of a KV node, the number of bytes that were
 % written during encoding). The treesize is used to calculate the disk usage
 % of the data in the tree.
--spec encode_value(Fd :: file:io_device(), Node :: #kv_node{} | #kp_node{}) ->
+-spec encode_value(Node :: #kv_node{} | #kp_node{}) ->
                           {Bin :: binary(), Size :: non_neg_integer()}.
-encode_value(Fd, #kv_node{}=Node) ->
+encode_value(#kv_node{}=Node) ->
     #kv_node{
-              docid = DocId,
-              geometry = Geom,
-              body = Body
-            } = Node,
+       docid = DocId,
+       geometry = PointerGeom,
+       body = PointerBody,
+       size = ExternalSize
+      } = Node,
+    case ExternalSize of
+        0 -> throw("write_external/2 needs to be called before a "
+                   "KV-node value can be encoded");
+        _ -> ok
+    end,
     SizeDocId = erlang:iolist_size(DocId),
-    % Geom is not a WKB yet, hence store it as external terms
-    {ok, PointerGeom, SizeGeom} = geocouch_file:append_chunk(
-                                    Fd, ?term_to_bin(Geom)),
-    % The body is expected to be a binary already. In case of Couchbase it is
-    % the binary version of JSON.stringify(), in Apache CouchDB it is binary
-    % encoded Erlang terms.
-    {ok, PointerBody, SizeBody} = geocouch_file:append_chunk(Fd, Body),
-    % The `SizeDoc` is used to get the actual size stored in disk, hence it
-    % includes the body and the geometry
-    SizeDoc = SizeGeom + SizeBody,
 
     case SizeDocId < 4096 of
         true -> ok;
         false -> throw({error, docid_too_long})
     end,
-    case SizeDoc < 268435456 of
+    case ExternalSize < 268435456 of
         true -> ok;
         false -> throw({error, document_too_big})
     end,
 
-    Bin = <<SizeDocId:12, SizeDoc:28, PointerGeom:48, PointerBody:48,
+    Bin = <<SizeDocId:12, ExternalSize:28, PointerGeom:48, PointerBody:48,
             DocId/binary>>,
     % Returning only the size of the written body and geometry is enough,
     % as all other bytes will be accounted when the whole chunk is written
-    {Bin, SizeDoc};
-encode_value(_Fd, #kp_node{}=Node) ->
+    {Bin, ExternalSize};
+encode_value(#kp_node{}=Node) ->
     #kp_node{
               childpointer = PointerNode,
               treesize = TreeSize,
@@ -166,26 +212,31 @@ encode_value(_Fd, #kp_node{}=Node) ->
 
 
 % This will only return the pointers to the geometry and body
-% NOTE vmx 2012-09-04: Not sure if that is needed
-%decode_kvnode_value_shallow(BinValue) ->
-%    <<_SizeDocId:12, _SizeDoc:28, PointerGeom:48,
-%      PointerBody:48, DocId/binary>> = BinValue,
-%    {DocId, PointerGeom, PointerBody}.
-
-% Decode the value of a KV-node pair
--spec decode_kvnode_value(Fd :: file:io_device(), BinValue :: binary()) ->
-                                 #kv_node{}.
-decode_kvnode_value(Fd, BinValue) ->
+decode_kvnode_value(BinValue) ->
     <<_SizeDocId:12, _SizeDoc:28, PointerGeom:48,
       PointerBody:48, DocId/binary>> = BinValue,
-    {ok, Geom} = geocouch_file:pread_chunk(Fd, PointerGeom),
-    {ok, Body} = geocouch_file:pread_chunk(Fd, PointerBody),
-    %{DocId, erlang:binary_to_term(Geom), Body}.
     #kv_node{
-              docid = DocId,
-              geometry = erlang:binary_to_term(Geom),
-              body = Body
-            }.
+       docid = DocId,
+       geometry = PointerGeom,
+       body = PointerBody,
+       size = -1
+      }.
+
+% Also read the body and geometry while decoding
+%% Decode the value of a KV-node pair
+%-spec decode_kvnode_value(Fd :: file:io_device(), BinValue :: binary()) ->
+%                                 #kv_node{}.
+%decode_kvnode_value(Fd, BinValue) ->
+%    <<_SizeDocId:12, _SizeDoc:28, PointerGeom:48,
+%      PointerBody:48, DocId/binary>> = BinValue,
+%    {ok, Geom} = geocouch_file:pread_chunk(Fd, PointerGeom),
+%    {ok, Body} = geocouch_file:pread_chunk(Fd, PointerBody),
+%    %{DocId, erlang:binary_to_term(Geom), Body}.
+%    #kv_node{
+%              docid = DocId,
+%              geometry = erlang:binary_to_term(Geom),
+%              body = Body
+%            }.
 
 
 % Decode the value of a KP-node pair
@@ -205,26 +256,25 @@ decode_kpnode_value(BinValue) ->
 
 
 % Decode the value of the KP nodes to Erlang terms
--spec decode_node(Fd :: file:io_device(), BinValue :: binary()) ->
-                         [#kp_node{} | #kv_node{}].
-decode_node(Fd, <<?KV_NODE:8, Rest/binary>>) ->
-    decode_kvnode_pairs(Fd, Rest, []);
-decode_node(_Fd, <<?KP_NODE:8, Rest/binary>>) ->
+-spec decode_node(BinValue :: binary()) -> [#kp_node{} | #kv_node{}].
+decode_node(<<?KV_NODE:8, Rest/binary>>) ->
+    decode_kvnode_pairs(Rest, []);
+decode_node(<<?KP_NODE:8, Rest/binary>>) ->
     decode_kpnode_pairs(Rest, []).
 
 
 % Decode KV-nodes key value pairs to an Erlang record
--spec decode_kvnode_pairs(Fd :: file:io_device(), BinValue :: binary(),
-                          Acc :: [#kv_node{}]) -> [#kv_node{}].
-decode_kvnode_pairs(_Fd, <<>>, Acc) ->
+-spec decode_kvnode_pairs(BinValue :: binary(), Acc :: [#kv_node{}]) ->
+                                 [#kv_node{}].
+decode_kvnode_pairs(<<>>, Acc) ->
     lists:reverse(Acc);
-decode_kvnode_pairs(Fd, Bin, Acc) ->
+decode_kvnode_pairs(Bin, Acc) ->
     <<SizeK:12, SizeV:28, BinK:SizeK/binary, BinV:SizeV/binary,
       Rest/binary>> = Bin,
     Key = decode_mbb(BinK),
-    Node0 = decode_kvnode_value(Fd, BinV),
+    Node0 = decode_kvnode_value(BinV),
     Node = Node0#kv_node{key = Key},
-    decode_kvnode_pairs(Fd, Rest, [Node|Acc]).
+    decode_kvnode_pairs(Rest, [Node|Acc]).
 
 
 % Decode KP-nodes key value pairs to an Erlang record

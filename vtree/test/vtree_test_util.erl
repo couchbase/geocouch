@@ -75,7 +75,9 @@ create_file(Filename) ->
 % KV-nodes themselves
 get_kvnodes(Fd, RootPos) ->
     Children = vtree_io:read_node(Fd, RootPos),
-    get_kvnodes(Fd, Children, 0, {[], []}).
+    {Depths, Nodes0} = get_kvnodes(Fd, Children, 0, {[], []}),
+    Nodes = vtree_io:read_kvnode_external(Fd, Nodes0),
+    {Depths, Nodes}.
 get_kvnodes(_Fd, [], _Depth, Acc) ->
     Acc;
 get_kvnodes(_Fd, [#kv_node{}|_]=Children, Depth, {Depths, Nodes}) ->

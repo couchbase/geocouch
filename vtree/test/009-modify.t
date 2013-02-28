@@ -86,11 +86,12 @@ test_write_new_root() ->
             "A new root node was written (two new levels)"),
 
     NodesKv = vtree_test_util:generate_kvnodes(4),
+    NodesKvEx = vtree_io:write_kvnode_external(Fd, NodesKv),
     MbbOKv = (hd(NodesKv))#kv_node.key,
 
-    Root4 = ?MOD:write_new_root(Vtree1, NodesKv),
+    Root4 = ?MOD:write_new_root(Vtree1, NodesKvEx),
     Root4Children = vtree_io:read_node(Fd, Root4#kp_node.childpointer),
-    etap:is(Root4Children, NodesKv,
+    etap:is(Root4Children, [N#kv_node{size=-1} || N <- NodesKvEx],
             "A new root node (for KV-nodes) was written (one new level)"),
 
     couch_file:close(Fd).
@@ -193,12 +194,16 @@ test_write_multiple_nodes() ->
 
     Nodes1a = vtree_test_util:generate_kvnodes(5),
     Nodes1b = vtree_test_util:generate_kvnodes(8),
-    WrittenNodes1 = ?MOD:write_multiple_nodes(Vtree1, [Nodes1a, Nodes1b]),
+    Nodes1aEx = vtree_io:write_kvnode_external(Fd1a, Nodes1a),
+    Nodes1bEx = vtree_io:write_kvnode_external(Fd1a, Nodes1b),
+    WrittenNodes1 = ?MOD:write_multiple_nodes(Vtree1, [Nodes1aEx, Nodes1bEx]),
     couch_file:close(Fd1a),
     Fd1b = vtree_test_util:create_file(?FILENAME),
-    {ok, WrittenNodes1a} = vtree_io:write_node(Fd1b, Nodes1a, Less),
-    {ok, WrittenNodes1b} = vtree_io:write_node(Fd1b, Nodes1b, Less),
-    % The #kp_node.mmb_orig isn't set bt vtree_io, hence set it manually
+    Nodes1aExB = vtree_io:write_kvnode_external(Fd1b, Nodes1a),
+    Nodes1bExB = vtree_io:write_kvnode_external(Fd1b, Nodes1b),
+    {ok, WrittenNodes1a} = vtree_io:write_node(Fd1b, Nodes1aExB, Less),
+    {ok, WrittenNodes1b} = vtree_io:write_node(Fd1b, Nodes1bExB, Less),
+    % The #kp_node.mmb_orig isn't set by vtree_io, hence set it manually
     etap:is(WrittenNodes1,
             [WrittenNodes1a#kp_node{mbb_orig=WrittenNodes1a#kp_node.key},
              WrittenNodes1b#kp_node{mbb_orig=WrittenNodes1b#kp_node.key}],

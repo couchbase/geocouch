@@ -28,7 +28,7 @@ main(_) ->
     end,
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(48),
+    etap:plan(61),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -46,7 +46,9 @@ test() ->
     test_count_search(),
     test_count_all(),
     test_traverse(),
+    test_traverse_kv(),
     test_traverse_all(),
+    test_traverse_all_kv(),
     test_any_box_intersects_mbb(),
     test_boxes_intersect_mbb(),
     ok.
@@ -100,7 +102,7 @@ test_all() ->
     etap:is(?MOD:all(Vtree, FoldFun, []), [],
             "Return all items from empty tree works"),
 
-    Nodes1 = vtree_test_util:generate_kvnodes(97),
+    Nodes1 = vtree_test_util:generate_kvnodes(5),
     Vtree1 = vtree_insert:insert(Vtree, Nodes1),
     Result1 = ?MOD:all(Vtree1, FoldFun, []),
     etap:is(lists:sort(Result1), lists:sort(Nodes1),
@@ -264,6 +266,68 @@ test_traverse() ->
     couch_file:close(Fd).
 
 
+test_traverse_kv() ->
+    random:seed(1, 11, 91),
+
+    Less = fun(A, B) -> A < B end,
+    FoldFun = fun(Node, Acc) -> {ok, [Node|Acc]} end,
+
+    Boxes = [N#kv_node.key || N <- vtree_test_util:generate_kvnodes(4)],
+    ExpectedFun = fun(Nodes, Boxes) ->
+                           lists:filter(
+                             fun(Node) ->
+                                     ?MOD:any_box_intersects_mbb(
+                                        Boxes, Node#kv_node.key, Less)
+                             end, Nodes)
+                   end,
+
+    Nodes1 = vtree_test_util:generate_kvnodes(20),
+    Boxes1 = [hd(Boxes)],
+    Expected1 = ExpectedFun(Nodes1, Boxes1),
+    {ok, Result1} = ?MOD:traverse_kv(Less, Nodes1, Boxes1, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result1), lists:sort(Expected1),
+            "Traversing tree (20 items) with one box was correct"),
+
+    {Boxes2, _} = lists:split(2, Boxes),
+    Expected2 = ExpectedFun(Nodes1, Boxes2),
+    {ok, Result2} = ?MOD:traverse_kv(Less, Nodes1, Boxes2, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result2), lists:sort(Expected2),
+            "Traversing tree (20 items) with two boxes was correct"),
+
+
+    Nodes2 = vtree_test_util:generate_kvnodes(137),
+    Expected3 = ExpectedFun(Nodes2, Boxes1),
+    {ok, Result3} = ?MOD:traverse_kv(Less, Nodes2, Boxes1, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result3), lists:sort(Expected3),
+            "Traversing tree (137 items) with one box was correct"),
+
+    Expected4 = ExpectedFun(Nodes2, Boxes),
+    {ok, Result4} = ?MOD:traverse_kv(Less, Nodes2, Boxes, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result4), lists:sort(Expected4),
+            "Traversing tree (137 items) with four boxes was correct"),
+
+    Nodes3 = vtree_test_util:generate_kvnodes(4),
+    Expected5 = ExpectedFun(Nodes3, Boxes1),
+    {ok, Result5} = ?MOD:traverse_kv(Less, Nodes3, Boxes1, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result5), lists:sort(Expected5),
+            "Traversing tree (4 items) with one box was correct"),
+
+    Expected6 = ExpectedFun(Nodes3, Boxes),
+    {ok, Result6} = ?MOD:traverse_kv(Less, Nodes3, Boxes, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result6), lists:sort(Expected6),
+            "Traversing tree (4 items) with four boxes was correct"),
+
+    Result7 = ?MOD:traverse_kv(Less, Nodes1, Boxes1, FoldFun, {stop, []}),
+    etap:is(Result7, {stop, []},
+            "Traversing tree (20 items) with one box was correct, but "
+            "using the `stop` as initial accummulator"),
+
+    Result8 = ?MOD:traverse_kv(Less, Nodes3, Boxes, FoldFun, {stop, foo}),
+    etap:is(Result8, {stop, foo},
+            "Traversing tree (4 items) with four boxes was correct, but "
+            "using `stop` as initial accummulator").
+
+
 test_traverse_all() ->
     random:seed(1, 11, 91),
 
@@ -300,6 +364,37 @@ test_traverse_all() ->
             "Traversing tree (4 items) with one box was correct"),
 
     couch_file:close(Fd).
+
+
+test_traverse_all_kv() ->
+    random:seed(1, 11, 91),
+
+    FoldFun = fun(Node, Acc) -> {ok, [Node|Acc]} end,
+
+    Nodes1 = vtree_test_util:generate_kvnodes(20),
+    {ok, Result1} = ?MOD:traverse_all_kv(Nodes1, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result1), lists:sort(Nodes1),
+            "Traversing tree (20 items) was correct"),
+
+    Nodes2 = vtree_test_util:generate_kvnodes(137),
+    {ok, Result3} = ?MOD:traverse_all_kv(Nodes2, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result3), lists:sort(Nodes2),
+            "Traversing tree (137 items) was correct"),
+
+    Nodes3 = vtree_test_util:generate_kvnodes(4),
+    {ok, Result5} = ?MOD:traverse_all_kv(Nodes3, FoldFun, {ok, []}),
+    etap:is(lists:sort(Result5), lists:sort(Nodes3),
+            "Traversing tree (4 items) was correct"),
+
+    Result7 = ?MOD:traverse_all_kv(Nodes1, FoldFun, {stop, []}),
+    etap:is(Result7, {stop, []},
+            "Traversing tree (20 items) was correct, but "
+            "using the `stop` as initial accummulator"),
+
+    Result8 = ?MOD:traverse_all_kv(Nodes3, FoldFun, {stop, bar}),
+    etap:is(Result8, {stop, bar},
+            "Traversing tree (4 items) was correct, but "
+            "using the `stop` as initial accummulator").
 
 
 test_any_box_intersects_mbb() ->

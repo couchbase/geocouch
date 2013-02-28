@@ -54,7 +54,13 @@
           key = [] :: mbb(),
           docid = nil :: binary() | nil ,
           geometry = nil :: geom() | nil | pos_integer(),
-          body = nil :: json() | nil | pos_integer()
+          body = nil :: json() | nil | pos_integer(),
+          % The body and the geometry are stored on disk early. Store their
+          % size here. A value of -1 means that the `geometry` and the `body`
+          % property are pointers, but the size is not known. A value of 0
+          % means that the size wasn't set yet and the `geometry` and `body`
+          % contain the actual values
+          size = 0 :: integer()
 }).
 
 -record(kp_node, {

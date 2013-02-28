@@ -68,15 +68,9 @@ traverse(_Vt, _Nodes, _Boxes, _FoldFun, {stop, Acc}) ->
     {stop, Acc};
 traverse(_Vt, [], _Boxes, _FoldFun, OkAcc) ->
     OkAcc;
-traverse(Vt, [#kv_node{}=Node|Rest], Boxes, FoldFun, {ok, Acc}) ->
-    Result = case any_box_intersects_mbb(
-                    Boxes, Node#kv_node.key, Vt#vtree.less) of
-        true ->
-            FoldFun(Node, Acc);
-        false ->
-            {ok, Acc}
-    end,
-    traverse(Vt, Rest, Boxes, FoldFun, Result);
+traverse(Vt, [#kv_node{}|_]=Nodes0, Boxes, FoldFun, OkAcc) ->
+    Nodes = vtree_io:read_kvnode_external(Vt#vtree.fd, Nodes0),
+    traverse_kv(Vt#vtree.less, Nodes, Boxes, FoldFun, OkAcc);
 traverse(Vt, [#kp_node{}=Node|Rest], Boxes, FoldFun, OkAcc) ->
     #vtree{
           less = Less,
@@ -95,6 +89,23 @@ traverse(Vt, [#kp_node{}=Node|Rest], Boxes, FoldFun, OkAcc) ->
     % Move sideways
     traverse(Vt, Rest, Boxes, FoldFun, Result).
 
+-spec traverse_kv(Less :: lessfun(), Nodes :: [#kv_node{}], Boxes :: [mbb()],
+                  FoldFun :: foldfun(), InitAcc :: {ok |stop, any()}) ->
+                         {ok | stop, any()}.
+traverse_kv(_Less, _Nodes, _Boxes, _FoldFun, {stop, Acc}) ->
+    {stop, Acc};
+traverse_kv(_Less, [], _Boxes, _FoldFun, OkAcc) ->
+    OkAcc;
+traverse_kv(Less, [Node|Rest], Boxes, FoldFun, {ok, Acc}) ->
+    Result = case any_box_intersects_mbb(
+                    Boxes, Node#kv_node.key, Less) of
+                 true ->
+                     FoldFun(Node, Acc);
+                 false ->
+                     {ok, Acc}
+             end,
+    traverse_kv(Less, Rest, Boxes, FoldFun, Result).
+
 
 % Traverse the full tree without any bounding box
 -spec traverse_all(Vt :: #vtree{}, Nodes :: [#kv_node{} | #kp_node{}],
@@ -104,15 +115,26 @@ traverse_all(_Vt, _Nodes, _FoldFun, {stop, Acc}) ->
     {stop, Acc};
 traverse_all(_Vt, [], _FoldFun, OkAcc) ->
     OkAcc;
-traverse_all(Vt, [#kv_node{}=Node|Rest], FoldFun, {ok, Acc}) ->
-    Result = FoldFun(Node, Acc),
-    traverse_all(Vt, Rest, FoldFun, Result);
+traverse_all(Vt, [#kv_node{}|_]=Nodes0, FoldFun, OkAcc) ->
+    Nodes = vtree_io:read_kvnode_external(Vt#vtree.fd, Nodes0),
+    traverse_all_kv(Nodes, FoldFun, OkAcc);
 traverse_all(Vt, [#kp_node{}=Node|Rest], FoldFun, OkAcc) ->
     Children = vtree_io:read_node(Vt#vtree.fd, Node#kp_node.childpointer),
     % Move deeper
     Result = traverse_all(Vt, Children, FoldFun, OkAcc),
     % Move sideways
     traverse_all(Vt, Rest, FoldFun, Result).
+
+-spec traverse_all_kv(Nodes :: [#kv_node{}], FoldFun :: foldfun(),
+                      InitAcc :: {ok |stop, any()}) ->
+                             {ok | stop, any()}.
+traverse_all_kv(_Nodes, _FoldFun, {stop, Acc}) ->
+    {stop, Acc};
+traverse_all_kv([], _FoldFun, OkAcc) ->
+    OkAcc;
+traverse_all_kv([#kv_node{}=Node|Rest], FoldFun, {ok, Acc}) ->
+    Result = FoldFun(Node, Acc),
+    traverse_all_kv(Rest, FoldFun, Result).
 
 
 % Returns true if any of the boxes intersects the MBB
