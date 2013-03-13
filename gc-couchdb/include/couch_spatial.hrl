@@ -92,6 +92,7 @@
 % or some configuration setting.
 -record(vtree_state, {
           root = nil,
-          fill_min = 20,
-          fill_max = 50
+          kp_chunk_threshold = 2000,
+          kv_chunk_threshold = 2000,
+          min_fill_rate = 0.4
 }).

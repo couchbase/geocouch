@@ -31,7 +31,7 @@ main(_) ->
     end,
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(40),
+    etap:plan(47),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -59,11 +59,12 @@ test_delete() ->
     Nodes1 = vtree_test_util:generate_kvnodes(6),
 
     Vtree1 = #vtree{
-      fd = Fd,
-      fill_min = 4,
-      fill_max = 8,
-      less = fun(A, B) -> A < B end
-     },
+                fd = Fd,
+                kp_chunk_threshold = 1600,
+                kv_chunk_threshold = 1600,
+                min_fill_rate = 0.4,
+                less = fun(A, B) -> A < B end
+               },
 
     Vtree2 = vtree_insert:insert(Vtree1, Nodes1),
     ToDelete3 = lists:sublist(Nodes1, 2, 3),
@@ -71,6 +72,7 @@ test_delete() ->
     {Depths3, KvNodes3} = vtree_test_util:get_kvnodes(
                             Vtree3#vtree.fd, Root3#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths3)), 1, "Tree is balanced"),
+    etap:is(hd(Depths3), 0, "Tree has expected depth"),
     etap:is(lists:sort(KvNodes3), lists:sort(Nodes1 -- ToDelete3),
             "6 nodes inserted, 3 deleted"),
 
@@ -85,6 +87,7 @@ test_delete() ->
     {Depths6, KvNodes6} = vtree_test_util:get_kvnodes(
                             Vtree6#vtree.fd, Root6#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths6)), 1, "Tree is balanced"),
+    etap:is(hd(Depths6), 2, "Tree has expected depth"),
     etap:is(lists:sort(KvNodes6), lists:sort(Nodes2 -- ToDelete6),
             "174 nodes inserted, 107 deleted"),
 
@@ -101,31 +104,33 @@ test_delete() ->
 
 
 test_delete_multiple() ->
+    random:seed(1, 11, 91),
     Fd = vtree_test_util:create_file(?FILENAME),
 
     Vtree1 = #vtree{
-      fd = Fd,
-      fill_min = 2,
-      fill_max = 4,
-      less = fun(A, B) -> A < B end
-     },
+                fd = Fd,
+                kp_chunk_threshold = 800,
+                kv_chunk_threshold = 800,
+                min_fill_rate = 0.4,
+                less = fun(A, B) -> A < B end
+               },
 
     Tests = [
-             {Vtree1, 18, 4, 14},
-             {Vtree1, 50, 29, 12},
-             {Vtree1, 50, 29, 1},
-             {Vtree1, 4, 1, 1},
-             {Vtree1, 4, 1, 4},
-             {Vtree1, 37, 1, 37},
-             {Vtree1, 37, 1, 36}
+             {Vtree1, 18, 4, 14, 1},
+             {Vtree1, 50, 29, 12, 2},
+             {Vtree1, 50, 29, 1, 2},
+             {Vtree1, 4, 1, 1, 0},
+             {Vtree1, 4, 1, 4, 1},
+             {Vtree1, 37, 1, 37, 1},
+             {Vtree1, 37, 1, 36, 1}
             ],
-    lists:foreach(fun({Vtree, NumNodes, From, To}) ->
-                          delete_multiple(Vtree, NumNodes, From, To)
+    lists:foreach(fun({Vtree, NumNodes, From, To, Depth}) ->
+                          delete_multiple(Vtree, NumNodes, From, To, Depth)
                   end, Tests),
 
     couch_file:close(Fd).
 
-delete_multiple(Vtree0, NumNodes, From, NumDelete) ->
+delete_multiple(Vtree0, NumNodes, From, NumDelete, Depth) ->
     Nodes = vtree_test_util:generate_kvnodes(NumNodes),
     Vtree = #vtree{root=Root} = vtree_insert:insert(Vtree0, Nodes),
     ToDelete = lists:sublist(Nodes, From, NumDelete),
@@ -134,6 +139,7 @@ delete_multiple(Vtree0, NumNodes, From, NumDelete) ->
             {Depths, KvNodes} = vtree_test_util:get_kvnodes(
                                   Vtree#vtree.fd, KpNode#kp_node.childpointer),
             etap:is(sets:size(sets:from_list(Depths)), 1, "Tree is balanced"),
+            etap:is(hd(Depths), Depth, "Tree has expected depth"),
             etap:is(lists:sort(KvNodes), lists:sort(Nodes -- ToDelete),
                     io_lib:format("Deleted ~p node(s) out of ~p node(s)",
                                   [NumDelete, NumNodes]));

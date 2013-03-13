@@ -31,7 +31,7 @@ main(_) ->
     end,
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(40),
+    etap:plan(49),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -56,12 +56,12 @@ test() ->
 test_insert() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     Nodes1 = vtree_test_util:generate_kvnodes(6),
-
     Vtree1 = #vtree{
-      fd = Fd,
-      fill_min = 4,
-      fill_max = 8,
-      less = fun(A, B) -> A < B end
+                fd = Fd,
+                kv_chunk_threshold = 2500,
+                kp_chunk_threshold = 2500,
+                min_fill_rate = 0.3,
+                less = fun(A, B) -> A < B end
      },
 
     NewVtree1 = ?MOD:insert(Vtree1, [hd(Nodes1)]),
@@ -85,6 +85,7 @@ test_insert() ->
                             Fd, Root3#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths3)), 1,
             "Inserted 500 nodes into emtpy tree: tree is balanced"),
+    etap:is(hd(Depths3), 2, "Tree has expected depth"),
     etap:is(lists:sort(KvNodes3), lists:sort(Nodes3),
             "Inserted 500 nodes into emtpy tree: all nodes got inserted"),
 
@@ -95,6 +96,7 @@ test_insert() ->
                             Fd, Root4#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths4)), 1,
             "Inserted 223 nodes into existing tree: tree is balanced"),
+    etap:is(hd(Depths4), 2, "Tree has expected depth"),
     etap:is(lists:sort(KvNodes4), lists:sort(Nodes3 ++ Nodes4),
             "Inserted 223 nodes into existing tree: all nodes got inserted"),
 
@@ -105,10 +107,11 @@ test_insert() ->
                             Fd, Root5#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths5)), 1,
             "Inserted single node into existing single node tree: tree is "
-            "balanced. Root has < fill_min nodes"),
+            "balanced. Root has < kp_chunk_threshold nodes"),
+    etap:is(hd(Depths5), 0, "Tree has expected depth"),
     etap:is(lists:sort(KvNodes5), lists:sort([hd(Nodes1)|Nodes5]),
             "Inserted single node into existing tree: node got inserted. "
-            "Root has < fill_min nodes"),
+            "Root has < kp_chunk_threshold nodes"),
 
     etap:is(?MOD:insert(NewVtree2, []), NewVtree2,
             "Not adding any nodes returns the original tree"),
@@ -122,6 +125,7 @@ test_insert() ->
                             Fd, Root6#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths6)), 1,
             "Inserted 27 nodes into existing tree: tree is balanced"),
+    etap:is(hd(Depths6), 2, "Tree has expected depth"),
     etap:is(lists:sort(KvNodes6), lists:sort(Nodes3 ++ Nodes6),
             "Inserted 27 nodes into existing tree: all nodes got inserted"),
 
@@ -152,11 +156,12 @@ test_insert_in_bulks()->
     Fd = vtree_test_util:create_file(?FILENAME),
 
     Vtree0 = #vtree{
-      fd = Fd,
-      fill_min = 2,
-      fill_max = 4,
-      less = Less
-     },
+                fd = Fd,
+                kv_chunk_threshold = 1000,
+                kp_chunk_threshold = 1000,
+                min_fill_rate = 0.4,
+                less = Less
+               },
     Nodes0 = vtree_test_util:generate_kvnodes(1),
     % `insert_in_bulks/3` is never called on an empty tree
     Vtree1 = ?MOD:insert(Vtree0, Nodes0),
@@ -173,6 +178,7 @@ test_insert_in_bulks()->
                             Fd, Root1#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths1)), 1,
             "Tree is balanced (originally empty) (a)"),
+    etap:is(hd(Depths1), 1, "Tree has expected depth (a)"),
     etap:is(lists:sort(KvNodes1), lists:sort(Nodes1 ++ Nodes0),
             "All nodes were inserted (originally empty) (a)"),
 
@@ -181,6 +187,7 @@ test_insert_in_bulks()->
                             Fd, Root2#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths2)), 1,
             "Tree is balanced (originally empty) (b)"),
+    etap:is(hd(Depths2), 2, "Tree has expected depth (b)"),
     etap:is(lists:sort(KvNodes2), lists:sort(Nodes2 ++ Nodes0),
             "All nodes were inserted (originally empty) (b)"),
 
@@ -190,6 +197,7 @@ test_insert_in_bulks()->
                             Fd, Root3#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths3)), 1,
             "Tree is balanced (originally not empty)"),
+    etap:is(hd(Depths3), 2, "Tree has expected depth (originally not empty"),
     etap:is(lists:sort(KvNodes3), lists:sort(Nodes1 ++ Nodes3 ++ Nodes0),
             "All nodes were inserted (originally not empty)"),
 
@@ -201,10 +209,11 @@ test_insert_multiple() ->
     Fd = vtree_test_util:create_file(?FILENAME),
 
     Vtree1 = #vtree{
-      fd = Fd,
-      fill_min = 2,
-      fill_max = 4,
-      less = Less
+                fd = Fd,
+                kv_chunk_threshold = 1000,
+                kp_chunk_threshold = 1000,
+                min_fill_rate = 0.4,
+                less = Less
      },
 
     Nodes1 = vtree_test_util:generate_kvnodes(20),
@@ -219,6 +228,7 @@ test_insert_multiple() ->
     {Depths1, KvNodes1} = vtree_test_util:get_kvnodes(
                             Fd, KpNode1#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths1)), 1, "Tree is balanced (a)"),
+    etap:is(hd(Depths1), 1, "Tree has expected depth"),
     etap:is(lists:sort(KvNodes1), lists:sort(Nodes1 ++ Nodes2),
             "All nodes were inserted (a)"),
 
@@ -228,6 +238,7 @@ test_insert_multiple() ->
     {Depths2, KvNodes2} = vtree_test_util:get_kvnodes(
                             Fd, KpNode2#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths2)), 1, "Tree is balanced (b)"),
+    etap:is(hd(Depths2), 2, "Tree has expected depth"),
     etap:is(lists:sort(KvNodes2), lists:sort(Nodes1 ++ Nodes3),
             "All nodes were inserted (b)"),
 

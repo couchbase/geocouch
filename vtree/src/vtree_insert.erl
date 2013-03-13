@@ -25,36 +25,37 @@
 -spec insert(Vt :: #vtree{}, Nodes :: [#kv_node{}]) -> #vtree{}.
 insert(Vt, []) ->
     Vt;
-insert(#vtree{root=nil}=Vt, Nodes0) when length(Nodes0) > Vt#vtree.fill_max ->
+insert(#vtree{root=nil}=Vt, Nodes0) ->
     T1 = now(),
     Nodes = vtree_io:write_kvnode_external(Vt#vtree.fd, Nodes0),
-
     % If we would do single inserts, the first node that was inserted would
     % have set the original Mbb `MbbO`
     MbbO = (hd(Nodes))#kv_node.key,
+    Threshold = Vt#vtree.kv_chunk_threshold,
 
-    {Nodes2, Rest} = lists:split(Vt#vtree.fill_max, Nodes),
-    KpNodes = vtree_modify:write_nodes(Vt, Nodes2, MbbO),
-    Root = vtree_modify:write_new_root(Vt, KpNodes),
-    Vt2 = Vt#vtree{root=Root},
+    case erlang:external_size(Nodes) > Threshold of
+        true ->
+            {Nodes2, Rest} = vtree_modify:get_overflowing_subset(
+                               Threshold, Nodes),
+            KpNodes = vtree_modify:write_nodes(Vt, Nodes2, MbbO),
+            Root = vtree_modify:write_new_root(Vt, KpNodes),
+            Vt2 = Vt#vtree{root=Root},
 
-    % NOTE vmx 2012-09-20: The value `math:log(Vt#vtree.fill_max)*50` is
-    %     arbitrary, might be worth spending more benchmarking
-    % NOTE vmx 2012-09-20: You can call it premature optimization, but it's
-    %     really worth it. In the future the initial index building should be
-    %     replaces with something better
-    Vt3 = insert_in_bulks(Vt2, Rest, round(math:log(Vt#vtree.fill_max)*50)),
-    ?LOG_DEBUG("Insertion into empty tree took: ~ps~n",
-              [timer:now_diff(now(), T1)/1000000]),
-    ?LOG_DEBUG("Root pos: ~p~n", [(Vt3#vtree.root)#kp_node.childpointer]),
-    Vt3;
-insert(#vtree{root=nil}=Vt, Nodes0) ->
-    Nodes = vtree_io:write_kvnode_external(Vt#vtree.fd, Nodes0),
-    % If we would do single inserts, the first node that was inserted would
-    % have set the original Mbb `MbbO`
-    MbbO = (hd(Nodes))#kv_node.key,
-    [Root] = vtree_modify:write_nodes(Vt, Nodes, MbbO),
-    Vt#vtree{root=Root};
+            % NOTE vmx 2012-09-20: The value of `ArbitraryBulkSize` is
+            %     arbitrary, might be worth spending more benchmarking
+            % NOTE vmx 2012-09-20: You can call it premature optimization, but it's
+            %     really worth it. In the future the initial index building should be
+            %     replaces with something better
+            ArbitraryBulkSize = round(math:log(Threshold)+50),
+            Vt3 = insert_in_bulks(Vt2, Rest, ArbitraryBulkSize),
+            ?LOG_DEBUG("Insertion into empty tree took: ~ps~n",
+                      [timer:now_diff(now(), T1)/1000000]),
+            ?LOG_DEBUG("Root pos: ~p~n", [(Vt3#vtree.root)#kp_node.childpointer]),
+            Vt3;
+        false ->
+            [Root] = vtree_modify:write_nodes(Vt, Nodes, MbbO),
+            Vt#vtree{root=Root}
+    end;
 insert(Vt, Nodes0) ->
     insert(Vt, Nodes0, true).
 % `WriteExternal` determines whether the body and the geometry should be
@@ -81,6 +82,8 @@ insert(Vt, Nodes0, WriteExternal) ->
     Vt#vtree{root=NewRoot}.
 
 
+% NOTE vmx 2013-03-12: It might make sense to change the bulk size from
+%      using the number of nodes, to a byte size based way.
 % Insert the data in a certain chunks
 -spec insert_in_bulks(Vt :: #vtree{}, Nodes :: [#kv_node{}],
                       BulkSize :: non_neg_integer()) -> #vtree{}.

@@ -38,7 +38,7 @@
 -spec write_node(Fd :: file:io_device(), Nodes :: [#kv_node{} | #kp_node{}],
                  Less :: lessfun()) -> {ok, #kp_node{}}.
 write_node(Fd, Nodes, Less) ->
-    {Bin, TreeSize} = encode_node(Fd, Nodes),
+    {Bin, TreeSize} = encode_node(Nodes),
     {ok, Pointer, Size} = geocouch_file:append_chunk(Fd, Bin),
     geocouch_file:flush(Fd),
     % The enclosing bounding box for all children
@@ -85,8 +85,9 @@ write_kvnode_external(Fd, Nodes) ->
 
 % Read a node from a certain disk position and return the key-value pairs it
 % it contains as Erlang records.
-% In case of KV nodes it returns only pointers to the geometry and body. No
-% longer true, it's not only the pointers, but the real values
+% In case of KV nodes it returns only pointers to the geometry and body. If
+% you want to resolve the pointers and have the real values, make a subsequent
+% call to `read_kvnode_external/2` with the nodes returned by `read_node/2`.
 -spec read_node(Fd :: file:io_device(), Pointer :: non_neg_integer()) ->
                        [#kp_node{} | #kv_node{}].
 read_node(Fd, Pointer) ->
@@ -117,20 +118,18 @@ read_kvnode_external(Fd, Nodes) ->
 % Returns the binary that will be stored, and the number size of the subtree
 % (resp. in case of a KV node, the number of bytes that were written during
 % encoding), to make sure the calculation of the subtree size is correct.
--spec encode_node(Fd :: file:io_device(),
-                  Nodes :: [#kp_node{} | #kv_node{}]) ->
+-spec encode_node(Nodes :: [#kp_node{} | #kv_node{}]) ->
                          {binary(), non_neg_integer()}.
-encode_node(Fd, [#kv_node{}|_]=Nodes) ->
-    encode_node(Fd, Nodes, {<<?KV_NODE:8>>, 0});
-encode_node(Fd, [#kp_node{}|_]=Nodes) ->
-    encode_node(Fd, Nodes, {<<?KP_NODE:8>>, 0}).
--spec encode_node(Fd :: file:io_device(),
-                  Nodes :: [#kp_node{} | #kv_node{}],
+encode_node([#kv_node{}|_]=Nodes) ->
+    encode_node(Nodes, {<<?KV_NODE:8>>, 0});
+encode_node([#kp_node{}|_]=Nodes) ->
+    encode_node(Nodes, {<<?KP_NODE:8>>, 0}).
+-spec encode_node(Nodes :: [#kp_node{} | #kv_node{}],
                   Acc :: {binary(), non_neg_integer()}) ->
                          {binary(), non_neg_integer()}.
-encode_node(_Fd, [], Acc) ->
+encode_node([], Acc) ->
     Acc;
-encode_node(Fd, [Node|T], {BinAcc, TreeSizeAcc}) ->
+encode_node([Node|T], {BinAcc, TreeSizeAcc}) ->
     BinK = encode_key(Node),
     SizeK = erlang:size(BinK),
     case SizeK < 4096 of
@@ -147,8 +146,7 @@ encode_node(Fd, [Node|T], {BinAcc, TreeSizeAcc}) ->
     end,
 
     Bin = <<SizeK:12, SizeV:28, BinK/binary, BinV/binary>>,
-    encode_node(Fd, T,
-                {<<BinAcc/binary, Bin/binary>>, TreeSize + TreeSizeAcc}).
+    encode_node(T, {<<BinAcc/binary, Bin/binary>>, TreeSize + TreeSizeAcc}).
 
 
 encode_key(#kv_node{}=Node) ->

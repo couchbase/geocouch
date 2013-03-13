@@ -60,11 +60,12 @@ test_search() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
     Vtree = #vtree{
-      fd = Fd,
-      fill_min = 4,
-      fill_max = 8,
-      less = Less
-     },
+               fd = Fd,
+               kp_chunk_threshold = 2500,
+               kv_chunk_threshold = 2500,
+               min_fill_rate = 0.4,
+               less = Less
+              },
     Boxes = [N#kv_node.key || N <- vtree_test_util:generate_kvnodes(4)],
 
     FoldFun = fun(Node, Acc) -> {ok, [Node|Acc]} end,
@@ -90,11 +91,12 @@ test_all() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
     Vtree = #vtree{
-      fd = Fd,
-      fill_min = 4,
-      fill_max = 8,
-      less = Less
-     },
+               fd = Fd,
+               kp_chunk_threshold = 2500,
+               kv_chunk_threshold = 2500,
+               min_fill_rate = 0.4,
+               less = Less
+              },
     Boxes = [N#kv_node.key || N <- vtree_test_util:generate_kvnodes(4)],
 
     FoldFun = fun(Node, Acc) -> {ok, [Node|Acc]} end,
@@ -123,11 +125,12 @@ test_count_search() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
     Vtree = #vtree{
-      fd = Fd,
-      fill_min = 4,
-      fill_max = 8,
-      less = Less
-     },
+               fd = Fd,
+               kp_chunk_threshold = 2500,
+               kv_chunk_threshold = 2500,
+               min_fill_rate = 0.4,
+               less = Less
+              },
 
     Boxes = [N#kv_node.key || N <- vtree_test_util:generate_kvnodes(4)],
     ExpectedFun = fun(Nodes, Boxes) ->
@@ -175,11 +178,12 @@ test_count_all() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
     Vtree = #vtree{
-      fd = Fd,
-      fill_min = 4,
-      fill_max = 8,
-      less = Less
-     },
+               fd = Fd,
+               kp_chunk_threshold = 2500,
+               kv_chunk_threshold = 2500,
+               min_fill_rate = 0.4,
+               less = Less
+              },
 
     etap:is(?MOD:count_all(Vtree), 0,
             "Return all items from empty tree works"),
@@ -201,11 +205,12 @@ test_traverse() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
     Vtree = #vtree{
-      fd = Fd,
-      fill_min = 4,
-      fill_max = 8,
-      less = Less
-     },
+               fd = Fd,
+               kp_chunk_threshold = 2500,
+               kv_chunk_threshold = 2500,
+               min_fill_rate = 0.4,
+               less = Less
+              },
 
     FoldFun = fun(Node, Acc) -> {ok, [Node|Acc]} end,
 
@@ -334,11 +339,12 @@ test_traverse_all() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
     Vtree = #vtree{
-      fd = Fd,
-      fill_min = 4,
-      fill_max = 8,
-      less = Less
-     },
+               fd = Fd,
+               kp_chunk_threshold = 2500,
+               kv_chunk_threshold = 2500,
+               min_fill_rate = 0.4,
+               less = Less
+              },
 
     FoldFun = fun(Node, Acc) -> {ok, [Node|Acc]} end,
 

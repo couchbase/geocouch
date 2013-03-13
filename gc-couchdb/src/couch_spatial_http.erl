@@ -49,8 +49,7 @@ dispatch_sub_spatial_req(#httpd{
 
 
 handle_spatial(#httpd{method='GET'}=Req, Db, DDoc) ->
-    [_, _, DName, _, ViewName] = Req#httpd.path_parts,
-    ?LOG_DEBUG("Spatial query (~p): ~n~p", [DName, DDoc#doc.id]),
+    [_, _, _DName, _, ViewName] = Req#httpd.path_parts,
     couch_stats_collector:increment({httpd, spatial_view_reads}),
     design_doc_view(Req, Db, DDoc, ViewName);
 handle_spatial(Req, _Db, _DDoc) ->

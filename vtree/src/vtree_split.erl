@@ -18,6 +18,8 @@
 -module(vtree_split).
 
 -include("vtree.hrl").
+% couch_db.hrl is only included to have log messages
+-include("couch_db.hrl").
 
 -export([split_inner/5, split_leaf/5]).
 
@@ -57,11 +59,8 @@
 % The full split algorithm for an inner node. All dimensions are
 % taken into account. The best split candidate is returned.
 -spec split_inner(Nodes :: [split_node()], Mbb0 :: mbb(),
-                  FillMin :: pos_integer(), FillMax :: pos_integer(),
+                  FillMin :: number(), FillMax :: number(),
                   Less :: lessfun()) -> candidate().
-split_inner(Nodes, _MbbO, _FillMin, FillMax, _Less) when
-      length(Nodes) > FillMax+1 ->
-    throw("Can only split up to FillMax+1 nodes");
 split_inner(Nodes, MbbO, FillMin, FillMax, Less) ->
     NumDims = length(element(1, hd(Nodes))),
     MbbN = vtree_util:nodes_mbb(Nodes, Less),
@@ -80,7 +79,7 @@ split_inner(Nodes, MbbO, FillMin, FillMax, Less) ->
 
                   {Val, Candidate} = choose_candidate(
                                        CandidatesMin ++ CandidatesMax, Dim,
-                                       MbbO, MbbN, FillMin, FillMax, Less),
+                                       MbbO, MbbN, FillMin, Less),
                   case Val < MinVal of
                       true -> {Val, Candidate};
                       false -> Acc
@@ -94,16 +93,13 @@ split_inner(Nodes, MbbO, FillMin, FillMax, Less) ->
 % minumum perimeter is taken into account. The best split candidate is
 % returned.
 -spec split_leaf(Nodes :: [split_node()], Mbb0 :: mbb(),
-                 FillMin :: pos_integer(), FillMax :: pos_integer(),
+                 FillMin :: number(), FillMax :: number(),
                  Less :: lessfun()) -> candidate().
-split_leaf(Nodes, _MbbO, _FillMin, FillMax, _Less) when
-      length(Nodes) > FillMax+1 ->
-    throw("Can only split up to FillMax+1 nodes");
 split_leaf(Nodes, MbbO, FillMin, FillMax, Less) ->
     {Dim, Candidates} = split_axis(Nodes, FillMin, FillMax, Less),
     MbbN = vtree_util:nodes_mbb(Nodes, Less),
     {_, Candidate} = choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin,
-                                      FillMax, Less),
+                                      Less),
     Candidate.
 
 
@@ -142,13 +138,16 @@ split_axis(Nodes, FillMin, FillMax, Less) ->
 % `MbbN` is the bounding box around the nodes that should be split including
 % the newly added one.
 -spec choose_candidate(Candidates :: [candidate()], Dim :: integer(),
-                       MbbO :: mbb(), MbbN :: mbb(), FillMin :: pos_integer(),
-                       FillMax :: pos_integer(), Less :: lessfun()) ->
+                       MbbO :: mbb(), MbbN :: mbb(), FillMin :: number(),
+                       Less :: lessfun()) ->
                               {number(), candidate()}.
-choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin, FillMax, Less) ->
+choose_candidate([{F, S}|_]=Candidates, Dim, MbbO, MbbN, FillMin, Less) ->
+    CandidateSize = erlang:external_size([Node || {_, Node} <- F]) +
+        erlang:external_size([Node || {_, Node} <- S]),
+
     PerimMax = perim_max(MbbN),
     Asym = asym(Dim, MbbO, MbbN),
-    Wf = make_weighting_fun(Asym, FillMin, FillMax),
+    Wf = make_weighting_fun(Asym, FillMin, CandidateSize),
 
     vtree_util:find_min_value(
       fun(Candidate) ->
@@ -164,14 +163,14 @@ choose_candidate(Candidates, Dim, MbbO, MbbN, FillMin, FillMax, Less) ->
 goal_fun({F, S}=Candidate, PerimMax, Wf, Less) ->
     MbbF = vtree_util:nodes_mbb(F, Less),
     MbbS = vtree_util:nodes_mbb(S, Less),
-    % The index is where the candidates were split
-    Index = length(F),
+    % The `Offset` is bytes offset where the candidates were split
+    Offset = erlang:external_size([Node || {_, Node} <- F]),
 
     case vtree_util:intersect_mbb(MbbF, MbbS, Less) of
         overlapfree ->
-            wg_overlapfree(Candidate, PerimMax, Less) * Wf(Index);
+            wg_overlapfree(Candidate, PerimMax, Less) * Wf(Offset);
         _ ->
-            wg(Candidate, Less) / Wf(Index)
+            wg(Candidate, Less) / Wf(Offset)
     end.
 
 
@@ -203,18 +202,29 @@ wg_overlapfree({F, S}, PerimMax, Less) ->
     nodes_perimeter(F, Less) + nodes_perimeter(S, Less) - PerimMax.
 
 
--spec make_weighting_fun(Asym :: float(), FillMin :: pos_integer(),
-                         FillMax :: pos_integer()) -> fun().
-make_weighting_fun(Asym, FillMin, FillMax) ->
+-spec make_weighting_fun(Asym :: float(), FillMin :: number(),
+                         MaxSize :: pos_integer()) -> fun().
+make_weighting_fun(Asym, FillMin, MaxSize) ->
     % In thee RR*-tree paper they conclude that the best average performance
     % is achieved with a "S" set to 0.5. Hence it's hard-coded here.
     S = 0.5,
-    Mu = (1 - (2*FillMin)/(FillMax+1)) * Asym,
+    % In the RR*-tree paper Mu is calcluated with the maximum fill size + 1
+    % (which corresponds to an overflowing node). As we don't use the number
+    % of nodes, but the byte size as thresholds to determine how many children
+    % a node should/can hold, we use the total size of a single split
+    % candidate instead.
+    Mu = (1 - (2*FillMin)/MaxSize) * Asym,
     Sigma = S * (1 + erlang:abs(Mu)),
     Y1 = math:exp(-1/math:pow(S, 2)),
     Ys = 1 / (1-Y1),
-    fun(Index) ->
-            Xi = ((2*Index) / (FillMax+1)) - 1,
+    % In the RR*-tree paper the position of the node within the node list
+    % is used. As we use the byte size of the nodes as thresholds, use the
+    % byte offset of the split location instead.
+    fun(Offset) ->
+            % In the RR*-tree paper Xi is calculate with the maximum
+            % fill size + 1, use again the maximum byte size (see the
+            % comments above for the reasoning.
+            Xi = ((2*Offset) / MaxSize) - 1,
             Exp = math:exp(-math:pow((Xi-Mu)/Sigma, 2)),
             Ys * (Exp - Y1)
     end.
@@ -256,17 +266,43 @@ perim_max(Mbb) ->
 
 % Create all possible split candidates from a list of nodes
 -spec create_split_candidates(Nodes :: [split_node()],
-                              FillMin :: pos_integer(),
-                              FillMax :: pos_integer()) -> [candidate()].
-create_split_candidates(Nodes, FillMin, FillMax) when
-      FillMax < FillMin orelse
-      length(Nodes) - FillMin < FillMin ->
-    throw("Can't create split candidates, chose different values for "
-          "FillMin/FillMax");
-create_split_candidates(Nodes, FillMin, FillMax) ->
-    % FillMax might violate the minimum fill rate condition
-    FillMax2 = erlang:min(length(Nodes)-FillMin, FillMax),
-    [lists:split(SplitPos, Nodes) || SplitPos <- lists:seq(FillMin, FillMax2)].
+                              FillMin :: number(),
+                              FillMax :: number()) -> [candidate()].
+create_split_candidates([H|T], FillMin, FillMax) ->
+    create_split_candidates([H], T, FillMin, FillMax, []).
+
+-spec create_split_candidates(A :: [split_node()], B :: [split_node()],
+                              FillMin :: number(), FillMax :: number(),
+                              [candidate()]) -> [candidate()].
+% The minimum fill rate was already relaxed (see below) and there's still
+% no split candidate. The reason is probably that any of the nodes is
+% bigger in size (bytes) than the maximum chunk threshold.
+create_split_candidates(_, [], 0, _, []) ->
+    throw("No split candidates found. Increase the chunk threshold.");
+% No valid split candidates were found. Instead of returning an error, we
+% relax the minimum filled condition to zero. This case should rarely happen
+% (only in very extreme cases). For example if you have two nodes, one with a
+% very large byte size, the other one very small. There the minimum fill rate
+% can't be satisfied easily and we would end up without a candidate at all.
+create_split_candidates(A, [], _, FillMax, []) ->
+    ?LOG_INFO("Relax the minimum fill rate condition in order to find a "
+              "split candidate", []),
+    create_split_candidates(A, 0, FillMax);
+create_split_candidates(_, [], _, _, Candidates) ->
+    lists:reverse(Candidates);
+create_split_candidates(A, [HeadB|RestB]=B, FillMin, FillMax, Candidates0) ->
+    % Use the sizes of the actual nodes
+    SizeA = erlang:external_size([Node || {_, Node} <- A]),
+    SizeB = erlang:external_size([Node || {_, Node} <- B]),
+    Candidates =
+        case (SizeA >= FillMin andalso SizeA =< FillMax) andalso
+            (SizeB >= FillMin andalso SizeB =< FillMax) of
+            true ->
+                [{A, B}|Candidates0];
+            false ->
+                Candidates0
+        end,
+    create_split_candidates(A ++ [HeadB], RestB, FillMin, FillMax, Candidates).
 
 
 % Calculate the perimeter of the enclosing MBB of some nodes
@@ -278,8 +314,8 @@ nodes_perimeter(Nodes, Less) ->
 
 % Get the perimeters of all split candidates. Returns a 2-tuple with the
 % perimeter and the split candidates
--spec candidates_perimeter(Nodes :: [split_node()], FillMin :: pos_integer(),
-                           FillMax :: pos_integer(), Less :: lessfun()) ->
+-spec candidates_perimeter(Nodes :: [split_node()], FillMin :: number(),
+                           FillMax :: number(), Less :: lessfun()) ->
                                   {number(), [candidate()]}.
 candidates_perimeter(Nodes, FillMin, FillMax, Less) ->
     Candidates = create_split_candidates(Nodes, FillMin, FillMax),

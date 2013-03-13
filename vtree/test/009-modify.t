@@ -31,7 +31,7 @@ main(_) ->
     end,
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(31),
+    etap:plan(37),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -47,6 +47,8 @@ test() ->
     test_write_new_root(),
     test_insert_into_nodes(),
     test_get_key(),
+    test_get_chunk_threshold(),
+    test_get_overflowing_subset(),
     test_write_nodes(),
     test_write_multiple_nodes(),
     test_split_node(),
@@ -59,14 +61,15 @@ test_write_new_root() ->
     Less = fun(A, B) -> A < B end,
     Fd = vtree_test_util:create_file(?FILENAME),
 
-    Vtree1 = #vtree{
-      fill_min = 2,
-      fill_max = 4,
-      less = Less,
-      fd = Fd
-     },
-
     NodesKp = vtree_test_util:generate_kpnodes(5),
+
+    Vtree1 = #vtree{
+                kp_chunk_threshold = (erlang:external_size(NodesKp)/5)*4.5,
+                min_fill_rate = 0.4,
+                less = Less,
+                fd = Fd
+               },
+
 
     Root1 = ?MOD:write_new_root(Vtree1, [hd(NodesKp)]),
     etap:is(Root1, hd(NodesKp), "Single node is new root"),
@@ -98,23 +101,24 @@ test_write_new_root() ->
 
 
 test_insert_into_nodes() ->
+    NodeSize = 240,
     Tests = [
-             {2, 4},
-             {3, 6},
-             {10, 30}
+             {4*NodeSize, 0.4},
+             {6*NodeSize, 0.4},
+             {30*NodeSize, 0.3}
             ],
     lists:foreach(fun({FillMin, FillMax}) ->
                           insert_into_nodes(FillMin, FillMax)
                   end, Tests).
 
-insert_into_nodes(FillMin, FillMax) ->
+insert_into_nodes(FillMax, MinRate) ->
     Less = fun(A, B) -> A < B end,
 
     Vtree = #vtree{
-      fill_min = FillMin,
-      fill_max = FillMax,
-      less = Less
-     },
+               kp_chunk_threshold = FillMax,
+               min_fill_rate = MinRate,
+               less = Less
+              },
 
     Nodes1 = vtree_test_util:generate_kpnodes(4),
     Nodes2 = vtree_test_util:generate_kpnodes(20),
@@ -123,15 +127,18 @@ insert_into_nodes(FillMin, FillMax) ->
     Inserted = ?MOD:insert_into_nodes(Vtree, [Nodes1], MbbO, Nodes2),
     etap:is(length(lists:append(Inserted)), 24,
             "All nodes got inserted"),
-    NodesFilledOk = lists:all(
-                      fun(N) ->
-                              length(N) >= Vtree#vtree.fill_min andalso
-                                  length(N) =< Vtree#vtree.fill_max
-                      end, Inserted),
-    etap:ok(NodesFilledOk,
+
+    NodesFilledOkFun =
+        fun(N) ->
+                NSize = erlang:external_size(N),
+                NSize >= FillMax*MinRate andalso NSize =< FillMax
+        end,
+    etap:ok(lists:all(NodesFilledOkFun, Inserted),
             "All child nodes have the right number of nodes"),
-    etap:ok(length(Inserted) >= 24/FillMax andalso
-            length(Inserted) =< 24/FillMin,
+
+    NodesSize = erlang:external_size([Nodes1, Nodes2]),
+    etap:ok(length(Inserted) >= NodesSize/FillMax andalso
+            length(Inserted) =< NodesSize/(FillMax*MinRate),
             "Right number of child nodes").
 
 
@@ -143,6 +150,45 @@ test_get_key() ->
             "Returns the key of a KV-node"),
     etap:is(?MOD:get_key(KpNode), KpNode#kp_node.key,
             "Returns the key of a KP-node").
+
+
+test_get_chunk_threshold() ->
+    [KvNode] = vtree_test_util:generate_kvnodes(1),
+    [KpNode] = vtree_test_util:generate_kpnodes(1),
+    Vtree = #vtree{
+               kp_chunk_threshold = 720,
+               kv_chunk_threshold = 1420
+              },
+
+    etap:is(?MOD:get_chunk_threshold(Vtree, KvNode),
+            Vtree#vtree.kv_chunk_threshold,
+            "Returns the chunk threshold for a KV-node"),
+    etap:is(?MOD:get_chunk_threshold(Vtree, KpNode),
+            Vtree#vtree.kp_chunk_threshold,
+            "Returns the chunk threshold for a KP-node").
+
+
+test_get_overflowing_subset() ->
+    Nodes1 = vtree_test_util:generate_kvnodes(10),
+
+    SplitSize1 = erlang:external_size(Nodes1)/3,
+    etap:is(?MOD:get_overflowing_subset(SplitSize1, Nodes1),
+            lists:split(4, Nodes1),
+            "Splitted at the right position (a)"),
+    SplitSize2 = erlang:external_size(Nodes1)/2,
+    etap:is(?MOD:get_overflowing_subset(SplitSize2, Nodes1),
+            lists:split(5, Nodes1),
+            "Splitted at the right position (b)"),
+    SplitSize3 = erlang:external_size(Nodes1),
+    etap:is(?MOD:get_overflowing_subset(SplitSize3, Nodes1),
+            lists:split(10, Nodes1),
+            "Splitted at the right position (c)"),
+
+    Nodes2 = vtree_test_util:generate_kvnodes(33),
+    SplitSize4 = erlang:external_size(Nodes2)/3,
+    etap:is(?MOD:get_overflowing_subset(SplitSize4, Nodes2),
+            lists:split(11, Nodes2),
+            "Splitted at the right position (d)").
 
 
 test_write_nodes() ->
@@ -163,15 +209,16 @@ test_write_nodes() ->
 write_nodes(Insert, Expected, Message) ->
     Less = fun(A, B) -> A < B end,
     Fd = vtree_test_util:create_file(?FILENAME),
-
-    Vtree = #vtree{
-      fill_min = 2,
-      fill_max = 5,
-      less = Less,
-      fd = Fd
-     },
+    NodeSize = erlang:external_size(vtree_test_util:generate_kpnodes(1))*1.5,
 
     Nodes = vtree_test_util:generate_kpnodes(Insert),
+    Vtree = #vtree{
+               kp_chunk_threshold = 730,
+               min_fill_rate = 0.3,
+               less = Less,
+               fd = Fd
+              },
+
     MbbO = (hd(Nodes))#kp_node.key,
     WrittenNodes = ?MOD:write_nodes(Vtree, Nodes, MbbO),
     etap:is(length(WrittenNodes), Expected, Message),
@@ -186,11 +233,9 @@ test_write_multiple_nodes() ->
     Fd1a = vtree_test_util:create_file(?FILENAME),
 
     Vtree1 = #vtree{
-      fill_min = 2,
-      fill_max = 4,
-      less = Less,
-      fd = Fd1a
-     },
+                less = Less,
+                fd = Fd1a
+               },
 
     Nodes1a = vtree_test_util:generate_kvnodes(5),
     Nodes1b = vtree_test_util:generate_kvnodes(8),
@@ -229,18 +274,27 @@ test_write_multiple_nodes() ->
 
 
 test_split_node() ->
-    Vtree = #vtree{
-      fill_min = 3,
-      fill_max = 6
-     },
     KvNodes = vtree_test_util:generate_kvnodes(7),
     KpNodes = vtree_test_util:generate_kpnodes(7),
+    Vtree = #vtree{
+               kp_chunk_threshold = (erlang:external_size(KpNodes)/7)*6,
+               kv_chunk_threshold = (erlang:external_size(KvNodes)/7)*6,
+               min_fill_rate = 0.4
+     },
     KvMbbO = (hd(KvNodes))#kv_node.key,
     KpMbbO = (hd(KpNodes))#kp_node.key,
-    NodesFilledOkFun = fun(N) ->
-                               length(N) >= Vtree#vtree.fill_min andalso
-                                   length(N) =< Vtree#vtree.fill_max
-                       end,
+    NodesFilledOkFun =
+        fun(N) ->
+                Threshold = case N of
+                                [#kv_node{}|_] ->
+                                    Vtree#vtree.kv_chunk_threshold;
+                                [#kp_node{}|_] ->
+                                    Vtree#vtree.kp_chunk_threshold
+                            end,
+                NSize = erlang:external_size(N),
+                NSize >= Threshold*Vtree#vtree.min_fill_rate andalso
+                    NSize =< Threshold
+        end,
 
     {KvNodesA, KvNodesB} = ?MOD:split_node(Vtree, KvNodes, KvMbbO),
     KvNodesFilledOk = lists:all(NodesFilledOkFun, [KvNodesA, KvNodesB]),

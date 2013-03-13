@@ -142,8 +142,9 @@ init_state(Db, Fd, State, Header) ->
        fun({VtreeState, UpdateSeq, PurgeSeq2}, View) ->
             Vtree = #vtree{
                 root = VtreeState#vtree_state.root,
-                fill_min = VtreeState#vtree_state.fill_min,
-                fill_max =VtreeState#vtree_state.fill_max,
+                kp_chunk_threshold = VtreeState#vtree_state.kp_chunk_threshold,
+                kv_chunk_threshold = VtreeState#vtree_state.kv_chunk_threshold,
+                min_fill_rate = VtreeState#vtree_state.min_fill_rate,
                 less = Less,
                 fd = Fd
             },
@@ -252,8 +253,9 @@ make_header(State) ->
         {
             #vtree_state{
                 root = V#spatial.vtree#vtree.root,
-                fill_min = V#spatial.vtree#vtree.fill_min,
-                fill_max = V#spatial.vtree#vtree.fill_max
+                kp_chunk_threshold = V#spatial.vtree#vtree.kp_chunk_threshold,
+                kv_chunk_threshold = V#spatial.vtree#vtree.kv_chunk_threshold,
+                min_fill_rate = V#spatial.vtree#vtree.min_fill_rate
             },
             V#spatial.update_seq,
             V#spatial.purge_seq

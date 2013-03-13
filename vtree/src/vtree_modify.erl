@@ -41,7 +41,8 @@
 -include("vtree.hrl").
 -include("couch_db.hrl").
 
--export([write_new_root/2, write_nodes/3, modify_multiple/5]).
+-export([write_new_root/2, write_nodes/3, modify_multiple/5,
+         get_overflowing_subset/2]).
 
 -ifdef(makecheck).
 -compile(export_all).
@@ -49,15 +50,15 @@
 
 
 % Write a new root node for the given nodes. In case there are more than
-% `fill_max` nodes, write a new root recursively. Stop when the root is a
+% than it can hold, write a new root recursively. Stop when the root is a
 % single node.
 -spec write_new_root(Vt :: #vtree{}, Nodes :: [#kp_node{} | #kv_node{}]) ->
                             #kp_node{}.
 write_new_root(_Vt, [Root]) ->
     Root;
 % The `write_nodes/3` call will handle the splitting if needed. It could
-% happen that the number of nodes returned by `write_nodes/3` is bigger
-% than `fill_max`, hence the recursive call.
+% happen that the byte size of nodes returned by `write_nodes/3` is bigger
+% than the chunk threshold, hence the recursive call.
 write_new_root(Vt, Nodes) ->
     MbbO = vtree_util:nodes_mbb(Nodes, Vt#vtree.less),
     WrittenNodes = write_nodes(Vt, Nodes, MbbO),
@@ -67,10 +68,10 @@ write_new_root(Vt, Nodes) ->
 % Add a list of nodes one by one into a list of nodes (think of the latter
 % list as list containing child nodes). The node the new nodes get inserted
 % to, will automatically be split.
-% The result will again be a list of multiple nodes, with a maximum of
-% `fill_max` nodes (given by #vtree{}). The total number of elements in the
-% resulting list can be bigger than `fill_max`, hence you might need to call
-% it recursively.
+% The result will again be a list of multiple nodes, with a maximum number of
+% nodes that still satisfy the chunk threshold. The total number of elements
+% in the resulting list can be bigger than the node can actually hold, hence
+% you might need to call it recursively.
 -spec insert_into_nodes(Vt :: #vtree{},
                         NodePartitions :: [[#kv_node{} | #kp_node{}]],
                         MbbO :: mbb(), ToInsert :: [#kv_node{} | #kp_node{}])
@@ -78,14 +79,12 @@ write_new_root(Vt, Nodes) ->
 insert_into_nodes(_Vt, NodePartitions, _MbbO, []) ->
     NodePartitions;
 insert_into_nodes(Vt, NodePartitions, MbbO, [ToInsert|Rest]) ->
-    #vtree{
-            fill_max = FillMax,
-            less = Less
-          } = Vt,
+    Less = Vt#vtree.less,
     Mbb = get_key(ToInsert),
+    FillMax = get_chunk_threshold(Vt, ToInsert),
 
     % Every node partition contains a list of nodes, the maximum number is
-    % `fill_max`
+    % given by the chunk threshold
     % Start with calculating the MBBs of the partitions
     PartitionMbbs = [vtree_util:nodes_mbb(Nodes, Less) ||
                         Nodes <- NodePartitions],
@@ -98,7 +97,7 @@ insert_into_nodes(Vt, NodePartitions, MbbO, [ToInsert|Rest]) ->
                               lists:seq(0, length(PartitionMbbs)-1)),
     {_, NodeIndex} = vtree_choose:choose_subtree(NodesNumbered, Mbb, Less),
     {A, [Nth|B]} = lists:split(NodeIndex, NodePartitions),
-    NewNodes = case length(Nth) =:= FillMax of
+    NewNodes = case erlang:external_size(Nth) > FillMax of
                    % Maximum number of nodes reached, hence split it
                    true ->
                        {C, D} = split_node(Vt, [ToInsert|Nth], MbbO),
@@ -118,31 +117,74 @@ get_key(#kp_node{}=Node) ->
     Node#kp_node.key.
 
 
+-spec get_chunk_threshold(Vt :: #vtree{}, Node :: #kv_node{} | #kp_node{}) ->
+                                 number().
+get_chunk_threshold(Vt, #kv_node{}) ->
+    Vt#vtree.kv_chunk_threshold;
+get_chunk_threshold(Vt, #kp_node{}) ->
+    Vt#vtree.kp_chunk_threshold.
+
+
+% Return a minimal subset of nodes that are just about bigger than `FillMax`
+-spec get_overflowing_subset(FillMax :: number(),
+                             Nodes :: [#kv_node{} | #kp_node{}]) ->
+                                    {[#kv_node{}], [#kv_node{}]} |
+                                    {[#kp_node{}], [#kp_node{}]}.
+get_overflowing_subset(FillMax, Nodes) ->
+    get_overflowing_subset(FillMax, Nodes, []).
+-spec get_overflowing_subset(FillMax :: number(),
+                             Nodes :: [#kv_node{} | #kp_node{}],
+                             Acc :: [#kv_node{} | #kp_node{}]) ->
+                                    {[#kv_node{}], [#kv_node{}]} |
+                                    {[#kp_node{}], [#kp_node{}]}.
+get_overflowing_subset(_FillMax, [], Acc) ->
+    {lists:reverse(Acc), []};
+get_overflowing_subset(FillMax, [H|T]=Nodes, Acc) ->
+    case erlang:external_size(Acc) < FillMax of
+        true ->
+            get_overflowing_subset(FillMax, T, [H|Acc]);
+        false ->
+            {lists:reverse(Acc), Nodes}
+    end.
+
+
 % `MbbO` is the original MBB when it was create the first time
-% It will return a list of KP-nodes. It might return more than `fill_max`
-% nodes (but the number of nodes per node will be limited to `fill_max`).
+% It will return a list of KP-nodes. It might return more than the chunk
+% threshold (but the size of the nodes per node will be limited by the chunk
+% threshold).
 -spec write_nodes(Vt :: #vtree{}, Nodes :: [#kv_node{} | #kp_node{}],
                   MbbO :: mbb()) -> [#kp_node{}].
 % All nodes were deleted, the current node is empty now
 write_nodes(_Vt, [], _MbbO) ->
     [];
-write_nodes(#vtree{fill_max = FillMax} = Vt, Nodes, MbbO) when
-      length(Nodes) =:= FillMax+1 ->
-    {NodesA, NodesB} = split_node(Vt, Nodes, MbbO),
-    write_multiple_nodes(Vt, [NodesA, NodesB]);
-% Too many nodes for a single split, hence do something smart to get all
-% nodes stored in a good way. First take the first FillMax nodes and
-% split then into two nodes. Then insert all other nodes one by one into
-% one of the two newly created nodes. The decision which node to choose is
-% done by vtree_choose:choose_subtree/3.
-write_nodes(#vtree{fill_max = FillMax} = Vt, Nodes, MbbO) when
-      length(Nodes) > FillMax+1 ->
-    {FirstNodes, Rest} = lists:split(FillMax, Nodes),
+write_nodes(Vt, [#kv_node{}|_]=Nodes, MbbO) ->
+    FillMax = Vt#vtree.kv_chunk_threshold,
+    Size = erlang:external_size(Nodes),
+    write_nodes(Vt, Nodes, MbbO, FillMax, Size);
+write_nodes(Vt, [#kp_node{}|_]=Nodes, MbbO) ->
+    FillMax = Vt#vtree.kp_chunk_threshold,
+    Size = erlang:external_size(Nodes),
+    write_nodes(Vt, Nodes, MbbO, FillMax, Size).
+% Too many nodes for a single split, hence do something smart to get
+% all nodes stored in a good way. First take the first FillMax nodes
+% and split then into two nodes. Then insert all other nodes one by
+% one into one of the two newly created nodes. The decision which node
+% to choose is done by vtree_choose:choose_subtree/3.
+-spec write_nodes(Vt :: #vtree{}, Nodes :: [#kv_node{} | #kp_node{}],
+                  MbbO :: mbb(), FillMax :: number(), Size :: pos_integer()) ->
+                         [#kp_node{}].
+write_nodes(Vt, Nodes, MbbO, FillMax, Size) when Size > 2*FillMax ->
+    {FirstNodes, Rest} = get_overflowing_subset(FillMax, Nodes),
     NewNodes = insert_into_nodes(Vt, [FirstNodes], MbbO, Rest),
     write_multiple_nodes(Vt, NewNodes);
-write_nodes(Vt, Nodes, MbbO) ->
-    % `write_multiple_nodes/2` isn't used here, as it's the only case, where
-    % we use the supplied MBBO and don't calculate a new one.
+% A simple split into two nodes is possible
+write_nodes(Vt, Nodes, MbbO, FillMax, Size) when Size > FillMax ->
+    {NodesA, NodesB} = split_node(Vt, Nodes, MbbO),
+    write_multiple_nodes(Vt, [NodesA, NodesB]);
+% No split needed
+write_nodes(Vt, Nodes, MbbO, _FillMax, _Size) ->
+    % `write_multiple_nodes/2` isn't used here, as it's the only case,
+    % where we use the supplied MBBO and don't calculate a new one.
     %write_multiple_nodes(Vt, [Nodes], [MbbO]).
     #vtree{
             fd = Fd,
@@ -169,32 +211,35 @@ write_multiple_nodes(Vt, NodeList) ->
       end, NodeList).
 
 
-% Splits a KV- or KP-Node. Needs to be called with `fill_max+1` Nodes. It
-% operates with #kv_node and #kp_node records and also returns those.
+% Splits a KV- or KP-Node. Needs to be called with a total size of the nodes
+% that can be accommodated by two nodes. It % operates with #kv_node{} and
+% #kp_node{} records and also returns those.
 -spec split_node(Vt :: #vtree{}, Nodes :: [#kv_node{} | #kp_node{}],
                  MbbO :: mbb()) -> {[#kv_node{}], [#kv_node{}]} |
                                    {[#kp_node{}], [#kp_node{}]}.
 split_node(Vt, [#kv_node{}|_]=Nodes, MbbO) ->
     #vtree{
-            fill_min = FillMin,
-            fill_max = FillMax,
-            less = Less
-          } = Vt,
+       kv_chunk_threshold = FillMax,
+       min_fill_rate = MinRate,
+       less = Less
+      } = Vt,
     SplitNodes = [{Node#kv_node.key, Node} || Node <- Nodes],
     {SplitNodesA, SplitNodesB} = vtree_split:split_leaf(
-                                   SplitNodes, MbbO, FillMin, FillMax, Less),
+                                   SplitNodes, MbbO, FillMax*MinRate, FillMax,
+                                   Less),
     {_, NodesA} = lists:unzip(SplitNodesA),
     {_, NodesB} = lists:unzip(SplitNodesB),
     {NodesA, NodesB};
 split_node(Vt, [#kp_node{}|_]=Nodes, MbbO) ->
     #vtree{
-            fill_min = FillMin,
-            fill_max = FillMax,
-            less = Less
-          } = Vt,
+       kp_chunk_threshold = FillMax,
+       min_fill_rate = MinRate,
+       less = Less
+      } = Vt,
     SplitNodes = [{Node#kp_node.key, Node} || Node <- Nodes],
     {SplitNodesA, SplitNodesB} = vtree_split:split_inner(
-                                   SplitNodes, MbbO, FillMin, FillMax, Less),
+                                   SplitNodes, MbbO, FillMax*MinRate, FillMax,
+                                   Less),
     {_, NodesA} = lists:unzip(SplitNodesA),
     {_, NodesB} = lists:unzip(SplitNodesB),
     {NodesA, NodesB}.
@@ -244,11 +289,6 @@ modify_multiple(Vt, ModifyFuns, [[]|SiblingPartitions],
                 [Existing|ExistingSiblings], Acc) ->
     modify_multiple(Vt, ModifyFuns, SiblingPartitions, ExistingSiblings,
                     [Existing|Acc]);
-% XXX FIXME vmx 2012-09-12: The KV-nodes are always fully read, even the
-%     geometry and the body. This is a waste of disk i/o. Change this, so
-%     that it only contains the pointers. Do the same for nodes that get
-%     inserted. First step should be writing the body a geometry and then
-%     do the actual insertion into the tree.
 modify_multiple(Vt, ModifyFuns, [ModifyNodes|SiblingPartitions],
                 [Existing|ExistingSiblings], Acc) ->
     #vtree{

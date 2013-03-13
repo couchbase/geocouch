@@ -37,7 +37,7 @@
 %-type split_node() :: {Mbb :: mbb(),
 %                       KvPosOrChildren :: integer() | [integer()]}.
 %-type split_node() :: {Mbb :: mbb(), KpOrKv :: kp_value() | kp_value()}.
--type split_node() :: {Mbb :: mbb(), KpOrKv :: kp_value() | kp_value() | any()}.
+%-type split_node() :: {Mbb :: mbb(), KpOrKv :: kp_value() | kv_value() | any()}.
 
 -type candidate() :: {[split_node()], [split_node()]}.
 
@@ -77,10 +77,15 @@
           %root = nil ::kp_value() | kv_value()
           root = nil :: #kp_node{} | nil,
           less = fun(A, B) -> A < B end,
-          % `fill_min` and `fill_max` are normally set by vtree_state (which
-          % is part of the Couchbase/Apache CouchDB API implementation)
-          fill_min = nil,
-          fill_max = nil,
           reduce = nil :: any(),
-          chunk_threshold = 16#4ff
+          % `kp_chunk_threshold` and `kv_chunk_threshold` are normally set by
+          % vtree_state (which is part of the Couchbase/Apache CouchDB API
+          % implementation)
+          kp_chunk_threshold = nil :: number() | nil,
+          kv_chunk_threshold = nil :: number() | nil,
+          % The value of the minimum fill rate of a node should always be
+          % below 0.5.
+          min_fill_rate = 0.4 :: number()
 }).
+
+-type split_node() :: {Mbb :: mbb(), KvOrKpv :: #kv_node{} | #kp_node{} | any()}.
