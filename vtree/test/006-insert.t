@@ -131,8 +131,8 @@ test_insert() ->
 
     etap_exception:throws_ok(
       fun() -> ?MOD:insert(NewVtree3, Nodes6, false) end,
-      "write_external/2 needs to be called before a KV-node value can be "
-      "encoded",
+      "write_kvnode_external/2 needs to be called before a KV-node value "
+      "can be encoded",
       "Throw exception when you try to call `insert` that doesn't write the "
       "body and geometry first, without having them written first"),
 
