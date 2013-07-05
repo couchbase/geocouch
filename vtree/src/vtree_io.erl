@@ -278,10 +278,10 @@ decode_node(<<?KP_NODE:8, Rest/binary>>) ->
                                  [#kv_node{}].
 decode_kvnode_pairs(<<>>, Acc) ->
     lists:reverse(Acc);
-decode_kvnode_pairs(Bin, Acc) ->
-    <<SizeK:?KEY_BITS, SizeV:?VALUE_BITS,
-      BinK:SizeK/binary, BinV:SizeV/binary,
-      Rest/binary>> = Bin,
+% Matchning the binary in the function (and not the body) is an optimization
+decode_kvnode_pairs(<<SizeK:?KEY_BITS, SizeV:?VALUE_BITS,
+                      BinK:SizeK/binary, BinV:SizeV/binary,
+                      Rest/binary>>, Acc) ->
     Key = decode_mbb(BinK),
     Node0 = decode_kvnode_value(BinV),
     Node = Node0#kv_node{key = Key},
@@ -293,9 +293,10 @@ decode_kvnode_pairs(Bin, Acc) ->
                                  [#kp_node{}].
 decode_kpnode_pairs(<<>>, Acc) ->
     lists:reverse(Acc);
-decode_kpnode_pairs(Bin, Acc) ->
-    <<SizeK:?KEY_BITS, SizeV:?VALUE_BITS, BinK:SizeK/binary, BinV:SizeV/binary,
-      Rest/binary>> = Bin,
+% Matchning the binary in the function (and not the body) is an optimization
+decode_kpnode_pairs(<<SizeK:?KEY_BITS, SizeV:?VALUE_BITS,
+                      BinK:SizeK/binary, BinV:SizeV/binary,
+                      Rest/binary>>, Acc) ->
     Key = decode_mbb(BinK),
     Node0 = decode_kpnode_value(BinV),
     Node = Node0#kp_node{key = Key},
