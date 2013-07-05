@@ -27,17 +27,9 @@
 % No idea what the json type will be yet
 -type json() :: any().
 
--type kp_value() :: {PointerNode :: pos_integer(),
+-type kp_value() :: {PointerNode :: non_neg_integer(),
                      TreeSize :: non_neg_integer(), Reduce :: any()}.
 -type kv_value() :: {DocId :: binary(), Geometry :: geom(), Body :: json()}.
-%% The node format for the splits. It contains the MBB and in case of a:
-%%  1. KV node: the pointer to the node in the file
-%%  2. KP node: a list of pointers to its children
-%%  3. abused: any value
-%-type split_node() :: {Mbb :: mbb(),
-%                       KvPosOrChildren :: integer() | [integer()]}.
-%-type split_node() :: {Mbb :: mbb(), KpOrKv :: kp_value() | kp_value()}.
-%-type split_node() :: {Mbb :: mbb(), KpOrKv :: kp_value() | kv_value() | any()}.
 
 -type candidate() :: {[split_node()], [split_node()]}.
 
@@ -88,4 +80,8 @@
           min_fill_rate = 0.4 :: number()
 }).
 
+%% The node format for the splits. It contains the MBB and in case of a:
+%%  1. KV node: the pointer to the node in the file
+%%  2. KP node: a list of pointers to its children
+%%  3. abused: any value
 -type split_node() :: {Mbb :: mbb(), KvOrKpv :: #kv_node{} | #kp_node{} | any()}.
