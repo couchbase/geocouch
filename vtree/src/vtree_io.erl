@@ -30,6 +30,18 @@
 -compile(export_all).
 -endif.
 
+% keys and docIds have the same size
+-define(KEY_BITS,       12).
+-define(VALUE_BITS,     28).
+-define(POINTER_BITS,   48).
+-define(TREE_SIZE_BITS, 48).
+-define(RED_BITS,       16).
+% 12 bits would be enough for MbbO, but we like to have it padded to full bytes
+-define(MBBO_BITS,      16).
+
+-define(MAX_KEY_SIZE,     ((1 bsl ?KEY_BITS) - 1)).
+-define(MAX_VALUE_SIZE,   ((1 bsl ?VALUE_BITS) - 1)).
+
 
 % Writes a node of the tree (which is a list of KV- or KV-nodes) to disk and
 % return a KP-node with the corresponding information. No checks on the number
@@ -132,20 +144,19 @@ encode_node([], Acc) ->
 encode_node([Node|T], {BinAcc, TreeSizeAcc}) ->
     BinK = encode_key(Node),
     SizeK = erlang:size(BinK),
-    case SizeK < 4096 of
+    case SizeK < ?MAX_KEY_SIZE of
         true -> ok;
         false -> throw({error, key_too_long})
     end,
 
-    %{BinV, TreeSize} = encode_value(Fd, NodeType, V),
     {BinV, TreeSize} = encode_value(Node),
     SizeV = erlang:iolist_size(BinV),
-    case SizeV < 268435456 of
+    case SizeV < ?MAX_VALUE_SIZE of
         true -> ok;
         false -> throw({error, value_too_big})
     end,
 
-    Bin = <<SizeK:12, SizeV:28, BinK/binary, BinV/binary>>,
+    Bin = <<SizeK:?KEY_BITS, SizeV:?VALUE_BITS, BinK/binary, BinV/binary>>,
     encode_node(T, {<<BinAcc/binary, Bin/binary>>, TreeSize + TreeSizeAcc}).
 
 
@@ -175,16 +186,17 @@ encode_value(#kv_node{}=Node) ->
     end,
     SizeDocId = erlang:iolist_size(DocId),
 
-    case SizeDocId < 4096 of
+    case SizeDocId < ?MAX_KEY_SIZE of
         true -> ok;
         false -> throw({error, docid_too_long})
     end,
-    case ExternalSize < 268435456 of
+    case ExternalSize < ?MAX_VALUE_SIZE of
         true -> ok;
         false -> throw({error, document_too_big})
     end,
 
-    Bin = <<SizeDocId:12, ExternalSize:28, PointerGeom:48, PointerBody:48,
+    Bin = <<SizeDocId:?KEY_BITS, ExternalSize:?VALUE_BITS,
+            PointerGeom:?POINTER_BITS, PointerBody:?POINTER_BITS,
             DocId/binary>>,
     % Returning only the size of the written body and geometry is enough,
     % as all other bytes will be accounted when the whole chunk is written
@@ -200,9 +212,9 @@ encode_value(#kp_node{}=Node) ->
     SizeReduce = erlang:iolist_size(BinReduce),
     BinMbbO = encode_mbb(MbbO),
     SizeMbbO = erlang:size(BinMbbO),
-    % 12 would be enough for MbbO, but we like to have it padded to full bytes
-    BinValue = <<PointerNode:48, TreeSize:48, SizeReduce:16,
-                 BinReduce:SizeReduce/binary, SizeMbbO:16, BinMbbO/binary>>,
+    BinValue = <<PointerNode:?POINTER_BITS, TreeSize:?TREE_SIZE_BITS,
+                 SizeReduce:?RED_BITS, BinReduce:SizeReduce/binary,
+                 SizeMbbO:?MBBO_BITS, BinMbbO/binary>>,
     % Return `0` as no additional bytes are written. The bytes that will
     % be written are accounted when the whole chunk gets written.
     {BinValue, 0}.
@@ -211,8 +223,8 @@ encode_value(#kp_node{}=Node) ->
 
 % This will only return the pointers to the geometry and body
 decode_kvnode_value(BinValue) ->
-    <<_SizeDocId:12, _SizeDoc:28, PointerGeom:48,
-      PointerBody:48, DocId/binary>> = BinValue,
+    <<_SizeDocId:?KEY_BITS, _SizeDoc:?VALUE_BITS, PointerGeom:?POINTER_BITS,
+      PointerBody:?POINTER_BITS, DocId/binary>> = BinValue,
     #kv_node{
        docid = DocId,
        geometry = PointerGeom,
@@ -240,11 +252,11 @@ decode_kvnode_value(BinValue) ->
 % Decode the value of a KP-node pair
 -spec decode_kpnode_value(BinValue :: binary()) -> #kp_node{}.
 decode_kpnode_value(BinValue) ->
-    <<PointerNode:48, TreeSize:48, SizeReduce:16, BinReduce:SizeReduce/binary,
-      SizeMbbO:16, BinMbbO:SizeMbbO/binary>> = BinValue,
+    <<PointerNode:?POINTER_BITS, TreeSize:?TREE_SIZE_BITS,
+      SizeReduce:?RED_BITS, BinReduce:SizeReduce/binary,
+      SizeMbbO:?MBBO_BITS, BinMbbO:SizeMbbO/binary>> = BinValue,
     Reduce = erlang:binary_to_term(BinReduce),
     MbbO = decode_mbb(BinMbbO),
-    %{PointerNode, TreeSize, Reduce}.
     #kp_node{
               childpointer = PointerNode,
               treesize = TreeSize,
@@ -267,7 +279,8 @@ decode_node(<<?KP_NODE:8, Rest/binary>>) ->
 decode_kvnode_pairs(<<>>, Acc) ->
     lists:reverse(Acc);
 decode_kvnode_pairs(Bin, Acc) ->
-    <<SizeK:12, SizeV:28, BinK:SizeK/binary, BinV:SizeV/binary,
+    <<SizeK:?KEY_BITS, SizeV:?VALUE_BITS,
+      BinK:SizeK/binary, BinV:SizeV/binary,
       Rest/binary>> = Bin,
     Key = decode_mbb(BinK),
     Node0 = decode_kvnode_value(BinV),
@@ -281,7 +294,7 @@ decode_kvnode_pairs(Bin, Acc) ->
 decode_kpnode_pairs(<<>>, Acc) ->
     lists:reverse(Acc);
 decode_kpnode_pairs(Bin, Acc) ->
-    <<SizeK:12, SizeV:28, BinK:SizeK/binary, BinV:SizeV/binary,
+    <<SizeK:?KEY_BITS, SizeV:?VALUE_BITS, BinK:SizeK/binary, BinV:SizeV/binary,
       Rest/binary>> = Bin,
     Key = decode_mbb(BinK),
     Node0 = decode_kpnode_value(BinV),
