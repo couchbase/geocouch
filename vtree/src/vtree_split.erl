@@ -278,7 +278,7 @@ create_split_candidates([H|T], FillMin, FillMax) ->
 % no split candidate. The reason is probably that any of the nodes is
 % bigger in size (bytes) than the maximum chunk threshold.
 create_split_candidates(_, [], 0, _, []) ->
-    throw("No split candidates found. Increase the chunk threshold.");
+    throw({error, "No split candidates found. Increase the chunk threshold."});
 % No valid split candidates were found. Instead of returning an error, we
 % relax the minimum filled condition to zero. This case should rarely happen
 % (only in very extreme cases). For example if you have two nodes, one with a

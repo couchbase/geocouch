@@ -180,8 +180,8 @@ encode_value(#kv_node{}=Node) ->
        size = ExternalSize
       } = Node,
     case ExternalSize of
-        0 -> throw("write_kvnode_external/2 needs to be called before a "
-                   "KV-node value can be encoded");
+        0 -> throw({error, "write_kvnode_external/2 needs to be called "
+                    "before a KV-node value can be encoded"});
         _ -> ok
     end,
     SizeDocId = erlang:iolist_size(DocId),

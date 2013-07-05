@@ -544,7 +544,7 @@ test_create_split_candidates() ->
     Max6 = erlang:external_size(Nodes5)/4,
     etap_exception:throws_ok(
       fun() -> ?MOD:create_split_candidates(Nodes5, 0.5*Max6, Max6) end,
-      "No split candidates found. Increase the chunk threshold.",
+      {error, "No split candidates found. Increase the chunk threshold."},
       "2 split candidates where max size is smaller than any of the nodes").
 
 
