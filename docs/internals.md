@@ -34,6 +34,6 @@ One cut is before the data is actually stored on disk (calls to the vtree_io mod
 
 ### Split and choose algorthims
 
-The split and choose algoithms shouldn't know about the internal things of the vtree. They are just operating on a key-value tuple, where the MBB is the key and the value doesn't really matter.
+The split and choose algorithms shouldn't know about the internal things of the vtree. They are just operating on a key-value tuple, where the MBB is the key and the value doesn't really matter.
 
 This means that there's a cut before calling to the vtree_choose and vtree_split module. Before the cut we have #kv_node{} and #kp_node{} record, but they don't cross the cut. They need to be converted into a 2-tuple with the MBB as the key.
