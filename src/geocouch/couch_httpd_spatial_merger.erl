@@ -30,7 +30,7 @@
 
 handle_req(#httpd{method = 'GET'} = Req) ->
     Indexes = validate_spatial_param(qs_json_value(Req, "spatial", nil)),
-    DDocRevision = couch_index_merger:validate_revision_param(
+    DDocRevision = couch_index_merger_validation:revision_param(
         qs_json_value(Req, <<"ddoc_revision">>, nil)),
     MergeParams0 = #index_merge{
         indexes = Indexes,
@@ -44,7 +44,7 @@ handle_req(#httpd{method = 'POST'} = Req) ->
     couch_httpd:validate_ctype(Req, "application/json"),
     {Props} = couch_httpd:json_body_obj(Req),
     Indexes = validate_spatial_param(get_value(<<"spatial">>, Props)),
-    DDocRevision = couch_index_merger:validate_revision_param(
+    DDocRevision = couch_index_merger_validation:revision_param(
         get_value(<<"ddoc_revision">>, Props, nil)),
     MergeParams0 = #index_merge{
         indexes = Indexes,
@@ -115,14 +115,14 @@ validate_spatial_param({[_ | _] = Indexes}) ->
                     SubMergeError = io_lib:format("Could not find a"
                         " non-composed spatial spec in the spatial merge"
                         " targeted at `~s`",
-                        [couch_index_merger:rem_passwd(MergeUrl)]),
+                        [rem_passwd(MergeUrl)]),
                     throw({bad_request, SubMergeError})
                 end,
                 #merged_index_spec{url = MergeUrl, ejson_spec = EJson};
             _ ->
                 SubMergeError = io_lib:format("Invalid spatial merge"
                     " definition for sub-merge done at `~s`.",
-                    [couch_index_merger:rem_passwd(MergeUrl)]),
+                    [rem_passwd(MergeUrl)]),
                 throw({bad_request, SubMergeError})
             end;
         (_) ->
@@ -148,3 +148,10 @@ parse_spatial_name(Name) ->
         throw({bad_request, "A `spatial` property must have the shape"
             " `ddoc_name/spatial_name`."})
     end.
+
+% NOTE vmx 2013-07-18: Instead of exporting `rem_passwd` from
+% `couch_index_merger_validation` it is copied. The reason is
+% that this merger module will be replaces with a new one soon
+% anyway
+rem_passwd(Url) ->
+    ?l2b(couch_util:url_strip_password(Url)).
