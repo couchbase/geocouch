@@ -38,7 +38,7 @@ clean clean-again:
 
 
 $(GEOCOUCH_PLT):
-	dialyzer --output_plt ../geocouch.plt --build_plt --apps kernel stdlib -r ebin
+	dialyzer --output_plt ../geocouch.plt --build_plt --apps kernel stdlib
 
 dialyzer: $(GEOCOUCH_PLT)
 	dialyzer --verbose --plt $(GEOCOUCH_PLT) -r vtree
