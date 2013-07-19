@@ -14,11 +14,11 @@ check:
 
 .PHONY: couchbase
 couchbase: compile
-couchbase-check: do-check runtests-couchbase clean-again
+couchbase-check: do-check
 
 .PHONY: couchdb
 couchdb: compile
-couchdb-check: do-check clean-again
+couchdb-check: do-check
 
 compile:
 	./rebar -C $(REBAR_CONFIG) compile
@@ -29,10 +29,7 @@ compileforcheck:
 runtests:
 	ERL_LIBS=. ERL_FLAGS="-pa ${COUCH_SRC} -pa ${COUCH_SRC}/../etap -pa ${COUCH_SRC}/../snappy -pa ${COUCH_SRC}/../../test/etap -pa ${COUCH_SRC}/../couch_set_view/ebin -pa ${COUCH_SRC}/../mochiweb -pa ${COUCH_SRC}/../lhttpc -pa ${COUCH_SRC}/../erlang-oauth -pa ${COUCH_SRC}/../ejson -pa ${COUCH_SRC}/../mapreduce" prove ./vtree/test/*.t
 
-do-check: clean compileforcheck dialyzer runtests
-
-runtests-couchbase:
-	PATH=${PATH}:../couchstore ERL_LIBS=. ERL_FLAGS="-pa ${COUCH_SRC} -pa ${COUCH_SRC}/../etap -pa ${COUCH_SRC}/../snappy -pa ${COUCH_SRC}/../../test/etap -pa ${COUCH_SRC}/../couch_set_view/ebin -pa ${COUCH_SRC}/../mochiweb -pa ${COUCH_SRC}/../lhttpc -pa ${COUCH_SRC}/../erlang-oauth -pa ${COUCH_SRC}/../ejson -pa ${COUCH_SRC}/../mapreduce -pa ${COUCH_SRC}/../couch_set_view/test" prove gc-couchbase/test/*.t
+do-check: clean compileforcheck dialyzer runtests clean-again
 
 clean clean-again:
 	./rebar -C rebar_couchbase.config clean
