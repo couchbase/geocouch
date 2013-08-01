@@ -79,7 +79,7 @@ traverse(Vt, [#kp_node{}=Node|Rest], Boxes, FoldFun, OkAcc) ->
     Result = case boxes_intersect_mbb(Boxes, Node#kp_node.key, Less) of
                  [] ->
                     % No box intersects, stop moving deeper
-                     OkAcc;
+                    OkAcc;
                  IntersectingBoxes ->
                      Children = vtree_io:read_node(
                                   Fd, Node#kp_node.childpointer),
