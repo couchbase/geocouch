@@ -25,11 +25,15 @@
 % For the compactor
 -export([compact_view/6, apply_log/3]).
 % For the main module
--export([get_row_count/1, make_wrapper_fun/2, fold/4]).
+-export([get_row_count/1, make_wrapper_fun/2, fold/4, index_extension/0,
+         make_key_options/1, should_filter/1]).
+-export([stats_ets/1, server_name/1, sig_to_pid_ets/1, name_to_sig_ets/1,
+         pid_to_sig_ets/1]).
 % For the couch_set_view like calls
 -export([get_spatial_view/4]).
 
 
+-include_lib("couch_spatial.hrl").
 -include("couch_db.hrl").
 -include_lib("couch_set_view/include/couch_set_view.hrl").
 -include_lib("vtree/include/vtree.hrl").
@@ -49,6 +53,18 @@
 -define(VIEW_ALL_VALUES_BITS,       ?VALUE_BITS).
 -define(MAX_VIEW_SINGLE_VALUE_SIZE, ((1 bsl ?VIEW_SINGLE_VALUE_BITS) - 1)).
 -define(MAX_VIEW_ALL_VALUES_SIZE,   ((1 bsl ?VIEW_ALL_VALUES_BITS) - 1)).
+
+
+-define(SPATIAL_VIEW_SERVER_NAME_PROD, spatial_view_server_name_prod).
+-define(SPATIAL_VIEW_SERVER_NAME_DEV, spatial_view_server_name_dev).
+-define(SPATIAL_VIEW_STATS_ETS_PROD, spatial_view_stats_prod).
+-define(SPATIAL_VIEW_NAME_TO_SIG_ETS_PROD, spatial_view_name_to_sig_prod).
+-define(SPATIAL_VIEW_SIG_TO_PID_ETS_PROD, spatial_view_sig_to_pid_prod).
+-define(SPATIAL_VIEW_PID_TO_SIG_ETS_PROD, spatial_view_pid_to_sig_prod).
+-define(SPATIAL_VIEW_STATS_ETS_DEV, spatial_view_stats_dev).
+-define(SPATIAL_VIEW_NAME_TO_SIG_ETS_DEV, spatial_view_name_to_sig_dev).
+-define(SPATIAL_VIEW_SIG_TO_PID_ETS_DEV, spatial_view_sig_to_pid_dev).
+-define(SPATIAL_VIEW_PID_TO_SIG_ETS_DEV, spatial_view_pid_to_sig_dev).
 
 
 write_kvs(Group, TmpFiles0, ViewKVs) ->
@@ -161,19 +177,22 @@ get_state(View) ->
 % XXX vmx 2013-01-02: Should perhaps be moved to the vtree itself (and then
 %    renamed to `get_state`
 get_vtree_state(Vt) ->
-    #vtree{
-        root = #kp_node{
+    case Vt#vtree.root of
+    nil ->
+        <<0:?POINTER_BITS, 0:?TREE_SIZE_BITS>>;
+    #kp_node{} = Root ->
+        #kp_node{
             key = Key,
             childpointer = Pointer,
             treesize = Size,
             reduce = Reduce,
             mbb_orig = MbbOrig
-        }
-    } = Vt,
-    % TODO vmx 2013-06-27: Proper binary encoding would make sense,
-    %     but this is good for now.
-    Rest = term_to_binary({Key, Reduce, MbbOrig}),
-    <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>>.
+        } = Root,
+        % TODO vmx 2013-06-27: Proper binary encoding would make sense,
+        %     but this is good for now.
+        Rest = term_to_binary({Key, Reduce, MbbOrig}),
+        <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>>
+    end.
 
 
 % The spatial index doesn't store the bitmap for the full structure,
@@ -241,9 +260,15 @@ design_doc_to_set_view_group(SetName, #doc{id = Id, body = {Fields}}) ->
         name = Id,
         views = SetViews,
         design_options = DesignOptions,
-        mod = ?MODULE
+        mod = ?MODULE,
+        extension = index_extension()
     },
     couch_set_view_util:set_view_sig(SetViewGroup).
+
+
+-spec index_extension() -> string().
+index_extension() ->
+    ".spatial".
 
 
 -spec view_group_data_size(#btree{}, [#set_view{}]) -> non_neg_integer().
@@ -303,31 +328,48 @@ compact_view(_Fd, _SetView, _EmptySetView, _FilterFun, _BeforeKVWriteFun, _Acc0)
 
 -spec get_row_count(#set_view{}) -> non_neg_integer().
 get_row_count(_SetView) ->
-    not_yet_implemented.
+    % XXX vmx 2013-07-04: Implement it properly with reduces. For now
+    %     just always return 0 and hope it doesn't brak anything.
+    0.
 
 
 apply_log(_Group, _ViewLogFiles, _TmpDir) ->
     not_yet_implemented.
 
 
-make_wrapper_fun(Fun, _Filter) ->
-    % XXX vmx 2013-01-15: From now don't care about the partition filter or
-    %     de-duplication
-    fun(Node, Acc) ->
-            <<_PartId:16, _BodySize:24, Body/binary>> = Node#kv_node.body,
-            fold_fun(Fun, Node#kv_node{body = Body}, Acc)
+make_wrapper_fun(Fun, Filter) ->
+    % TODO vmx 2013-07-22: Support de-duplication
+    case Filter of
+    false ->
+        fun(Node, Acc) ->
+            <<PartId:16, _BodySize:24, Body/binary>> = Node#kv_node.body,
+            fold_fun(Fun, {Node#kv_node{body = Body}, PartId}, Acc)
+        end;
+    {true, _, IncludeBitmask} ->
+        fun(Node, Acc) ->
+            <<PartId:16, _BodySize:24, Body/binary>> = Node#kv_node.body,
+            case (1 bsl PartId) band IncludeBitmask of
+            0 ->
+                {ok, Acc};
+            _ ->
+                fold_fun(Fun, {Node#kv_node{body = Body}, PartId}, Acc)
+           end
+        end
     end.
 
 
-fold_fun(_Fun, [], Acc) ->
+fold_fun(_Fun, nil, Acc) ->
     {ok, Acc};
-fold_fun(Fun, Node, Acc) ->
+fold_fun(Fun, {Node, PartId}, Acc) ->
     #kv_node{
-        key = Key,
+        key = Key0,
         docid = DocId,
         body = Body
     } = Node,
-    case Fun({{Key, DocId}, Body}, Acc) of
+    % NOTE vmx 2013-07-11: The key needs to be able to be encoded as JSON.
+    %     Think about how to encode the MBB so less conversion is needed.
+    Key = [[Min, Max] || {Min, Max} <- Key0],
+    case Fun({{Key, DocId}, {PartId, Body}}, Acc) of
     {ok, Acc2} ->
         {ok, Acc2};
     {stop, Acc2} ->
@@ -335,11 +377,15 @@ fold_fun(Fun, Node, Acc) ->
     end.
 
 
-fold(View, WrapperFun, Acc, _Options) ->
-    % XXX vmx 2013-07-01: There's no option parsing yet, all results
-    %     without any filtering will be returned
+fold(View, WrapperFun, Acc, Options) ->
     Vt = View#spatial_view.vtree,
-    Result = vtree_search:all(Vt, WrapperFun, Acc),
+    Range = couch_util:get_value(range, Options, []),
+    Result = case Range of
+        [] ->
+            vtree_search:all(Vt, WrapperFun, Acc);
+        _ ->
+            vtree_search:search(Vt, [Range], WrapperFun, Acc)
+    end,
     {ok, nil, Result}.
 
 
@@ -347,13 +393,12 @@ fold(View, WrapperFun, Acc, _Options) ->
 % The following functions have their counterpart in couch_set_view
 
 get_spatial_view(SetName, DDoc, ViewName, Req) ->
-    #set_view_group_req{wanted_partitions = _WantedPartitions} = Req,
+    #set_view_group_req{wanted_partitions = WantedPartitions} = Req,
     try
         {ok, Group0} = couch_set_view:get_group(
             spatial_view, SetName, DDoc, Req),
-        % XXX TODO vmx 2013-05-27: bitmask manipulation
-        %{Group, Unindexed} = modify_bitmasks(Group0, WantedPartitions),
-        {Group, Unindexed} = {Group0, []},
+        {Group, Unindexed} = couch_set_view:modify_bitmasks(
+            Group0, WantedPartitions),
         case get_spatial_view0(ViewName, Group#set_view_group.views) of
         {ok, View} ->
             {ok, View, Group, Unindexed};
@@ -373,3 +418,41 @@ get_spatial_view0(Name, [#set_view{} = View|Rest]) ->
         true -> {ok, View};
         false -> get_spatial_view0(Name, Rest)
     end.
+
+
+% Processes the query paramters to extract the significant values when
+% traversing the vtree
+-spec make_key_options(#spatial_query_args{}) -> [{atom(), term()}].
+make_key_options(ViewQueryArgs) ->
+    [{range, ViewQueryArgs#spatial_query_args.range}].
+
+
+-spec should_filter(#spatial_query_args{}) -> boolean().
+should_filter(ViewQueryArgs) ->
+    ViewQueryArgs#spatial_query_args.filter.
+
+
+stats_ets(prod) ->
+    ?SPATIAL_VIEW_STATS_ETS_PROD;
+stats_ets(dev) ->
+    ?SPATIAL_VIEW_STATS_ETS_DEV.
+
+server_name(prod) ->
+    ?SPATIAL_VIEW_SERVER_NAME_PROD;
+server_name(dev) ->
+    ?SPATIAL_VIEW_SERVER_NAME_DEV.
+
+sig_to_pid_ets(prod) ->
+    ?SPATIAL_VIEW_SIG_TO_PID_ETS_PROD;
+sig_to_pid_ets(dev) ->
+    ?SPATIAL_VIEW_SIG_TO_PID_ETS_DEV.
+
+name_to_sig_ets(prod) ->
+    ?SPATIAL_VIEW_NAME_TO_SIG_ETS_PROD;
+name_to_sig_ets(dev) ->
+    ?SPATIAL_VIEW_NAME_TO_SIG_ETS_DEV.
+
+pid_to_sig_ets(prod) ->
+    ?SPATIAL_VIEW_PID_TO_SIG_ETS_PROD;
+pid_to_sig_ets(dev) ->
+    ?SPATIAL_VIEW_PID_TO_SIG_ETS_DEV.

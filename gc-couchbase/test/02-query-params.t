@@ -17,12 +17,37 @@
 -include_lib("../include/couch_spatial.hrl").
 -include_lib("couch_set_view/include/couch_set_view.hrl").
 
+
 % from couch_db.hrl
 -define(MIN_STR, <<>>).
 -define(MAX_STR, <<255>>).
 
+%-record(view_query_args, {
+%    start_key,
+%    end_key,
+%    start_docid = ?MIN_STR,
+%    end_docid = ?MAX_STR,
+%    direction = fwd,
+%    inclusive_end = true,
+%    limit = 10000000000,
+%    skip = 0,
+%    group_level = 0,
+%    view_type = nil,
+%    include_docs = false,
+%    conflicts = false,
+%    stale = false,
+%    multi_get = false,
+%    callback = nil,
+%    list = nil,
+%    run_reduce = true,
+%    keys = nil,
+%    view_name = nil,
+%    debug = false,
+%    filter = true,
+%    type = main
+%}).
 
-test_set_name() -> <<"couch_test_spatial_view_initial_build">>.
+test_set_name() -> <<"couch_test_spatial_view_query_params">>.
 num_set_partitions() -> 4.
 ddoc_id() -> <<"_design/test">>.
 num_docs() -> 1024.  % keep it a multiple of num_set_partitions()
@@ -31,7 +56,7 @@ num_docs() -> 1024.  % keep it a multiple of num_set_partitions()
 main(_) ->
     test_util:init_code_path(),
 
-    etap:plan(2),
+    etap:plan(4),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -47,27 +72,52 @@ main(_) ->
 test() ->
     spatial_test_util:start_server(test_set_name()),
 
-    etap:diag("Testing inital build of spatial views"),
+    etap:diag("Testing query parameters of spatial views"),
 
-    test_spatial_query(),
+    test_spatial_query_all(),
+    test_spatial_query_range(),
 
-    % A clean shutdown is not implemented yet, it will come in future commits
     couch_set_view_test_util:delete_set_dbs(test_set_name(), num_set_partitions()),
     spatial_test_util:stop_server(),
     ok.
 
 
-test_spatial_query() ->
+% Return just all the data
+test_spatial_query_all() ->
     setup_test(),
     ok = configure_spatial_group(ddoc_id()),
 
-    {ok, Rows} = (catch query_spatial_view(<<"test">>)),
+    ViewArgs = #spatial_query_args{
+        %view_name = ViewName
+    },
+
+    {ok, Rows} = (catch query_spatial_view(<<"test">>, ViewArgs)),
     etap:is(length(Rows), num_docs(),
         "Got all view rows (" ++ integer_to_list(num_docs()) ++ ")"),
     verify_rows(Rows),
 
-    shutdown_group(),
-    ok.
+    shutdown_group().
+
+
+test_spatial_query_range() ->
+    setup_test(),
+    ok = configure_spatial_group(ddoc_id()),
+
+    ViewArgs1 = #spatial_query_args{
+        %view_name = ViewName
+        range = [{740, 1500}, {300, 1765}]
+    },
+    {ok, Rows1} = (catch query_spatial_view(<<"test">>, ViewArgs1)),
+    etap:is(length(Rows1), 350, "Returned expected number of rows (a)"),
+
+    ViewArgs2 = #spatial_query_args{
+        %view_name = ViewName
+        range = [{631.482, 963.315}, {-10.8, 176.5}]
+    },
+    {ok, Rows2} = (catch query_spatial_view(<<"test">>, ViewArgs2)),
+    etap:is(length(Rows2), 20, "Returned expected number of rows (b)"),
+
+    shutdown_group().
 
 
 verify_rows(Rows) ->
@@ -83,7 +133,7 @@ verify_rows(Rows) ->
             "Returned correct rows").
 
 
-query_spatial_view(ViewName) ->
+query_spatial_view(ViewName, ViewArgs) ->
     etap:diag("Querying spatial view " ++ binary_to_list(ddoc_id()) ++ "/" ++
         binary_to_list(ViewName)),
     Req = #set_view_group_req{
@@ -95,8 +145,6 @@ query_spatial_view(ViewName) ->
     FoldFun = fun({{Key, DocId}, Value}, Acc) ->
         {ok, [{Key, DocId, Value} | Acc]}
     end,
-    ViewArgs = #spatial_query_args{},
-
     {ok, _, Rows} = couch_set_view:fold(Group, View, FoldFun, [], ViewArgs),
     couch_set_view:release_group(Group),
     {ok, lists:reverse(Rows)}.
