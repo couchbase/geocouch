@@ -93,7 +93,7 @@ fold_copy(Item, ItemSize, #acc{cur_level = 1} = Acc) ->
         values = Values,
         leaf_size = LeafSize
     } = Acc,
-    Kv = extract(Acc, Item),
+    Kv = extract(Item),
     LeafSize2 = LeafSize + ItemSize,
     Values2 = [Kv | Values],
     NextAcc = case LeafSize2 >= Acc#acc.kv_chunk_threshold of
@@ -116,7 +116,7 @@ split_key_docid(<<NumDoubles:16, Rest/binary>>) ->
     <<Mbb:KeySize/binary, DocId/binary>> = Rest,
     {Mbb, DocId}.
 
-extract(_Acc, {KeyDocId, Value}) ->
+extract({KeyDocId, Value}) ->
     {Key0, DocId} = split_key_docid(KeyDocId),
     Key = bin_to_mbb(Key0),
     #kv_node{
