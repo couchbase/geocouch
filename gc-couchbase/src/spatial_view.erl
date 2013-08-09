@@ -35,7 +35,10 @@
 
 -include_lib("couch_spatial.hrl").
 -include("couch_db.hrl").
--include_lib("couch_set_view/include/couch_set_view.hrl").
+%-include_lib("couch_set_view/include/couch_set_view.hrl").
+% Only needed for #writer_acc{}
+% XXX vmx 2013-08-02: #writer_acc{} should be moved to public header
+-include_lib("couch_set_view/src/couch_set_view_updater.hrl").
 -include_lib("vtree/include/vtree.hrl").
 
 % Same as in couch_btree.erl
@@ -215,10 +218,113 @@ view_name(_SetViewGroup, _ViewPos) ->
     not_yet_implemented.
 
 
-% Update the temporary files with the key-values from the indexer. Return
-% the updated writer accumulator.
-update_tmp_files(_WriterAcc, _ViewKeyValues, _KeysToRemoveByView) ->
-    not_yet_implemented.
+% In the mapreduce views, this updates the temporary files that are used
+% by the C-based file sorter. The spatial view still use an Erlang code
+% path for incremental updates. Hence this function is a bit of a misnomer,
+% though it the future, once all the indexing is moved to C it won't be
+% anymore.
+% This is based on `write_changes/4 is based on an old revision of
+% `couch_set_view_updater` (6bbe1cf89b2f6b5c9cf098b81c5ea60d339f8f0a), before
+% parts of it were moved to C. `write_changes/4` got split into
+% `write_to_tmp_batch_files/3` and `maybe_update_btrees/1` in commit
+% e64bba5b58f5a4f555b06e6a1cb9ee8cdb6992f7
+% XXX vmx 2013-08-09: Support for cleanup is still missing.
+update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
+    #writer_acc{
+       group = Group,
+       stats = Stats
+    } = WriterAcc,
+    % XXX vmx 2013-08-02: Use a real value for IdBtreePurgedKeyCount
+    IdBtreePurgedKeyCount = 0,
+    ViewKeyValuesToAddKvNodes = lists:map(
+        fun({View, AddKeyValues0}) ->
+            AddKeyValues = lists:map(fun({{Key0, DocId}, {PartId, Body}}) ->
+                % NOTE vmx 2013-08-05: The vtree code expects the key to
+                % contain tuples. Think about changing the internal format
+                % so less conversion is needed.
+                Key = [{Min, Max} || [Min, Max] <- ?JSON_DECODE(Key0)],
+                couch_set_view_util:check_primary_value_size(
+                    Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key, DocId, Group),
+                Value = <<PartId:16, (byte_size(Body)):24, Body/binary>>,
+                #kv_node{
+                    key = Key,
+                    docid = DocId,
+                    body = Value
+                }
+            end,
+            AddKeyValues0),
+            {View, AddKeyValues}
+        end,
+        ViewKeyValues),
+    ViewKeyValuesToRemoveKvNodes = dict:map(
+        fun(View, RemoveKeyValues0) ->
+            RemoveKeyValues = lists:map(fun(KeyDocId) ->
+                % NOTE vmx 2013-08-07: Here we decode an just recently
+                %    encoded value. This can be made more efficient.
+                {Key0, DocId} = couch_set_view_util:decode_key_docid(KeyDocId),
+                Key = [{Min, Max} || [Min, Max] <- Key0],
+                #kv_node{
+                    key = Key,
+                    docid = DocId
+                }
+            end,
+            RemoveKeyValues0),
+            RemoveKeyValues
+        end,
+        KeysToRemoveByView),
+    {SetViews, {CleanupKvCount, InsertedKvCount, DeletedKvCount}} =
+        lists:mapfoldl(fun({SetView, {_SetView, AddKeyValues}}, {AccC, AccI, AccD}) ->
+            #set_view{
+                id_num = IdNum,
+                indexer = View
+            } = SetView,
+            KeysToRemove = couch_util:dict_find(
+                IdNum, ViewKeyValuesToRemoveKvNodes, []),
+            case ?set_cbitmask(Group) of
+            0 ->
+                CleanupCount = 0,
+                Vtree = vtree_delete:delete(View#spatial_view.vtree, KeysToRemove),
+                Vtree2 = vtree_insert:insert(Vtree, AddKeyValues);
+            _ ->
+                % XXX vmx 2013-08-02: Cleanup currently isn't supported
+                CleanupCount = 0,
+                Vtree = vtree_delete:delete(View#spatial_view.vtree, KeysToRemove),
+                Vtree2 = vtree_insert:insert(Vtree, AddKeyValues)
+            end,
+            NewSetView = SetView#set_view{
+                indexer = View#spatial_view{
+                    vtree = Vtree2
+                }
+            },
+            {NewSetView,
+                {AccC + CleanupCount, AccI + length(AddKeyValues),
+                 AccD + length(KeysToRemove)}}
+        end,
+        {IdBtreePurgedKeyCount, 0, 0},
+        lists:zip(Group#set_view_group.views, ViewKeyValuesToAddKvNodes)),
+
+    % The sequence number are not updated, it will be done code that
+    % deals with the id-btree.
+    Header = Group#set_view_group.index_header,
+    NewHeader = Header#set_view_index_header{
+        view_states = [get_state(V#set_view.indexer) || V <- SetViews]
+    },
+    NewGroup = Group#set_view_group{
+        views = SetViews,
+        index_header = NewHeader
+    },
+    couch_file:flush(Group#set_view_group.fd),
+    WriterAcc#writer_acc{
+        group = NewGroup,
+        stats = Stats#set_view_updater_stats{
+            cleanup_kv_count =
+                Stats#set_view_updater_stats.cleanup_kv_count + CleanupKvCount,
+            inserted_kvs =
+                Stats#set_view_updater_stats.inserted_kvs + InsertedKvCount,
+            deleted_kvs =
+                Stats#set_view_updater_stats.deleted_kvs + DeletedKvCount
+        }
+    }.
 
 
 -spec update_index(#btree{},
