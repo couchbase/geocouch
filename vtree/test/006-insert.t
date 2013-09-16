@@ -129,7 +129,7 @@ test_insert() ->
     etap:is(lists:sort(KvNodes6), lists:sort(Nodes3 ++ Nodes6),
             "Inserted 27 nodes into existing tree: all nodes got inserted"),
 
-    etap_exception:throws_ok(
+    etap:throws_ok(
       fun() -> ?MOD:insert(NewVtree3, Nodes6, false) end,
       {error, "write_kvnode_external/2 needs to be called before a "
        "KV-node value can be encoded"},

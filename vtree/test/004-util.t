@@ -223,8 +223,8 @@ test_find_min_value() ->
             {4, Pair1}, "First item has minimum value"),
     etap:is(?MOD:find_min_value(MinFun, [Pair5, Pair4, Pair2, Pair3]),
             {5, Pair2}, "Item in the middle has minimum value"),
-    etap_exception:throws_ok(fun() -> ?MOD:find_min_value(MinFun, []) end,
-                             function_clause, "Empty list throws error").
+    etap:throws_ok(fun() -> ?MOD:find_min_value(MinFun, []) end,
+                   function_clause, "Empty list throws error").
 
 
 test_within_mbb() ->
