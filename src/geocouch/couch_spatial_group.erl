@@ -267,7 +267,7 @@ handle_info(delayed_commit, #group_state{db_name=DbName,group=Group}=State) ->
     if CommittedSeq >= Group#spatial_group.current_seq ->
         % save the header
         Header = {Group#spatial_group.sig, get_index_header_data(Group)},
-        ok = couch_file:write_header(Group#spatial_group.fd, Header),
+        {ok, _Pos} = couch_file:write_header(Group#spatial_group.fd, Header),
         ok = couch_file:flush(Group#spatial_group.fd),
         {noreply, State#group_state{waiting_commit=false}};
     true ->
@@ -536,7 +536,7 @@ reset_group(#spatial_group{indexes=Indexes}=Group) ->
 reset_file(Db, Fd, DbName, #spatial_group{sig=Sig,name=Name} = Group) ->
     ?LOG_DEBUG("Resetting spatial group index \"~s\" in db ~s", [Name, DbName]),
     ok = couch_file:truncate(Fd, 0),
-    ok = couch_file:write_header(Fd, {Sig, nil}),
+    {ok, 0} = couch_file:write_header(Fd, {Sig, nil}),
     ok = couch_file:flush(Fd),
     init_group(Db, Fd, reset_group(Group), nil).
 
