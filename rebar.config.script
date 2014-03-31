@@ -1,6 +1,6 @@
 % Add the COUCH_SRC directory to include path
 IncludeDir = case os:getenv("COUCH_SRC") of
-    false -> []; % env var not defined
+    false -> [{i, "../couchdb/src/couchdb"}, {i, "../couchdb/src"}]; % env var not defined
     []    -> []; % env var set to empty string
     Dir -> [{i, Dir}, {i, Dir ++ "/../"}]
 end,
