@@ -111,13 +111,13 @@ It should return:
 The Design Document Function
 ----------------------------
 
-function(doc) {
-    if (doc.loc) {
-        emit({
-            type: "Point",
-            coordinates: [doc.loc[0], doc.loc[1]]
-        }, [doc._id, doc.loc]);
-    }};"
+    function(doc) {
+        if (doc.loc) {
+            emit({
+                type: "Point",
+                coordinates: [doc.loc[0], doc.loc[1]]
+            }, [doc._id, doc.loc]);
+        }};"
 
 It uses the emit() from normal views. The key is a
 [GeoJSON](http://geojson.org) geometry, the value is any arbitrary JSON. All
@@ -259,3 +259,8 @@ To get information about the spatial indexes of a certain Design
 Document use the the `_info` handler:
 
     curl -X GET 'http://localhost:5984/places/_design/main/_spatial/_info'
+
+Bug tracking
+------------
+
+File a bug at: [http://www.couchbase.org/issues/browse/GC](http://www.couchbase.org/issues/browse/GC)
