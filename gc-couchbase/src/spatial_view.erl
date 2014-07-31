@@ -100,12 +100,12 @@ calc_mbb(KvList) ->
     Less = fun(A, B) -> A < B end,
     lists:mapfoldl(fun
         ({{Key0, DocId}, {PartId, Body}}, nil) ->
-            Key = ?JSON_DECODE(Key0),
+            {Key, _Geom} = maybe_process_geometry(Key0),
             Acc = Key,
             Value = {PartId, Body},
             {{{lists:flatten(Key), DocId}, Value}, Acc};
         ({{Key0, DocId}, {PartId, Body}}, Mbb) ->
-            Key = ?JSON_DECODE(Key0),
+            {Key, _Geom} = maybe_process_geometry(Key0),
             Acc = lists:map(fun({[KeyMin, KeyMax], [MbbMin, MbbMax]}) ->
                 [vtree_util:min({KeyMin, MbbMin}, Less),
                  vtree_util:max({KeyMax, MbbMax}, Less)]
@@ -277,16 +277,17 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
     IdBtreePurgedKeyCount = 0,
     ViewKeyValuesToAddKvNodes = lists:map(
         fun({View, AddKeyValues0}) ->
-            AddKeyValues = lists:map(fun({{Key0, DocId}, {PartId, Body}}) ->
+            AddKeyValues = lists:map(fun({{Key, DocId}, {PartId, Body}}) ->
                 % NOTE vmx 2013-08-05: The vtree code expects the key to
                 % contain tuples. Think about changing the internal format
                 % so less conversion is needed.
-                Key = [{Min, Max} || [Min, Max] <- ?JSON_DECODE(Key0)],
+                {Key2, _Geom} = maybe_process_geometry(Key),
+                Key3 = [{Min, Max} || [Min, Max] <- Key2],
                 couch_set_view_util:check_primary_value_size(
-                    Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key, DocId, Group),
+                    Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key3, DocId, Group),
                 Value = <<PartId:16, (byte_size(Body)):24, Body/binary>>,
                 #kv_node{
-                    key = Key,
+                    key = Key3,
                     docid = DocId,
                     body = Value
                 }
@@ -296,18 +297,19 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
         end,
         ViewKeyValues),
     ViewKeyValuesToRemoveKvNodes = dict:map(
-        fun(View, RemoveKeyValues0) ->
-            RemoveKeyValues = lists:map(fun(KeyDocId) ->
+        fun(_View, RemoveKeyValues0) ->
+            RemoveKeyValues = dict:fold(fun(KeyDocId, nil, Acc) ->
                 % NOTE vmx 2013-08-07: Here we decode an just recently
                 %    encoded value. This can be made more efficient.
-                {Key0, DocId} = couch_set_view_util:decode_key_docid(KeyDocId),
-                Key = [{Min, Max} || [Min, Max] <- Key0],
-                #kv_node{
-                    key = Key,
+                <<KeyLen:16, Key:KeyLen/binary, DocId/binary>> = KeyDocId,
+                {Key2, _Geom} = maybe_process_geometry(Key),
+                Key3 = [{Min, Max} || [Min, Max] <- Key2],
+                KvNode = #kv_node{
+                    key = Key3,
                     docid = DocId
-                }
-            end,
-            RemoveKeyValues0),
+                },
+                [KvNode | Acc]
+            end, [], RemoveKeyValues0),
             RemoveKeyValues
         end,
         KeysToRemoveByView),
@@ -601,3 +603,108 @@ pid_to_sig_ets(prod) ->
     ?SPATIAL_VIEW_PID_TO_SIG_ETS_PROD;
 pid_to_sig_ets(dev) ->
     ?SPATIAL_VIEW_PID_TO_SIG_ETS_DEV.
+
+
+% The key might contain a geometry. In case it does, calculate the bounding
+% box and return it.
+maybe_process_geometry(Key0) ->
+    Key = ?JSON_DECODE(Key0),
+    case is_tuple(Key) of
+    true ->
+        {Geom} = Key,
+        process_geometry(Geom);
+    false ->
+        {Key, nil}
+    end.
+
+
+% Returns an Erlang encoded geometry and the corresponding bounding box
+process_geometry(Geo) ->
+    Type = binary_to_atom(proplists:get_value(<<"type">>, Geo), utf8),
+    Bbox = case Type of
+    'GeometryCollection' ->
+        Geometries = proplists:get_value(<<"geometries">>, Geo),
+        lists:foldl(fun({Geometry}, CurBbox) ->
+            Type2 = binary_to_atom(
+                proplists:get_value(<<"type">>, Geometry), utf8),
+            Coords = proplists:get_value(<<"coordinates">>, Geometry),
+            case proplists:get_value(<<"bbox">>, Geo) of
+            undefined ->
+                extract_bbox(Type2, Coords, CurBbox);
+            Bbox2 ->
+                Bbox2
+            end
+        end, nil, Geometries);
+    _ ->
+        Coords = proplists:get_value(<<"coordinates">>, Geo),
+        case proplists:get_value(<<"bbox">>, Geo) of
+        undefined ->
+            extract_bbox(Type, Coords);
+        Bbox2 ->
+            Bbox2
+        end
+    end,
+    Geom = geojsongeom_to_geocouch(Geo),
+    {Bbox, Geom}.
+
+
+extract_bbox(Type, Coords) ->
+    extract_bbox(Type, Coords, nil).
+
+extract_bbox(Type, Coords, InitBbox) ->
+    case Type of
+    'Point' ->
+        bbox([Coords], InitBbox);
+    'LineString' ->
+        bbox(Coords, InitBbox);
+    'Polygon' ->
+        % holes don't matter for the bounding box
+        bbox(hd(Coords), InitBbox);
+    'MultiPoint' ->
+        bbox(Coords, InitBbox);
+    'MultiLineString' ->
+        lists:foldl(fun(Linestring, CurBbox) ->
+            bbox(Linestring, CurBbox)
+        end, InitBbox, Coords);
+    'MultiPolygon' ->
+        lists:foldl(fun(Polygon, CurBbox) ->
+            bbox(hd(Polygon), CurBbox)
+        end, InitBbox, Coords)
+    end.
+
+bbox([], Range) ->
+    Range;
+bbox([[X, Y]|Rest], nil) ->
+    %bbox(Rest, [{X, X}, {Y, Y}]);
+    bbox(Rest, [[X, X], [Y, Y]]);
+bbox([Coords|Rest], Range) ->
+    Range2 = lists:zipwith(
+        fun(Coord, {Min, Max}) ->
+            {erlang:min(Coord, Min), erlang:max(Coord, Max)}
+        end, Coords, Range),
+    bbox(Rest, Range2).
+
+
+% @doc Transforms a GeoJSON geometry (as Erlang terms), to an internal
+% structure
+geojsongeom_to_geocouch(Geom) ->
+    Type = proplists:get_value(<<"type">>, Geom),
+    Coords = case Type of
+    <<"GeometryCollection">> ->
+        Geometries = proplists:get_value(<<"geometries">>, Geom),
+        [geojsongeom_to_geocouch(G) || {G} <- Geometries];
+    _ ->
+        proplists:get_value(<<"coordinates">>, Geom)
+    end,
+    {binary_to_atom(Type, utf8), Coords}.
+
+% @doc Transforms internal structure to a GeoJSON geometry (as Erlang terms)
+geocouch_to_geojsongeom({Type, Coords}) ->
+    Coords2 = case Type of
+    'GeometryCollection' ->
+        Geoms = [geocouch_to_geojsongeom(C) || C <- Coords],
+        {"geometries", Geoms};
+    _ ->
+        {<<"coordinates">>, Coords}
+    end,
+    {[{<<"type">>, Type}, Coords2]}.
