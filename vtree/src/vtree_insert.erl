@@ -25,9 +25,8 @@
 -spec insert(Vt :: #vtree{}, Nodes :: [#kv_node{}]) -> #vtree{}.
 insert(Vt, []) ->
     Vt;
-insert(#vtree{root=nil}=Vt, Nodes0) ->
+insert(#vtree{root=nil}=Vt, Nodes) ->
     T1 = now(),
-    Nodes = vtree_io:write_kvnode_external(Vt#vtree.fd, Nodes0),
     % If we would do single inserts, the first node that was inserted would
     % have set the original Mbb `MbbO`
     MbbO = (hd(Nodes))#kv_node.key,
@@ -56,18 +55,8 @@ insert(#vtree{root=nil}=Vt, Nodes0) ->
             [Root] = vtree_modify:write_nodes(Vt, Nodes, MbbO),
             Vt#vtree{root=Root}
     end;
-insert(Vt, Nodes0) ->
-    insert(Vt, Nodes0, true).
-% `WriteExternal` determines whether the body and the geometry should be
-% written to disk or not. You won't do it if you have already done it.
--spec insert(Vt :: #vtree{}, Nodes :: [#kv_node{}],
-             WriteExternal :: boolean()) -> #vtree{}.
-insert(Vt, Nodes0, WriteExternal) ->
+insert(Vt, Nodes) ->
     T1 = now(),
-    Nodes = case WriteExternal of
-                true -> vtree_io:write_kvnode_external(Vt#vtree.fd, Nodes0);
-                false -> Nodes0
-            end,
     Root = Vt#vtree.root,
     PartitionedNodes = [Nodes],
     KpNodes = insert_multiple(Vt, PartitionedNodes, [Root]),
@@ -86,10 +75,10 @@ insert_in_bulks(Vt, [], _BulkSize) ->
     Vt;
 insert_in_bulks(Vt, Nodes, BulkSize) when length(Nodes) > BulkSize ->
     {Insert, Rest} = lists:split(BulkSize, Nodes),
-    Vt2 = insert(Vt, Insert, false),
+    Vt2 = insert(Vt, Insert),
     insert_in_bulks(Vt2, Rest, BulkSize);
 insert_in_bulks(Vt, Nodes, _BulkSize) ->
-    insert(Vt, Nodes, false).
+    insert(Vt, Nodes).
 
 
 -spec insert_multiple(Vt :: #vtree{}, ToInsert :: [#kv_node{}],

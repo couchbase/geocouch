@@ -68,8 +68,7 @@ traverse(_Vt, _Nodes, _Boxes, _FoldFun, {stop, Acc}) ->
     {stop, Acc};
 traverse(_Vt, [], _Boxes, _FoldFun, OkAcc) ->
     OkAcc;
-traverse(Vt, [#kv_node{}|_]=Nodes0, Boxes, FoldFun, OkAcc) ->
-    Nodes = vtree_io:read_kvnode_external(Vt#vtree.fd, Nodes0),
+traverse(Vt, [#kv_node{}|_]=Nodes, Boxes, FoldFun, OkAcc) ->
     traverse_kv(Vt#vtree.less, Nodes, Boxes, FoldFun, OkAcc);
 traverse(Vt, [#kp_node{}=Node|Rest], Boxes, FoldFun, OkAcc) ->
     #vtree{
@@ -115,8 +114,7 @@ traverse_all(_Vt, _Nodes, _FoldFun, {stop, Acc}) ->
     {stop, Acc};
 traverse_all(_Vt, [], _FoldFun, OkAcc) ->
     OkAcc;
-traverse_all(Vt, [#kv_node{}|_]=Nodes0, FoldFun, OkAcc) ->
-    Nodes = vtree_io:read_kvnode_external(Vt#vtree.fd, Nodes0),
+traverse_all(_Vt, [#kv_node{}|_]=Nodes, FoldFun, OkAcc) ->
     traverse_all_kv(Nodes, FoldFun, OkAcc);
 traverse_all(Vt, [#kp_node{}=Node|Rest], FoldFun, OkAcc) ->
     Children = vtree_io:read_node(Vt#vtree.fd, Node#kp_node.childpointer),
@@ -151,8 +149,10 @@ any_box_intersects_mbb([Box|Boxes], Mbb, Less) ->
 
 
 % Returns all boxes that intersect a given MBB
--spec boxes_intersect_mbb(Boxes :: [mbb()], Mbb :: mbb(),
+-spec boxes_intersect_mbb(Boxes :: [mbb()], Mbb :: mbb() | nil,
                           Less :: lessfun()) -> [mbb()].
+boxes_intersect_mbb(Boxes, nil, _Less) ->
+    Boxes;
 boxes_intersect_mbb(Boxes, Mbb, Less) ->
     lists:filter(fun(Box) ->
                          case vtree_util:intersect_mbb(Box, Mbb, Less) of

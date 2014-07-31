@@ -441,7 +441,11 @@ setup_views(Fd, _BtreeOptions, _Group, ViewStates, Views) ->
         nil ->
             nil;
         <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
-            {Key, Reduce, MbbOrig} = binary_to_term(Rest),
+            <<NumMbb:16, BinMbb/binary>> = Rest,
+            MbbOrig = [M || <<M:64/native-float>> <= BinMbb],
+            Reduce = nil,
+            Key = nil,
+            % The root node pointer doesn't have a key
             #kp_node{
                 key = Key,
                 childpointer = Pointer,
