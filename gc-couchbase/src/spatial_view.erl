@@ -152,26 +152,155 @@ encode_key_docid(Key, DocId) ->
 
 
 % Build the tree out of the sorted files
-finish_build(SetView, GroupFd, TmpFiles) ->
-    #set_view{
-        id_num = Id,
-        indexer = View
-    } = SetView,
+-spec finish_build(#set_view_group{}, dict(), string()) ->
+                          {#set_view_group{}, pid()}.
+finish_build(Group, TmpFiles, TmpDir) ->
+    #set_view_group{
+        sig = Sig,
+        id_btree = IdBtree,
+        views = SetViews
+    } = Group,
+    case os:find_executable("couch_view_index_builder") of
+    false ->
+        Cmd = nil,
+        throw(<<"couch_view_index_builder command not found">>);
+    Cmd ->
+        ok
+    end,
+    Options = [exit_status, use_stdio, stderr_to_stdout, {line, 4096}, binary],
+    Port = open_port({spawn_executable, Cmd}, Options),
 
-    #spatial_view{
-        vtree = Vt
-    } = View,
-
-    #set_view_tmp_file_info{name = ViewFile} = dict:fetch(Id, TmpFiles),
-    {ok, NewVtRoot} = vtree_copy:from_sorted_file(
-        Vt, ViewFile, GroupFd,
-        fun couch_set_view_updater:file_sorter_initial_build_format_fun/1),
-    ok = file2:delete(ViewFile),
-    SetView#set_view{
-        indexer = View#spatial_view{
-            vtree = Vt#vtree{root = NewVtRoot}
+    % The external process that builds up the tree needs to know the enclosing
+    % bounding box of the data. The easiest way is to temporarily store it as
+    % a vtree that will later on be replaced with the real data.
+    SetViews2 = lists:map(fun(SetView) ->
+        #set_view{
+            id_num = Id,
+            indexer = View
+        } = SetView,
+        #set_view_tmp_file_info{
+            extra = Mbb
+        } = dict:fetch(Id, TmpFiles),
+        Key = case Mbb of
+        nil ->
+            [];
+        _ ->
+            [list_to_tuple(M) || M <- Mbb]
+        end,
+        SetView#set_view{
+            indexer = View#spatial_view{
+                vtree = #vtree{
+                    root = #kp_node{
+                        key = Key
+                    }
+                }
+            }
         }
-    }.
+    end, SetViews),
+
+    Group2 = Group#set_view_group{views = SetViews2},
+    couch_set_view_util:send_group_info(Group2, Port),
+    true = port_command(Port, [TmpDir, $\n]),
+    #set_view_tmp_file_info{name = IdFile} = dict:fetch(ids_index, TmpFiles),
+    DestPath = couch_set_view_util:new_sort_file_path(TmpDir, updater),
+    true = port_command(Port, [DestPath, $\n, IdFile, $\n]),
+    lists:foreach(
+        fun(#set_view{id_num = Id}) ->
+            #set_view_tmp_file_info{
+                name = ViewFile
+            } = dict:fetch(Id, TmpFiles),
+            true = port_command(Port, [ViewFile, $\n])
+        end,
+        SetViews2),
+
+    try
+        index_builder_wait_loop(Port, Group2, [])
+    after
+        catch port_close(Port)
+    end,
+
+    {ok, NewFd} = couch_file:open(DestPath),
+    unlink(NewFd),
+    {ok, HeaderBin, NewHeaderPos} = couch_file:read_header_bin(NewFd),
+    HeaderSig = couch_set_view_util:header_bin_sig(HeaderBin),
+    case HeaderSig == Sig of
+    true ->
+        ok;
+    false ->
+        couch_file:close(NewFd),
+        ok = file2:delete(DestPath),
+        throw({error, <<"Corrupted initial build destination file.\n">>})
+    end,
+    NewHeader = couch_set_view_util:header_bin_to_term(HeaderBin),
+    #set_view_index_header{
+        id_btree_state = NewIdBtreeRoot,
+        view_states = NewViewRoots
+    } = NewHeader,
+    NewIdBtree = couch_btree:set_state(IdBtree#btree{fd = NewFd}, NewIdBtreeRoot),
+    NewSetViews = lists:zipwith(
+        % XXX vmx 2014-02-04: Refactor this function out into one called
+        %     `update_states`
+        fun(#set_view{indexer = View} = V, NewRoot) ->
+            #spatial_view{vtree = Vt} = View,
+            NewVt = set_vtree_state(Vt#vtree{fd = NewFd}, NewRoot),
+            NewView = View#spatial_view{vtree = NewVt},
+            V#set_view{indexer = NewView}
+        end,
+        SetViews2, NewViewRoots),
+
+    NewGroup = Group#set_view_group{
+        id_btree = NewIdBtree,
+        views = NewSetViews,
+        index_header = NewHeader,
+        header_pos = NewHeaderPos
+    },
+    {NewGroup, NewFd}.
+
+
+% XXX vmx 2014-06-17: Carbon copy from mapreduce_view. Might make sense to refactor it
+index_builder_wait_loop(Port, Group, Acc) ->
+    #set_view_group{
+        set_name = SetName,
+        name = DDocId,
+        type = Type
+    } = Group,
+    receive
+    {Port, {exit_status, 0}} ->
+        ok;
+    {Port, {exit_status, 1}} ->
+        ?LOG_INFO("Set view `~s`, ~s group `~s`, index builder stopped successfully.",
+                   [SetName, Type, DDocId]),
+        exit(shutdown);
+    {Port, {exit_status, Status}} ->
+        throw({index_builder_exit, Status, ?l2b(Acc)});
+    {Port, {data, {noeol, Data}}} ->
+        index_builder_wait_loop(Port, Group, [Data | Acc]);
+    {Port, {data, {eol, Data}}} ->
+        #set_view_group{
+            set_name = SetName,
+            name = DDocId,
+            type = Type
+        } = Group,
+        Msg = ?l2b(lists:reverse([Data | Acc])),
+        ?LOG_ERROR("Set view `~s`, ~s group `~s`, received error from index builder: ~s",
+                   [SetName, Type, DDocId, Msg]),
+
+        % Propogate this message to query response error message
+        Msg2 = case Msg of
+        <<"Error building index", _/binary>> ->
+            [Msg];
+        _ ->
+            []
+        end,
+        index_builder_wait_loop(Port, Group, Msg2);
+    {Port, Error} ->
+        throw({index_builder_error, Error});
+    stop ->
+        ?LOG_INFO("Set view `~s`, ~s group `~s`, sending stop message to index builder.",
+                   [SetName, Type, DDocId]),
+        true = port_command(Port, "exit"),
+        index_builder_wait_loop(Port, Group, Acc)
+    end.
 
 
 % In order to build the spatial index bottom-up we need to have supply
