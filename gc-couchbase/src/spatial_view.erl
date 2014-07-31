@@ -21,7 +21,7 @@
 -export([design_doc_to_set_view_group/2, view_group_data_size/2,
          reset_view/1, setup_views/5, set_state/2]).
 % For the utils
--export([clean_views/5]).
+-export([clean_views/5, view_info/1]).
 % For the compactor
 -export([compact_view/6, apply_log/3]).
 % For the main module
@@ -172,6 +172,16 @@ finish_build(SetView, GroupFd, TmpFiles) ->
             vtree = Vt#vtree{root = NewVtRoot}
         }
     }.
+
+
+% In order to build the spatial index bottom-up we need to have supply
+% the enclosing bounding box
+view_info(View) ->
+    Mbb = ((View#spatial_view.vtree)#vtree.root)#kp_node.key,
+    MbbEncoded = << <<Min:64/native-float, Max:64/native-float>> ||
+        {Min, Max} <- Mbb>>,
+    Dimension = integer_to_binary(length(Mbb)),
+    [Dimension, $\n, MbbEncoded].
 
 % Return the state of a view (which will be stored in the header)
 get_state(View) ->
