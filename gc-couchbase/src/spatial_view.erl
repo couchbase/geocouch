@@ -469,6 +469,7 @@ setup_views(Fd, _BtreeOptions, _Group, ViewStates, Views) ->
 
 
 % The vtree currently doesn't support purges, hence this is a no-op
+% XXX vmx 2014-07-30: This is needed to have correct results after a rebalance
 clean_views(_Instruction, _PurgeFun, SetViews, _Count, _Acc) ->
     {0, SetViews}.
 
@@ -493,11 +494,13 @@ make_wrapper_fun(Fun, Filter) ->
     case Filter of
     false ->
         fun(Node, Acc) ->
+            % XXX vmx 2014-07-20: Multiple emits is not supported yet
             <<PartId:16, _BodySize:24, Body/binary>> = Node#kv_node.body,
             fold_fun(Fun, {Node#kv_node{body = Body}, PartId}, Acc)
         end;
     {true, _, IncludeBitmask} ->
         fun(Node, Acc) ->
+            % XXX vmx 2014-07-20: Multiple emits is not supported yet
             <<PartId:16, _BodySize:24, Body/binary>> = Node#kv_node.body,
             case (1 bsl PartId) band IncludeBitmask of
             0 ->
