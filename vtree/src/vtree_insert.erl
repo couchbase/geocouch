@@ -68,17 +68,12 @@ insert(Vt, Nodes0, WriteExternal) ->
                 true -> vtree_io:write_kvnode_external(Vt#vtree.fd, Nodes0);
                 false -> Nodes0
             end,
-    #vtree{
-        root = Root,
-        less = Less
-       } = Vt,
-
-    PartitionedNodes = partition_nodes(Nodes, [Root], Less),
+    Root = Vt#vtree.root,
+    PartitionedNodes = [Nodes],
     KpNodes = insert_multiple(Vt, PartitionedNodes, [Root]),
     NewRoot = vtree_modify:write_new_root(Vt, KpNodes),
     ?LOG_DEBUG("Insertion into existing tree took: ~ps~n",
                [timer:now_diff(now(), T1)/1000000]),
-    ?LOG_DEBUG("Root pos: ~p~n", [NewRoot#kp_node.childpointer]),
     Vt#vtree{root=NewRoot}.
 
 

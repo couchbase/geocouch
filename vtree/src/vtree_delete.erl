@@ -31,12 +31,8 @@ delete(#vtree{root=nil}=Vt, _Nodes) ->
     Vt;
 delete(Vt, Nodes) ->
     T1 = now(),
-    #vtree{
-            root = Root,
-            less = Less
-          } = Vt,
-
-    PartitionedNodes = partition_nodes(Nodes, [Root], Less),
+    Root = Vt#vtree.root,
+    PartitionedNodes = [Nodes],
     KpNodes = delete_multiple(Vt, PartitionedNodes, [Root]),
     NewRoot = case KpNodes of
                   [] -> nil;
@@ -45,7 +41,6 @@ delete(Vt, Nodes) ->
               end,
     ?LOG_DEBUG("Deletion took: ~ps~n",
                [timer:now_diff(now(), T1)/1000000]),
-    ?LOG_DEBUG("Root pos: ~p~n", [NewRoot#kp_node.childpointer]),
     Vt#vtree{root=NewRoot}.
 
 
