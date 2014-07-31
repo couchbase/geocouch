@@ -101,6 +101,13 @@ spatial_row_obj({{Mbb, DocId}, {PartId, Node, Value}}, true) when is_integer(Par
 spatial_row_obj({{Mbb, DocId}, {PartId, Value}}, false) when is_integer(PartId)  ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
+      ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>;
+
+% XXX vmx 2014-07-29: Find out why I needed to add this additional case
+% Row from remote node, query with ?debug=false
+spatial_row_obj({{Mbb, DocId}, Value}, false) ->
+    <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
+      ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
       ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>.
 
 spatial_less_fun(A, B) ->
