@@ -19,7 +19,7 @@
 -export([update_index/5]).
 % For the group
 -export([design_doc_to_set_view_group/2, view_group_data_size/2,
-         reset_view/1, setup_views/5]).
+         reset_view/1, setup_views/5, set_state/2]).
 % For the utils
 -export([clean_views/5]).
 % For the compactor
@@ -196,6 +196,35 @@ get_vtree_state(Vt) ->
         Rest = term_to_binary({Key, Reduce, MbbOrig}),
         <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>>
     end.
+
+set_state(View, State) ->
+    Vt = set_vtree_state(View#spatial_view.vtree, State),
+    View#spatial_view{vtree = Vt}.
+
+% XXX vmx 2014-02-04: Should perhaps be moved to the vtree itself (and then
+%    renamed to `set_state`
+set_vtree_state(Vt, Root0) ->
+    Root = case Root0 of
+    nil ->
+        nil;
+    <<0:?POINTER_BITS, 0:?TREE_SIZE_BITS>> ->
+        nil;
+    <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
+        <<NumMbb:16, BinMbb/binary>> = Rest,
+        MbbOrig = [M || <<M:64/native-float>> <= BinMbb],
+        Reduce = nil,
+        Key = nil,
+        % The root node pointer doesn't have a key
+        Key = nil,
+        #kp_node{
+            key = Key,
+            childpointer = Pointer,
+            treesize = Size,
+            reduce = Reduce,
+            mbb_orig = MbbOrig
+        }
+    end,
+    Vt#vtree{root = Root}.
 
 
 % The spatial index doesn't store the bitmap for the full structure,
