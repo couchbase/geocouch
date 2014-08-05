@@ -120,9 +120,11 @@ encode_key(#kp_node{key = Mbb}) ->
                           {Bin :: binary(), Size :: non_neg_integer()}.
 encode_value(#kv_node{}=Node) ->
     #kv_node{
-        body = Body
+       body = Body,
+       partition = PartId
       } = Node,
-    {Body, byte_size(Body)};
+    Value = <<PartId:16, (byte_size(Body)):24, Body/binary>>,
+    {Value, byte_size(Value)};
 encode_value(#kp_node{}=Node) ->
     #kp_node{
               childpointer = PointerNode,
@@ -141,11 +143,12 @@ encode_value(#kp_node{}=Node) ->
     {BinValue, 0}.
 
 
-decode_kvnode_value(BinValue) ->
+decode_kvnode_value(<<PartId:16, _BodySize:24, Body/binary>>) ->
     % XXX vmx 2014-07-20: Add support for geometries
     #kv_node{
        geometry = 0,
-       body = BinValue,
+       body = Body,
+       partition = PartId,
        % XXX vmx 2014-07-20: What is the size used for?
        size = 0
       }.

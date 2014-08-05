@@ -52,7 +52,8 @@
           % property are pointers, but the size is not known. A value of 0
           % means that the size wasn't set yet and the `geometry` and `body`
           % contain the actual values
-          size = 0 :: integer()
+          size = 0 :: integer(),
+          partition = 0 :: non_neg_integer()
 }).
 
 -record(kp_node, {

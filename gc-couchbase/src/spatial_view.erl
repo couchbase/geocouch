@@ -414,11 +414,11 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
                 Key3 = [{Min, Max} || [Min, Max] <- Key2],
                 couch_set_view_util:check_primary_value_size(
                     Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key3, DocId, Group),
-                Value = <<PartId:16, (byte_size(Body)):24, Body/binary>>,
                 #kv_node{
                     key = Key3,
                     docid = DocId,
-                    body = Value
+                    body = Body,
+                    partition = PartId
                 }
             end,
             AddKeyValues0),
@@ -624,18 +624,16 @@ make_wrapper_fun(Fun, Filter) ->
     false ->
         fun(Node, Acc) ->
             % XXX vmx 2014-07-20: Multiple emits is not supported yet
-            <<PartId:16, _BodySize:24, Body/binary>> = Node#kv_node.body,
-            fold_fun(Fun, {Node#kv_node{body = Body}, PartId}, Acc)
+            fold_fun(Fun, Node, Acc)
         end;
     {true, _, IncludeBitmask} ->
         fun(Node, Acc) ->
             % XXX vmx 2014-07-20: Multiple emits is not supported yet
-            <<PartId:16, _BodySize:24, Body/binary>> = Node#kv_node.body,
-            case (1 bsl PartId) band IncludeBitmask of
+            case (1 bsl Node#kv_node.partition) band IncludeBitmask of
             0 ->
                 {ok, Acc};
             _ ->
-                fold_fun(Fun, {Node#kv_node{body = Body}, PartId}, Acc)
+                fold_fun(Fun, Node, Acc)
            end
         end
     end.
@@ -643,11 +641,12 @@ make_wrapper_fun(Fun, Filter) ->
 
 fold_fun(_Fun, nil, Acc) ->
     {ok, Acc};
-fold_fun(Fun, {Node, PartId}, Acc) ->
+fold_fun(Fun, Node, Acc) ->
     #kv_node{
         key = Key0,
         docid = DocId,
-        body = Body
+        body = Body,
+        partition = PartId
     } = Node,
     % NOTE vmx 2013-07-11: The key needs to be able to be encoded as JSON.
     %     Think about how to encode the MBB so less conversion is needed.
