@@ -21,7 +21,7 @@
 -export([design_doc_to_set_view_group/2, view_group_data_size/2,
          reset_view/1, setup_views/5, set_state/2]).
 % For the utils
--export([clean_views/5, view_info/1]).
+-export([clean_views/2, view_info/1]).
 % For the compactor
 -export([compact_view/6, apply_log/3]).
 % For the main module
@@ -454,16 +454,24 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
             0 ->
                 CleanupCount = 0,
                 Vtree = vtree_delete:delete(View#spatial_view.vtree, KeysToRemove),
-                Vtree2 = vtree_insert:insert(Vtree, AddKeyValues);
-            _ ->
-                % XXX vmx 2013-08-02: Cleanup currently isn't supported
+                Vtree3 = vtree_insert:insert(Vtree, AddKeyValues);
+            Cbitmask ->
+                % NOTE vmx 2014-08-04: Currently there's no easy way to get
+                % the number of cleaned up nodes, hence it's set to 0. the
+                % number displayed in the logs hence will be wrong (that's OK
+                % given the effort that would be needed to make it right).
                 CleanupCount = 0,
-                Vtree = vtree_delete:delete(View#spatial_view.vtree, KeysToRemove),
-                Vtree2 = vtree_insert:insert(Vtree, AddKeyValues)
+                CleanupParts = couch_set_view_util:decode_bitmask(Cbitmask),
+                CleanupNodes = [#kv_node{partition = PartId} ||
+                    PartId <- CleanupParts],
+                Vtree = vtree_cleanup:cleanup(
+                    View#spatial_view.vtree, CleanupNodes),
+                Vtree2 = vtree_delete:delete(Vtree, KeysToRemove),
+                Vtree3 = vtree_insert:insert(Vtree2, AddKeyValues)
             end,
             NewSetView = SetView#set_view{
                 indexer = View#spatial_view{
-                    vtree = Vtree2
+                    vtree = Vtree3
                 }
             },
             {NewSetView,
@@ -599,7 +607,21 @@ setup_views(Fd, _BtreeOptions, _Group, ViewStates, Views) ->
 
 % The vtree currently doesn't support purges, hence this is a no-op
 % XXX vmx 2014-07-30: This is needed to have correct results after a rebalance
-clean_views(_Instruction, _PurgeFun, SetViews, _Count, _Acc) ->
+clean_views(SetViews0, CleanupParts) ->
+    SetViews = lists:map(fun(SetView) ->
+        View = SetView#set_view.indexer,
+        Vt0 = View#spatial_view.vtree,
+        % NOTE vmx 2014-08-05: currently the tree manipulation code expects
+        % KV-nodes as input
+        CleanupNodes = [#kv_node{partition = PartId} ||
+            PartId <- CleanupParts],
+        Vt = vtree_cleanup:cleanup(Vt0, CleanupNodes),
+        SetView#set_view{
+            indexer = View#spatial_view{
+                vtree = Vt
+            }
+        }
+    end, SetViews0),
     {0, SetViews}.
 
 
