@@ -104,12 +104,12 @@ calc_mbb(KvList) ->
     Less = fun(A, B) -> A < B end,
     lists:mapfoldl(fun
         ({{Key0, DocId}, {PartId, Body}}, nil) ->
-            {Key, Geom} = maybe_process_geometry(Key0),
+            {Key, Geom} = maybe_process_key(Key0),
             Acc = Key,
             Value = {PartId, Body, Geom},
             {{{lists:flatten(Key), DocId}, Value}, Acc};
         ({{Key0, DocId}, {PartId, Body}}, Mbb) ->
-            {Key, Geom} = maybe_process_geometry(Key0),
+            {Key, Geom} = maybe_process_key(Key0),
             Acc = lists:map(fun({[KeyMin, KeyMax], [MbbMin, MbbMax]}) ->
                 [vtree_util:min({KeyMin, MbbMin}, Less),
                  vtree_util:max({KeyMax, MbbMax}, Less)]
@@ -421,7 +421,7 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
                 % NOTE vmx 2013-08-05: The vtree code expects the key to
                 % contain tuples. Think about changing the internal format
                 % so less conversion is needed.
-                {Key2, Geom} = maybe_process_geometry(Key),
+                {Key2, Geom} = maybe_process_key(Key),
                 Key3 = [{Min, Max} || [Min, Max] <- Key2],
                 couch_set_view_util:check_primary_value_size(
                     Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key3, DocId, Group),
@@ -443,7 +443,7 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
                 % NOTE vmx 2013-08-07: Here we decode an just recently
                 %    encoded value. This can be made more efficient.
                 <<KeyLen:16, Key:KeyLen/binary, DocId/binary>> = KeyDocId,
-                {Key2, _Geom} = maybe_process_geometry(Key),
+                {Key2, _Geom} = maybe_process_key(Key),
                 Key3 = [{Min, Max} || [Min, Max] <- Key2],
                 KvNode = #kv_node{
                     key = Key3,
@@ -776,16 +776,25 @@ pid_to_sig_ets(dev) ->
     ?SPATIAL_VIEW_PID_TO_SIG_ETS_DEV.
 
 
-% The key might contain a geometry. In case it does, calculate the bounding
-% box and return it.
-maybe_process_geometry(Key0) ->
+% The key might contain a geometry or points instead of ranges for certain
+% dimensions.
+% In case of a geometry, calculate the bounding box and return it.
+% In case of a point instead of a range, create a collapsed range
+maybe_process_key(Key0) ->
     Key = ?JSON_DECODE(Key0),
     case is_tuple(Key) of
     true ->
         {Geom} = Key,
         process_geometry(Geom);
     false ->
-        {Key, nil}
+        Key2 = lists:map(
+            fun([Min, Max]) ->
+                [Min, Max];
+            (SingleValue) ->
+                [SingleValue, SingleValue]
+            end,
+        Key),
+        {Key2, nil}
     end.
 
 
