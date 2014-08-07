@@ -31,6 +31,8 @@
          pid_to_sig_ets/1]).
 % For the couch_set_view like calls
 -export([get_spatial_view/4]).
+% For spatial_merger
+-export[geocouch_to_geojsongeom/1].
 
 
 -include_lib("couch_spatial.hrl").
@@ -54,8 +56,10 @@
 % View specific limits (same as in couch_set_view_updater).
 -define(VIEW_SINGLE_VALUE_BITS,     24).
 -define(VIEW_ALL_VALUES_BITS,       ?VALUE_BITS).
+-define(VIEW_GEOMETRY_BITS,         24).
 -define(MAX_VIEW_SINGLE_VALUE_SIZE, ((1 bsl ?VIEW_SINGLE_VALUE_BITS) - 1)).
 -define(MAX_VIEW_ALL_VALUES_SIZE,   ((1 bsl ?VIEW_ALL_VALUES_BITS) - 1)).
+-define(MAX_VIEW_GEOMETRY_SIZE,     ((1 bsl ?VIEW_GEOMETRY_BITS) - 1)).
 
 
 -define(SPATIAL_VIEW_SERVER_NAME_PROD, spatial_view_server_name_prod).
@@ -100,17 +104,17 @@ calc_mbb(KvList) ->
     Less = fun(A, B) -> A < B end,
     lists:mapfoldl(fun
         ({{Key0, DocId}, {PartId, Body}}, nil) ->
-            {Key, _Geom} = maybe_process_geometry(Key0),
+            {Key, Geom} = maybe_process_geometry(Key0),
             Acc = Key,
-            Value = {PartId, Body},
+            Value = {PartId, Body, Geom},
             {{{lists:flatten(Key), DocId}, Value}, Acc};
         ({{Key0, DocId}, {PartId, Body}}, Mbb) ->
-            {Key, _Geom} = maybe_process_geometry(Key0),
+            {Key, Geom} = maybe_process_geometry(Key0),
             Acc = lists:map(fun({[KeyMin, KeyMax], [MbbMin, MbbMax]}) ->
                 [vtree_util:min({KeyMin, MbbMin}, Less),
                  vtree_util:max({KeyMax, MbbMax}, Less)]
             end, lists:zip(Key, Mbb)),
-            Value = {PartId, Body},
+            Value = {PartId, Body, Geom},
             {{{lists:flatten(Key), DocId}, Value}, Acc}
     end, nil, KvList).
 
@@ -119,13 +123,14 @@ calc_mbb(KvList) ->
 convert_primary_index_kvs_to_binary([], _Group, Acc) ->
     lists:reverse(Acc);
 convert_primary_index_kvs_to_binary([H | Rest], Group, Acc)->
-    {{Key, DocId}, {PartId, Body}} = H,
+    {{Key, DocId}, {PartId, Body, Geom}} = H,
     KeyBin = encode_key_docid(Key, DocId),
     couch_set_view_util:check_primary_key_size(
         KeyBin, ?MAX_KEY_SIZE, Key, DocId, Group),
     V = case Body of
     % TODO vmx 2013-07-01: Support dups properly (they are encoded here
     %     but never really taken into account througout the code
+    % TODO vmx 2014-08-05: Think about how to deal with the geometry in dups
     {dups, Values} ->
         ValueListBinary = lists:foldl(
             fun(V, Acc2) ->
@@ -138,7 +143,13 @@ convert_primary_index_kvs_to_binary([H | Rest], Group, Acc)->
     _ ->
         couch_set_view_util:check_primary_value_size(
             Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key, DocId, Group),
-        <<PartId:16, (byte_size(Body)):24, Body/binary>>
+        % TODO vmx 2014-08-05: Encode the geometry as WKB
+        GeomBin = ?term_to_bin(Geom),
+        check_primary_geometry_size(
+            GeomBin, ?MAX_VIEW_GEOMETRY_SIZE, Key, DocId, Group),
+        <<PartId:16, (byte_size(Body)):?VIEW_SINGLE_VALUE_BITS,
+          (byte_size(GeomBin)):?VIEW_GEOMETRY_BITS,
+          Body/binary, GeomBin/binary>>
     end,
     couch_set_view_util:check_primary_value_size(
         V, ?MAX_VIEW_ALL_VALUES_SIZE, Key, DocId, Group),
@@ -410,7 +421,7 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
                 % NOTE vmx 2013-08-05: The vtree code expects the key to
                 % contain tuples. Think about changing the internal format
                 % so less conversion is needed.
-                {Key2, _Geom} = maybe_process_geometry(Key),
+                {Key2, Geom} = maybe_process_geometry(Key),
                 Key3 = [{Min, Max} || [Min, Max] <- Key2],
                 couch_set_view_util:check_primary_value_size(
                     Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key3, DocId, Group),
@@ -418,7 +429,8 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
                     key = Key3,
                     docid = DocId,
                     body = Body,
-                    partition = PartId
+                    partition = PartId,
+                    geometry = Geom
                 }
             end,
             AddKeyValues0),
@@ -668,12 +680,14 @@ fold_fun(Fun, Node, Acc) ->
         key = Key0,
         docid = DocId,
         body = Body,
+        geometry = Geom,
         partition = PartId
     } = Node,
+    JsonGeom = spatial_view:geocouch_to_geojsongeom(Geom),
     % NOTE vmx 2013-07-11: The key needs to be able to be encoded as JSON.
     %     Think about how to encode the MBB so less conversion is needed.
     Key = [[Min, Max] || {Min, Max} <- Key0],
-    case Fun({{Key, DocId}, {PartId, Body}}, Acc) of
+    case Fun({{Key, DocId}, {PartId, Body, JsonGeom}}, Acc) of
     {ok, Acc2} ->
         {ok, Acc2};
     {stop, Acc2} ->
@@ -856,6 +870,8 @@ geojsongeom_to_geocouch(Geom) ->
     {binary_to_atom(Type, utf8), Coords}.
 
 % @doc Transforms internal structure to a GeoJSON geometry (as Erlang terms)
+geocouch_to_geojsongeom(nil) ->
+    nil;
 geocouch_to_geojsongeom({Type, Coords}) ->
     Coords2 = case Type of
     'GeometryCollection' ->
@@ -865,3 +881,17 @@ geocouch_to_geojsongeom({Type, Coords}) ->
         {<<"coordinates">>, Coords}
     end,
     {[{<<"type">>, Type}, Coords2]}.
+
+
+-spec check_primary_geometry_size(binary(), pos_integer(), binary(), binary(),
+        #set_view_group{}) -> ok.
+check_primary_geometry_size(Bin, Max, Key, DocId, Group) when byte_size(Bin) > Max ->
+    #set_view_group{set_name = SetName, name = DDocId, type = Type} = Group,
+    Error = iolist_to_binary(
+        io_lib:format("geometry emitted for key `~s`, document `~s`, is too big"
+                      " (~p bytes)", [Key, DocId, byte_size(Bin)])),
+    ?LOG_MAPREDUCE_ERROR("Bucket `~s`, ~s group `~s`, ~s",
+                         [SetName, Type, DDocId, Error]),
+    throw({error, Error});
+check_primary_geometry_size(_Bin, _Max, _Key, _DocId, _Group) ->
+    ok.

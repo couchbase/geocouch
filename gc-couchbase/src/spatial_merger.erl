@@ -81,34 +81,67 @@ spatial_row_obj({{Key, error}, Reason}, _Debug) ->
 % NOTE vmx 2013-07-10: Those parameters are the ones the function in
 %     spatial_view:fold_fun() gets. It might be pre-processes by the
 %     `FoldFun` (in e.g. simple_spatial_view_query/4).
-% Row from local node, query with ?debug=true
-spatial_row_obj({{Mbb, DocId}, {PartId, Value}}, true) when is_integer(PartId) ->
+% Row from local node, query with ?debug=true without a geometry
+spatial_row_obj({{Mbb, DocId}, {PartId, Value, nil}}, true) ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
       ",\"partition\":", (?l2b(integer_to_list(PartId)))/binary,
       ",\"node\":\"", (?LOCAL)/binary, "\"",
       ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>;
 
-% Row from remote node, using Erlang based stream JSON parser, query with ?debug=true
-spatial_row_obj({{Mbb, DocId}, {PartId, Node, Value}}, true) when is_integer(PartId) ->
+% Row from local node, query with ?debug=true and a geometry
+spatial_row_obj({{Mbb, DocId}, {PartId, Value, Geom}}, true) ->
+    <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
+      ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
+      ",\"partition\":", (?l2b(integer_to_list(PartId)))/binary,
+      ",\"node\":\"", (?LOCAL)/binary, "\"",
+      ",\"value\":", (?JSON_ENCODE(Value))/binary,
+      ",\"geometry\":", (?JSON_ENCODE(Geom))/binary, "}">>;
+
+% Row from remote node, using Erlang based stream JSON parser, query with
+% ?debug=true and without a geometry
+spatial_row_obj({{Mbb, DocId}, {{PartId, Node, Value}, nil}}, true) ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
       ",\"partition\":", (?l2b(integer_to_list(PartId)))/binary,
       ",\"node\":", (?JSON_ENCODE(Node))/binary,
       ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>;
 
-% Row from local node, query with ?debug=false
-spatial_row_obj({{Mbb, DocId}, {PartId, Value}}, false) when is_integer(PartId)  ->
+% Row from remote node, using Erlang based stream JSON parser, query with
+% ?debug=true and a geometry
+spatial_row_obj({{Mbb, DocId}, {{PartId, Node, Value}, Geom}}, true) ->
+    <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
+      ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
+      ",\"partition\":", (?l2b(integer_to_list(PartId)))/binary,
+      ",\"node\":", (?JSON_ENCODE(Node))/binary,
+      ",\"value\":", (?JSON_ENCODE(Value))/binary,
+      ",\"geometry\":", (?JSON_ENCODE(Geom))/binary, "}">>;
+
+% Row from local node, query with ?debug=false without a geometry
+spatial_row_obj({{Mbb, DocId}, {PartId, Value, nil}}, false) ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
       ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>;
 
-% XXX vmx 2014-07-29: Find out why I needed to add this additional case
-% Row from remote node, query with ?debug=false
-spatial_row_obj({{Mbb, DocId}, Value}, false) ->
+% Row from local node, query with ?debug=false and a geometry
+spatial_row_obj({{Mbb, DocId}, {PartId, Value, Geom}}, false) ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
-      ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>.
+      ",\"value\":", (?JSON_ENCODE(Value))/binary,
+      ",\"geometry\":", (?JSON_ENCODE(Geom))/binary, "}">>;
+
+% Row from remote node, query with ?debug=false without a geometry
+spatial_row_obj({{Mbb, DocId}, {Value, nil}}, false) ->
+    <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
+      ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
+      ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>;
+
+% Row from remote node, query with ?debug=false and a geometry
+spatial_row_obj({{Mbb, DocId}, {Value, Geom}}, false) ->
+    <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
+      ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
+      ",\"value\":", (?JSON_ENCODE(Value))/binary,
+      ",\"geometry\":", (?JSON_ENCODE(Geom))/binary, "}">>.
 
 spatial_less_fun(A, B) ->
     A < B.
@@ -258,6 +291,7 @@ http_spatial_fold_queue_row({Props}, Queue) ->
     Id = couch_util:get_value(<<"id">>, Props, nil),
     Mbb = couch_util:get_value(<<"key">>, Props, null),
     Val = couch_util:get_value(<<"value">>, Props),
+    Geom = couch_util:get_value(<<"geometry">>, Props, nil),
     Value = case couch_util:get_value(<<"partition">>, Props, nil) of
     nil ->
         Val;
@@ -269,7 +303,7 @@ http_spatial_fold_queue_row({Props}, Queue) ->
     nil ->
         case couch_util:get_value(<<"doc">>, Props, nil) of
         nil ->
-            {{Mbb, Id}, Value};
+            {{Mbb, Id}, {Value, Geom}};
         % NOTE vmx 20110818: GeoCouch doesn't support include_docs atm,
         %     but I'll just leave the code here
         Doc ->
@@ -309,7 +343,7 @@ merge_spatial_min_row(Params, MinRow) ->
 % Counterpart to make_map_fold_fun/4 in couch_view_merger
 % Used for merges of local DBs
 make_spatial_fold_fun(Queue) ->
-    fun({{_Mbb, _DocId}, {_PartId, _Value}}=Row, Acc) ->
+    fun({{_Mbb, _DocId}, {_PartId, _Value, _Geom}}=Row, Acc) ->
         ok = couch_view_merger_queue:queue(Queue, Row),
         {ok, Acc}
     end.
@@ -469,7 +503,7 @@ simple_spatial_view_query(Params, Group, View, ViewArgs) ->
             {stop, Acc};
         (_Kv, {AccLim, AccSkip, UAcc}) when AccSkip > 0 ->
             {ok, {AccLim, AccSkip - 1, UAcc}};
-        ({{_Key, _DocId}, {_PartId, _Value}} = Kv, {AccLim, 0, UAcc}) ->
+        ({{_Key, _DocId}, {_PartId, _Value, _Geom}} = Kv, {AccLim, 0, UAcc}) ->
             Row = spatial_row_obj(Kv, DebugMode),
             {ok, UAcc2} = Callback({row, Row}, UAcc),
             {ok, {AccLim - 1, 0, UAcc2}}
