@@ -320,7 +320,7 @@ view_info(View) ->
     Mbb = ((View#spatial_view.vtree)#vtree.root)#kp_node.key,
     MbbEncoded = << <<Min:64/native-float, Max:64/native-float>> ||
         {Min, Max} <- Mbb>>,
-    Dimension = integer_to_binary(length(Mbb)),
+    Dimension = list_to_binary(integer_to_list(length(Mbb))),
     [Dimension, $\n, MbbEncoded].
 
 % Return the state of a view (which will be stored in the header)
