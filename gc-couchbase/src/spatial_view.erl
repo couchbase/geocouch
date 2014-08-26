@@ -559,7 +559,14 @@ design_doc_to_set_view_group(SetName, #doc{id = Id, body = {Fields}}) ->
         mod = ?MODULE,
         extension = index_extension()
     },
-    couch_set_view_util:set_view_sig(SetViewGroup).
+    set_view_sig(SetViewGroup).
+
+
+-spec set_view_sig(#set_view_group{}) -> #set_view_group{}.
+set_view_sig(#set_view_group{views = SetViews} = Group) ->
+    Defs = [SetView#set_view.def || SetView <- SetViews],
+    Sig = couch_util:md5(term_to_binary(Defs)),
+    Group#set_view_group{sig = Sig}.
 
 
 -spec index_extension() -> string().
