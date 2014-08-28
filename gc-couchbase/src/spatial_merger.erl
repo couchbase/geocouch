@@ -87,7 +87,7 @@ spatial_row_obj({{Mbb, DocId}, {PartId, Value, nil}}, true) ->
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
       ",\"partition\":", (?l2b(integer_to_list(PartId)))/binary,
       ",\"node\":\"", (?LOCAL)/binary, "\"",
-      ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>;
+      ",\"value\":", Value/binary, "}">>;
 
 % Row from local node, query with ?debug=true and a geometry
 spatial_row_obj({{Mbb, DocId}, {PartId, Value, Geom}}, true) ->
@@ -95,7 +95,7 @@ spatial_row_obj({{Mbb, DocId}, {PartId, Value, Geom}}, true) ->
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
       ",\"partition\":", (?l2b(integer_to_list(PartId)))/binary,
       ",\"node\":\"", (?LOCAL)/binary, "\"",
-      ",\"value\":", (?JSON_ENCODE(Value))/binary,
+      ",\"value\":", Value/binary,
       ",\"geometry\":", (?JSON_ENCODE(Geom))/binary, "}">>;
 
 % Row from remote node, using Erlang based stream JSON parser, query with
@@ -121,13 +121,13 @@ spatial_row_obj({{Mbb, DocId}, {{PartId, Node, Value}, Geom}}, true) ->
 spatial_row_obj({{Mbb, DocId}, {PartId, Value, nil}}, false) ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
-      ",\"value\":", (?JSON_ENCODE(Value))/binary, "}">>;
+      ",\"value\":", Value/binary, "}">>;
 
 % Row from local node, query with ?debug=false and a geometry
 spatial_row_obj({{Mbb, DocId}, {PartId, Value, Geom}}, false) ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
-      ",\"value\":", (?JSON_ENCODE(Value))/binary,
+      ",\"value\":", Value/binary,
       ",\"geometry\":", (?JSON_ENCODE(Geom))/binary, "}">>;
 
 % Row from remote node, query with ?debug=false without a geometry
