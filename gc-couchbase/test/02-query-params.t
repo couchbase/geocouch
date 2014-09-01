@@ -128,7 +128,8 @@ verify_rows(Rows) ->
          <<"\"val", (list_to_binary(integer_to_list(Value)))/binary, "\"">>}
     end, create_docs(1, num_docs())),
 
-    RowsWithoutKey = [{DocId, Value} || {Key, DocId, {_PartId, Value}} <- Rows],
+    RowsWithoutKey = [{DocId, Value} ||
+        {Key, DocId, {_PartId, Value, nil}} <- Rows],
     etap:is(lists:sort(RowsWithoutKey), lists:sort(DocList),
             "Returned correct rows").
 

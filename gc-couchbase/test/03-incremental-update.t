@@ -115,7 +115,8 @@ test_spatial_delete(From, To, Total) ->
 
 verify_rows(Rows, To) ->
     DocList = create_docs_for_verification(1, To, 0),
-    RowsWithoutKey = [{DocId, Value} || {Key, DocId, {_PartId, Value}} <- Rows],
+    RowsWithoutKey = [{DocId, Value} ||
+        {Key, DocId, {_PartId, Value, nil}} <- Rows],
     etap:is(lists:sort(RowsWithoutKey), lists:sort(DocList),
             "Returned correct rows").
 
@@ -124,7 +125,8 @@ verify_updated_rows(Rows, From, To, Total, AddToValue) ->
     DocList2 = create_docs_for_verification(From, To, AddToValue),
     DocList3 = create_docs_for_verification(To+1, Total, 0),
     DocList = DocList1 ++ DocList2 ++ DocList3,
-    RowsWithoutKey = [{DocId, Value} || {Key, DocId, {_PartId, Value}} <- Rows],
+    RowsWithoutKey = [{DocId, Value} ||
+        {Key, DocId, {_PartId, Value, nil}} <- Rows],
     etap:is(lists:sort(RowsWithoutKey), lists:sort(DocList),
             "Returned correct rows").
 
@@ -133,7 +135,7 @@ verify_deleted_rows(Rows, From, To, Total) ->
     DocList1 = create_docs_for_verification_docids(1, From-1),
     DocList2 = create_docs_for_verification_docids(To+1, Total),
     DocList = DocList1 ++ DocList2,
-    RowsDocIds = [DocId || {Key, DocId, {_PartId, Value}} <- Rows],
+    RowsDocIds = [DocId || {Key, DocId, {_PartId, Value, nil}} <- Rows],
     etap:is(lists:sort(RowsDocIds), lists:sort(DocList),
             "Returned correct rows").
 
