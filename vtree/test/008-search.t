@@ -340,8 +340,8 @@ test_traverse_all() ->
     Less = fun(A, B) -> A < B end,
     Vtree = #vtree{
                fd = Fd,
-               kp_chunk_threshold = 2500,
-               kv_chunk_threshold = 2500,
+               kp_chunk_threshold = 3000,
+               kv_chunk_threshold = 3000,
                min_fill_rate = 0.4,
                less = Less
               },

@@ -31,7 +31,7 @@ main(_) ->
     end,
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(49),
+    etap:plan(43),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -58,23 +58,21 @@ test_insert() ->
     Nodes1 = vtree_test_util:generate_kvnodes(6),
     Vtree1 = #vtree{
                 fd = Fd,
-                kv_chunk_threshold = 2500,
-                kp_chunk_threshold = 2500,
+                kv_chunk_threshold = 3000,
+                kp_chunk_threshold = 3000,
                 min_fill_rate = 0.3,
                 less = fun(A, B) -> A < B end
      },
 
     NewVtree1 = ?MOD:insert(Vtree1, [hd(Nodes1)]),
     Root1 = NewVtree1#vtree.root,
-    InsertedNodes1Ex = vtree_io:read_node(Fd, Root1#kp_node.childpointer),
-    [InsertedNodes1] = vtree_io:read_kvnode_external(Fd, InsertedNodes1Ex),
+    [InsertedNodes1] = vtree_io:read_node(Fd, Root1#kp_node.childpointer),
     etap:is(InsertedNodes1, hd(Nodes1),
             "Inserted single node into emtpy tree: node got inserted"),
 
     NewVtree2 = ?MOD:insert(Vtree1, Nodes1),
     Root2 = NewVtree2#vtree.root,
-    InsertedNodes2Ex = vtree_io:read_node(Fd, Root2#kp_node.childpointer),
-    InsertedNodes2 = vtree_io:read_kvnode_external(Fd, InsertedNodes2Ex),
+    InsertedNodes2 = vtree_io:read_node(Fd, Root2#kp_node.childpointer),
     etap:is(InsertedNodes2, Nodes1,
             "Inserted into 6 nodes into emtpy tree: all nodes got inserted"),
 
@@ -116,38 +114,6 @@ test_insert() ->
     etap:is(?MOD:insert(NewVtree2, []), NewVtree2,
             "Not adding any nodes returns the original tree"),
 
-    % Test the insert/3 cases
-
-    Nodes6 = vtree_test_util:generate_kvnodes(27),
-    NewVtree6 = ?MOD:insert(NewVtree3, Nodes6, true),
-    Root6 = NewVtree6#vtree.root,
-    {Depths6, KvNodes6} = vtree_test_util:get_kvnodes(
-                            Fd, Root6#kp_node.childpointer),
-    etap:is(sets:size(sets:from_list(Depths6)), 1,
-            "Inserted 27 nodes into existing tree: tree is balanced"),
-    etap:is(hd(Depths6), 2, "Tree has expected depth"),
-    etap:is(lists:sort(KvNodes6), lists:sort(Nodes3 ++ Nodes6),
-            "Inserted 27 nodes into existing tree: all nodes got inserted"),
-
-    etap:throws_ok(
-      fun() -> ?MOD:insert(NewVtree3, Nodes6, false) end,
-      {error, "write_kvnode_external/2 needs to be called before a "
-       "KV-node value can be encoded"},
-      "Throw exception when you try to call `insert` that doesn't write the "
-      "body and geometry first, without having them written first"),
-
-    Nodes7 = vtree_io:write_kvnode_external(Fd, Nodes6),
-    NewVtree7 = ?MOD:insert(NewVtree3, Nodes7, false),
-    Root7 = NewVtree7#vtree.root,
-    {Depths7, KvNodes7} = vtree_test_util:get_kvnodes(
-                            Fd, Root7#kp_node.childpointer),
-    etap:is(Depths7, Depths6,
-            "(depth) Nodes where correctly inserted when the body and "
-            "geometry was written first"),
-    etap:is(KvNodes7, KvNodes6,
-            "(nodes) Nodes where correctly inserted when the body and "
-            "geometry was written first"),
-
     couch_file:close(Fd).
 
 
@@ -157,8 +123,8 @@ test_insert_in_bulks()->
 
     Vtree0 = #vtree{
                 fd = Fd,
-                kv_chunk_threshold = 1000,
-                kp_chunk_threshold = 1000,
+                kv_chunk_threshold = 1600,
+                kp_chunk_threshold = 1600,
                 min_fill_rate = 0.4,
                 less = Less
                },
@@ -169,11 +135,8 @@ test_insert_in_bulks()->
     Nodes1 = vtree_test_util:generate_kvnodes(20),
     Nodes2 = vtree_test_util:generate_kvnodes(100),
     Nodes3 = vtree_test_util:generate_kvnodes(50),
-    Nodes1Ex = vtree_io:write_kvnode_external(Fd, Nodes1),
-    Nodes2Ex = vtree_io:write_kvnode_external(Fd, Nodes2),
-    Nodes3Ex = vtree_io:write_kvnode_external(Fd, Nodes3),
 
-    #vtree{root=Root1} = ?MOD:insert_in_bulks(Vtree1, Nodes1Ex, 7),
+    #vtree{root=Root1} = ?MOD:insert_in_bulks(Vtree1, Nodes1, 7),
     {Depths1, KvNodes1} = vtree_test_util:get_kvnodes(
                             Fd, Root1#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths1)), 1,
@@ -182,7 +145,7 @@ test_insert_in_bulks()->
     etap:is(lists:sort(KvNodes1), lists:sort(Nodes1 ++ Nodes0),
             "All nodes were inserted (originally empty) (a)"),
 
-    #vtree{root=Root2} = ?MOD:insert_in_bulks(Vtree1, Nodes2Ex, 9),
+    #vtree{root=Root2} = ?MOD:insert_in_bulks(Vtree1, Nodes2, 9),
     {Depths2, KvNodes2} = vtree_test_util:get_kvnodes(
                             Fd, Root2#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths2)), 1,
@@ -192,7 +155,7 @@ test_insert_in_bulks()->
             "All nodes were inserted (originally empty) (b)"),
 
     #vtree{root=Root3} = ?MOD:insert_in_bulks(Vtree1#vtree{root=Root1},
-                                              Nodes3Ex, 10),
+                                              Nodes3, 10),
     {Depths3, KvNodes3} = vtree_test_util:get_kvnodes(
                             Fd, Root3#kp_node.childpointer),
     etap:is(sets:size(sets:from_list(Depths3)), 1,
@@ -210,8 +173,8 @@ test_insert_multiple() ->
 
     Vtree1 = #vtree{
                 fd = Fd,
-                kv_chunk_threshold = 1000,
-                kp_chunk_threshold = 1000,
+                kv_chunk_threshold = 1600,
+                kp_chunk_threshold = 1600,
                 min_fill_rate = 0.4,
                 less = Less
      },
@@ -219,11 +182,9 @@ test_insert_multiple() ->
     Nodes1 = vtree_test_util:generate_kvnodes(20),
     Nodes2 = vtree_test_util:generate_kvnodes(10),
     Nodes3 = vtree_test_util:generate_kvnodes(100),
-    Nodes2Ex = vtree_io:write_kvnode_external(Fd, Nodes2),
-    Nodes3Ex = vtree_io:write_kvnode_external(Fd, Nodes3),
     Vtree2 = #vtree{root=Root} = ?MOD:insert(Vtree1, Nodes1),
 
-    PartitionedNodes1 = ?MOD:partition_nodes(Nodes2Ex, [Root], Less),
+    PartitionedNodes1 = ?MOD:partition_nodes(Nodes2, [Root], Less),
     [KpNode1] = ?MOD:insert_multiple(Vtree2, PartitionedNodes1, [Root]),
     {Depths1, KvNodes1} = vtree_test_util:get_kvnodes(
                             Fd, KpNode1#kp_node.childpointer),
@@ -232,7 +193,7 @@ test_insert_multiple() ->
     etap:is(lists:sort(KvNodes1), lists:sort(Nodes1 ++ Nodes2),
             "All nodes were inserted (a)"),
 
-    PartitionedNodes2 = ?MOD:partition_nodes(Nodes3Ex, [Root], Less),
+    PartitionedNodes2 = ?MOD:partition_nodes(Nodes3, [Root], Less),
     KpNodes2 = ?MOD:insert_multiple(Vtree2, PartitionedNodes2, [Root]),
     KpNode2 = vtree_modify:write_new_root(Vtree2, KpNodes2),
     {Depths2, KvNodes2} = vtree_test_util:get_kvnodes(

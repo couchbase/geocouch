@@ -30,7 +30,7 @@ main(_) ->
     end,
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(88),
+    etap:plan(13),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -48,30 +48,26 @@ test() ->
     test_encode_decode_kvnodes(),
     test_encode_decode_kpnodes(),
     test_write_read_nodes(),
-    test_write_kvnode_external(),
-    test_read_kvnode_external(),
-    test_encode_mbb(),
-    test_decode_mbb(),
+    test_encode_decode_mbb(),
     ok.
 
 
 test_encode_decode_kvnode_value() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     [Node1, Node2] = vtree_test_util:generate_kvnodes(2),
-    [Node1Ex, Node2Ex] = ?MOD:write_kvnode_external(Fd, [Node1, Node2]),
 
-    {Encoded1, _Size1} = ?MOD:encode_value(Node1Ex),
+    {Encoded1, _Size1} = ?MOD:encode_value(Node1),
     % We flush as late as possible, hence for testing it needs to be done
     % manually
     geocouch_file:flush(Fd),
     Decoded1 = ?MOD:decode_kvnode_value(Encoded1),
-    etap:is(Decoded1, Node1Ex#kv_node{key=[], size=-1},
+    etap:is(Decoded1, Node1#kv_node{key=[], docid=nil, size=0},
             "KV-node value got correctly encoded and decoded (a)"),
 
-    {Encoded2, _Size2} = ?MOD:encode_value(Node2Ex),
+    {Encoded2, _Size2} = ?MOD:encode_value(Node2),
     geocouch_file:flush(Fd),
     Decoded2 = ?MOD:decode_kvnode_value(Encoded2),
-    etap:is(Decoded2, Node2Ex#kv_node{key=[], size=-1},
+    etap:is(Decoded2, Node2#kv_node{key=[], docid=nil, size=0},
             "KV-node value got correctly encoded and decoded (b)"),
     couch_file:close(Fd).
 
@@ -99,21 +95,19 @@ test_encode_decode_kvnodes() ->
     Fd = vtree_test_util:create_file(?FILENAME),
 
     Nodes1 = vtree_test_util:generate_kvnodes(1),
-    Nodes1Ex = ?MOD:write_kvnode_external(Fd, Nodes1),
-    {Encoded1, _Size1} = ?MOD:encode_node(Nodes1Ex),
+    {Encoded1, _Size1} = ?MOD:encode_node(Nodes1),
     % We flush as late as possible, hence for testing it needs to be done
     % manually
     geocouch_file:flush(Fd),
     Decoded1 = ?MOD:decode_node(Encoded1),
-    etap:is(Decoded1, [N#kv_node{size=-1} || N <- Nodes1Ex],
+    etap:is(Decoded1, [N#kv_node{size=0} || N <- Nodes1],
             "KV-node got correctly encoded and decoded (a)"),
 
     Nodes2 = vtree_test_util:generate_kvnodes(5),
-    Nodes2Ex = ?MOD:write_kvnode_external(Fd, Nodes2),
-    {Encoded2, _Size2} = ?MOD:encode_node(Nodes2Ex),
+    {Encoded2, _Size2} = ?MOD:encode_node(Nodes2),
     geocouch_file:flush(Fd),
     Decoded2 = ?MOD:decode_node(Encoded2),
-    etap:is(Decoded2, [N#kv_node{size=-1} || N <- Nodes2Ex],
+    etap:is(Decoded2, [N#kv_node{size=0} || N <- Nodes2],
             "KV-node got correctly encoded and decoded (b)"),
     couch_file:close(Fd).
 
@@ -142,13 +136,11 @@ test_encode_decode_kpnodes() ->
 test_write_read_nodes() ->
     Fd = vtree_test_util:create_file(?FILENAME),
     Nodes1 = vtree_test_util:generate_kvnodes(6),
-    Nodes1Ex = ?MOD:write_kvnode_external(Fd, Nodes1),
     Nodes2 = vtree_test_util:generate_kpnodes(2),
     Less = fun(A, B) -> A < B end,
 
-    {ok, ParentNode1} = ?MOD:write_node(Fd, Nodes1Ex, Less),
-    NodesWritten1Ex = ?MOD:read_node(Fd, ParentNode1#kp_node.childpointer),
-    NodesWritten1 = ?MOD:read_kvnode_external(Fd, NodesWritten1Ex),
+    {ok, ParentNode1} = ?MOD:write_node(Fd, Nodes1, Less),
+    NodesWritten1 = ?MOD:read_node(Fd, ParentNode1#kp_node.childpointer),
     etap:is(NodesWritten1, Nodes1,
             "KV-nodes were correctly written and read back"),
 
@@ -160,91 +152,17 @@ test_write_read_nodes() ->
     couch_file:close(Fd).
 
 
-test_write_kvnode_external() ->
-    Fd = vtree_test_util:create_file(?FILENAME),
-    Nodes = vtree_test_util:generate_kvnodes(6),
-
-    NodesExternal = ?MOD:write_kvnode_external(Fd, Nodes),
-    lists:foreach(fun({Node, External}) ->
-                          etap:is(External#kv_node.docid, Node#kv_node.docid,
-                                  "docid didn't change"),
-                          etap:is(External#kv_node.key, Node#kv_node.key,
-                                  "key didn't change"),
-                          etap:is(Node#kv_node.size, 0,
-                                  "size was originally 0"),
-                          etap:ok(External#kv_node.size > 0, "size was set"),
-                          {ok, Geom} = geocouch_file:pread_chunk(
-                                         Fd, External#kv_node.geometry),
-                          etap:is(binary_to_term(Geom), Node#kv_node.geometry,
-                                  "geometry didn't change"),
-                          {ok, Body} = geocouch_file:pread_chunk(
-                                         Fd, External#kv_node.body),
-                          etap:is(Body, Node#kv_node.body,
-                                  "body didn't change")
-                  end, lists:zip(Nodes, NodesExternal)),
-
-    couch_file:close(Fd).
-
-
-test_read_kvnode_external() ->
-    Fd = vtree_test_util:create_file(?FILENAME),
-    Less = fun(A, B) -> A < B end,
-    Nodes = vtree_test_util:generate_kvnodes(6),
-
-    NodesExternal = ?MOD:write_kvnode_external(Fd, Nodes),
-    {ok, ParentNode} = ?MOD:write_node(Fd, NodesExternal, Less),
-    NodesWrittenExternal = ?MOD:read_node(Fd, ParentNode#kp_node.childpointer),
-    NodesWritten = ?MOD:read_kvnode_external(Fd, NodesWrittenExternal),
-
-    lists:foreach(fun({External, Node}) ->
-                          etap:is(Node#kv_node.docid, External#kv_node.docid,
-                                  "docid didn't change"),
-                          etap:is(Node#kv_node.key, External#kv_node.key,
-                                  "key didn't change"),
-                          etap:is(External#kv_node.size, -1,
-                                  "size is not knwon"),
-                          etap:is(Node#kv_node.size, 0,
-                                  "size is not set"),
-                          {ok, Geom} = geocouch_file:pread_chunk(
-                                         Fd, External#kv_node.geometry),
-                          etap:is(Node#kv_node.geometry, binary_to_term(Geom),
-                                  "geometry didn't change"),
-                          {ok, Body} = geocouch_file:pread_chunk(
-                                         Fd, External#kv_node.body),
-                          etap:is(Node#kv_node.body, Body,
-                                  "body didn't change")
-                  end, lists:zip(NodesWrittenExternal, NodesWritten)),
-
-    couch_file:close(Fd).
-
-
-test_encode_mbb() ->
+test_encode_decode_mbb() ->
     Mbb1 = [{39.93, 48.9483}, {20, 90}, {-29.4, 83}],
     Mbb2 = [{8,9}],
     Mbb3 = [{-39.42, -4.2}, {48, 48}, {0, 3}],
 
-    etap:is(ejson:decode(?MOD:encode_mbb(Mbb1)),
-            [[39.93, 48.9483], [20, 90], [-29.4, 83]],
+    etap:is(?MOD:decode_mbb(?MOD:encode_mbb(Mbb1)),
+            Mbb1,
             "MBB got correctly encoded (a)"),
-    etap:is(ejson:decode(?MOD:encode_mbb(Mbb2)),
-            [[8, 9]],
+    etap:is(?MOD:decode_mbb(?MOD:encode_mbb(Mbb2)),
+            Mbb2,
             "MBB got correctly encoded (b)"),
-    etap:is(ejson:decode(?MOD:encode_mbb(Mbb3)),
-            [[-39.42, -4.2], [48, 48], [0, 3]],
+    etap:is(?MOD:decode_mbb(?MOD:encode_mbb(Mbb3)),
+            Mbb3,
             "MBB got correctly encoded (c)").
-
-
-test_decode_mbb() ->
-    Mbb1 = <<"[[39.93,48.9483],[20,90],[-29.4,83]]">>,
-    Mbb2 = <<"[[8,9]]">>,
-    Mbb3 =  <<"[[-39.42,-4.2],[48,48],[0,3]]">>,
-
-    etap:is(?MOD:decode_mbb(Mbb1),
-            [{39.93, 48.9483}, {20, 90}, {-29.4, 83}],
-            "MBB got correctly decoded (a)"),
-    etap:is(?MOD:decode_mbb(Mbb2),
-            [{8,9}],
-            "MBB got correctly decoded (b)"),
-    etap:is(?MOD:decode_mbb(Mbb3),
-            [{-39.42, -4.2}, {48, 48}, {0, 3}],
-            "MBB got correctly decoded (c)").

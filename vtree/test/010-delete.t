@@ -60,8 +60,8 @@ test_delete() ->
 
     Vtree1 = #vtree{
                 fd = Fd,
-                kp_chunk_threshold = 1600,
-                kv_chunk_threshold = 1600,
+                kp_chunk_threshold = 2000,
+                kv_chunk_threshold = 2000,
                 min_fill_rate = 0.4,
                 less = fun(A, B) -> A < B end
                },
@@ -109,8 +109,8 @@ test_delete_multiple() ->
 
     Vtree1 = #vtree{
                 fd = Fd,
-                kp_chunk_threshold = 800,
-                kv_chunk_threshold = 800,
+                kp_chunk_threshold = 1200,
+                kv_chunk_threshold = 1200,
                 min_fill_rate = 0.4,
                 less = fun(A, B) -> A < B end
                },
