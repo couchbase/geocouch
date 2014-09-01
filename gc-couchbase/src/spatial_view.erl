@@ -360,7 +360,7 @@ set_vtree_state(Vt, Root0) ->
     <<0:?POINTER_BITS, 0:?TREE_SIZE_BITS>> ->
         nil;
     <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
-        <<NumMbb:16, BinMbb/binary>> = Rest,
+        <<_NumMbb:16, BinMbb/binary>> = Rest,
         MbbOrig = [M || <<M:64/native-float>> <= BinMbb],
         Reduce = nil,
         Key = nil,
@@ -597,7 +597,7 @@ setup_views(Fd, _BtreeOptions, _Group, ViewStates, Views) ->
         nil ->
             nil;
         <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
-            <<NumMbb:16, BinMbb/binary>> = Rest,
+            <<_NumMbb:16, BinMbb/binary>> = Rest,
             MbbOrig = [M || <<M:64/native-float>> <= BinMbb],
             Reduce = nil,
             Key = nil,

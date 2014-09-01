@@ -118,13 +118,13 @@ spatial_row_obj({{Mbb, DocId}, {{PartId, Node, Value}, Geom}}, true) ->
       ",\"geometry\":", (?JSON_ENCODE(Geom))/binary, "}">>;
 
 % Row from local node, query with ?debug=false without a geometry
-spatial_row_obj({{Mbb, DocId}, {PartId, Value, nil}}, false) ->
+spatial_row_obj({{Mbb, DocId}, {_PartId, Value, nil}}, false) ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
       ",\"value\":", Value/binary, "}">>;
 
 % Row from local node, query with ?debug=false and a geometry
-spatial_row_obj({{Mbb, DocId}, {PartId, Value, Geom}}, false) ->
+spatial_row_obj({{Mbb, DocId}, {_PartId, Value, Geom}}, false) ->
     <<"{\"id\":", (?JSON_ENCODE(DocId))/binary,
       ",\"key\":", (?JSON_ENCODE(Mbb))/binary,
       ",\"value\":", Value/binary,
