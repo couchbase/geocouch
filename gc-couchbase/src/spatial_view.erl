@@ -12,6 +12,9 @@
 
 -module(spatial_view).
 
+% Needed for `dict()` type on Erlang >= 17.0
+-compile(nowarn_deprecated_type).
+
 % For the updater
 -export([write_kvs/3, finish_build/3, get_state/1,
          start_reduce_context/1, end_reduce_context/1, view_name/2,
