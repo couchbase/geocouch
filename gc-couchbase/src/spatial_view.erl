@@ -794,14 +794,22 @@ maybe_process_key(Key0) ->
         {Geom} = Key,
         process_geometry(Geom);
     false ->
-        Key2 = lists:map(
+        case Key of
+        [{Geom} | T] ->
+            {Bbox, Geom2} = process_geometry(Geom),
+            Key2 = Bbox ++ T;
+        _ ->
+            Key2 = Key,
+            Geom2 = nil
+        end,
+        Key3 = lists:map(
             fun([Min, Max]) ->
                 [Min, Max];
             (SingleValue) ->
                 [SingleValue, SingleValue]
             end,
-        Key),
-        {Key2, nil}
+        Key2),
+        {Key3, Geom2}
     end.
 
 
