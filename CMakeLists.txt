@@ -1,25 +1,23 @@
-CMAKE_MINIMUM_REQUIRED (VERSION 2.8)
-
 PROJECT (geocouch)
+
+CMAKE_MINIMUM_REQUIRED (VERSION 2.8)
 
 LIST (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/../tlm/cmake/Modules")
 INCLUDE (FindCouchbaseErlang)
 
-#SET (ENV{COUCH_SRC} "../couchdb/src/couchdb")
-#SET (ENV{ERL_LIBS} "/home/vmx/src/couchbase/master/couchdb/src")
-Rebar (TARGET geocouch REBAR_SCRIPT "${PROJECT_SOURCE_DIR}/rebar"
-  REBAR_OPTS -C rebar_couchbase.config -D "VMX=foo")
-Rebar (TARGET geocouch_makecheck REBAR_SCRIPT "${PROJECT_SOURCE_DIR}/rebar"
-  REBAR_OPTS -D makecheck NOALL)
-ADD_DEPENDENCIES (geocouch_makecheck geocouch-clean)
+# XXX vmx 2014-09-02: The "+export_all" is just a temp hack
+SET(ERLANG_COMPILE_FLAGS +debug_info -Werror +export_all)
 
-ADD_CUSTOM_TARGET (geocouch_check COMMAND "${CMAKE_COMMAND}"
-  -D "PROVE_EXECUTABLE=${PROVE_EXECUTABLE}"
-  -D "COUCH_SRC=../couchdb/src/couchdb"
-  -P "${PROJECT_SOURCE_DIR}/cmake_modules/do-test.cmake"
-  WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
-ADD_DEPENDENCIES (geocouch_check geocouch_makecheck)
+SET(COUCHDB_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../couchdb)
+SET(GEOCOUCH_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+SET(COUCHSTORE_BIN_PATH ${CMAKE_BINARY_DIR}/couchstore)
 
-INSTALL (DIRECTORY vtree/ebin DESTINATION lib/couchdb/plugins/geocouch)
-INSTALL (DIRECTORY gc-couchbase/ebin DESTINATION lib/couchdb/plugins/geocouch)
-INSTALL (DIRECTORY gc-couchbase/etc/couchdb/default.d DESTINATION etc/couchdb)
+ADD_ERLANG_INCLUDE_DIR(${COUCHDB_SOURCE_DIR}/src/couchdb)
+ADD_ERLANG_INCLUDE_DIR(${PROJECT_SOURCE_DIR})
+
+# For the tests
+SET(COUCHDB_RUNTEST ${COUCHDB_SOURCE_DIR}/test/etap/runtest.py)
+ADD_CUSTOM_TARGET(geocouch-check COMMAND ${CMAKE_CTEST_COMMAND} -j4)
+
+ADD_SUBDIRECTORY(vtree)
+ADD_SUBDIRECTORY(gc-couchbase)
