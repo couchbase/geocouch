@@ -56,7 +56,7 @@ num_docs() -> 1024.  % keep it a multiple of num_set_partitions()
 main(_) ->
     test_util:init_code_path(),
 
-    etap:plan(4),
+    etap:plan(10),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -103,21 +103,33 @@ test_spatial_query_range() ->
     setup_test(),
     ok = configure_spatial_group(ddoc_id()),
 
-    ViewArgs1 = #spatial_query_args{
-        %view_name = ViewName
-        range = [{740, 1500}, {300, 1765}]
-    },
-    {ok, Rows1} = (catch query_spatial_view(<<"test">>, ViewArgs1)),
-    etap:is(length(Rows1), 350, "Returned expected number of rows (a)"),
-
-    ViewArgs2 = #spatial_query_args{
-        %view_name = ViewName
-        range = [{631.482, 963.315}, {-10.8, 176.5}]
-    },
-    {ok, Rows2} = (catch query_spatial_view(<<"test">>, ViewArgs2)),
-    etap:is(length(Rows2), 20, "Returned expected number of rows (b)"),
+    Tests = [{[{740, 1500}, {300, 1765}, {80, 628}, {51, 457}],
+              283, "All dimensions limit the result"},
+             {[{631.482, 963.315}, {-10.8, 8576.5}, {83.1, 584.27}, {80, 300}],
+              84, "2nd dimension doesn't limit the result"},
+             {[{740, 1500}, {300, 1765}, {80, 80}, {51, 457}],
+              34, "3rd dimension is a collapsed to point"},
+             {[{740, 1500}, {300, 1765}, {80, 628}, {nil, nil}],
+              322, "4th dimension is wildcard"},
+             {[{740, 1500}, {300, 1765}, {80, 628}, {nil, 457}],
+              302, "4th dimension is open at start"},
+             {[{740, 1500}, {300, 1765}, {80, 628}, {51, nil}],
+              303, "4th dimension is open at end"},
+             {[{740, 1500}, {nil, nil}, {80, 628}, {51, nil}],
+              349, "4th dimension is open at end and 2nd is a wildcard"},
+             {[{nil, nil}, {nil, nil}, {nil, nil}, {nil, nil}],
+              num_docs(), "All dimensions are wildcards"}],
+    lists:foreach(fun({Range, Expected, Message}) ->
+                          query_for_expected_result(
+                            Range, Expected, Message)
+                  end, Tests),
 
     shutdown_group().
+
+query_for_expected_result(Range, Expected, Message) ->
+    ViewArgs = #spatial_query_args{ range = Range},
+    {ok, Rows} = (catch query_spatial_view(<<"test">>, ViewArgs)),
+    etap:is(length(Rows), Expected, Message).
 
 
 verify_rows(Rows) ->
@@ -159,7 +171,12 @@ setup_test() ->
         {<<"meta">>, {[{<<"id">>, ddoc_id()}]}},
         {<<"json">>, {[
             {<<"spatial">>, {[
-                {<<"test">>, <<"function(doc, meta) { emit([[doc.min, doc.max], [doc.min2, doc.max2]], 'val'+doc.value); }">>}
+                {<<"test">>, <<"function(doc, meta) { "
+                               "emit([[doc.min, doc.max], "
+                               "[doc.min2, doc.max2], "
+                               "[doc.min3, doc.max3], "
+                               "[doc.min4, doc.max4]], "
+                               "'val'+doc.value); }">>}
             ]}}
         ]}}
     ]},
@@ -174,6 +191,10 @@ create_docs(From, To) ->
             RandomMax = RandomMin + random:uniform(167),
             RandomMin2 = random:uniform(1769),
             RandomMax2 = RandomMin2 + random:uniform(132),
+            RandomMin3 = random:uniform(651),
+            RandomMax3 = RandomMin3 + random:uniform(201),
+            RandomMin4 = random:uniform(482),
+            RandomMax4 = RandomMin4 + random:uniform(26),
             {[
               {<<"meta">>, {[{<<"id">>, iolist_to_binary(["doc", integer_to_list(I)])}]}},
               {<<"json">>, {[
@@ -181,7 +202,11 @@ create_docs(From, To) ->
                              {<<"min">>, RandomMin},
                              {<<"max">>, RandomMax},
                              {<<"min2">>, RandomMin2},
-                             {<<"max2">>, RandomMax2}
+                             {<<"max2">>, RandomMax2},
+                             {<<"min3">>, RandomMin3},
+                             {<<"max3">>, RandomMax3},
+                             {<<"min4">>, RandomMin4},
+                             {<<"max4">>, RandomMax4}
                             ]}}
             ]}
         end,
