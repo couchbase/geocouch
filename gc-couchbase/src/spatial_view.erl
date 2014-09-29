@@ -793,6 +793,7 @@ pid_to_sig_ets(dev) ->
 maybe_process_key(Key0) ->
     Key = ?JSON_DECODE(Key0),
     case is_tuple(Key) of
+    % Legacy API when only a geometry is given
     true ->
         {Geom} = Key,
         process_geometry(Geom);
@@ -806,8 +807,23 @@ maybe_process_key(Key0) ->
             Geom2 = nil
         end,
         Key3 = lists:map(
-            fun([Min, Max]) ->
+            fun([]) ->
+                throw({error, <<"A range cannot be an empty array.">>});
+            ([_SingleElementList]) ->
+                throw({error, <<"A range cannot be single element array.">>});
+            ([Min, Max]) when not (is_number(Min) andalso is_number(Max)) ->
+                throw({error, <<"Ranges must be numbers.">>});
+            ([Min, Max]) when Min > Max ->
+                throw({error, <<"The minimum of a range must be smaller than "
+                                "the maximum.">>});
+            ([Min, Max]) ->
                 [Min, Max];
+            (SingleValue) when is_tuple(SingleValue)->
+                throw({error, <<"A geometry is only allowed as the first "
+                                "element in the array.">>});
+            (SingleValue) when not is_number(SingleValue)->
+                throw({error, <<"The values of the key must be numbers or "
+                                "a GeoJSON geometry.">>});
             (SingleValue) ->
                 [SingleValue, SingleValue]
             end,
@@ -818,29 +834,33 @@ maybe_process_key(Key0) ->
 
 % Returns an Erlang encoded geometry and the corresponding bounding box
 process_geometry(Geo) ->
-    Type = binary_to_atom(proplists:get_value(<<"type">>, Geo), utf8),
-    Bbox = case Type of
-    'GeometryCollection' ->
-        Geometries = proplists:get_value(<<"geometries">>, Geo),
-        lists:foldl(fun({Geometry}, CurBbox) ->
-            Type2 = binary_to_atom(
-                proplists:get_value(<<"type">>, Geometry), utf8),
-            Coords = proplists:get_value(<<"coordinates">>, Geometry),
+    Bbox = try
+        Type = binary_to_atom(proplists:get_value(<<"type">>, Geo), utf8),
+        case Type of
+        'GeometryCollection' ->
+            Geometries = proplists:get_value(<<"geometries">>, Geo),
+            lists:foldl(fun({Geometry}, CurBbox) ->
+                Type2 = binary_to_atom(
+                    proplists:get_value(<<"type">>, Geometry), utf8),
+                Coords = proplists:get_value(<<"coordinates">>, Geometry),
+                case proplists:get_value(<<"bbox">>, Geo) of
+                undefined ->
+                    extract_bbox(Type2, Coords, CurBbox);
+                Bbox2 ->
+                    Bbox2
+                end
+            end, nil, Geometries);
+        _ ->
+            Coords = proplists:get_value(<<"coordinates">>, Geo),
             case proplists:get_value(<<"bbox">>, Geo) of
             undefined ->
-                extract_bbox(Type2, Coords, CurBbox);
+                extract_bbox(Type, Coords);
             Bbox2 ->
                 Bbox2
             end
-        end, nil, Geometries);
-    _ ->
-        Coords = proplists:get_value(<<"coordinates">>, Geo),
-        case proplists:get_value(<<"bbox">>, Geo) of
-        undefined ->
-            extract_bbox(Type, Coords);
-        Bbox2 ->
-            Bbox2
         end
+    catch _:badarg ->
+        throw({error, <<"The supplied geometry must be valid GeoJSON.">>})
     end,
     Geom = geojsongeom_to_geocouch(Geo),
     {Bbox, Geom}.
