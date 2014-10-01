@@ -520,13 +520,13 @@ update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
     }.
 
 
--spec update_index(#btree{},
-                   string(),
-                   non_neg_integer(),
-                   set_view_btree_purge_fun() | 'nil',
-                   term()) ->
-                          {'ok', term(), #btree{},
-                           non_neg_integer(), non_neg_integer()}.
+%-spec update_index(#btree{},
+%                   string(),
+%                   non_neg_integer(),
+%                   set_view_btree_purge_fun() | 'nil',
+%                   term()) ->
+%                          {'ok', term(), #btree{},
+%                           non_neg_integer(), non_neg_integer()}.
 update_index(_Bt, _FilePath, _BufferSize, _PurgeFun, _PurgeAcc) ->
     not_yet_implemented.
 
@@ -577,7 +577,7 @@ index_extension() ->
     ".spatial".
 
 
--spec view_group_data_size(#btree{}, [#set_view{}]) -> non_neg_integer().
+%-spec view_group_data_size(#btree{}, [#set_view{}]) -> non_neg_integer().
 view_group_data_size(_IdBtree, _Views) ->
     not_yet_implemented.
 
@@ -909,8 +909,8 @@ geocouch_to_geojsongeom({Type, Coords}) ->
     {[{<<"type">>, Type}, Coords2]}.
 
 
--spec check_primary_geometry_size(binary(), pos_integer(), binary(), binary(),
-        #set_view_group{}) -> ok.
+-spec check_primary_geometry_size(binary(), pos_integer(), [number()],
+        binary(), #set_view_group{}) -> ok.
 check_primary_geometry_size(Bin, Max, Key, DocId, Group) when byte_size(Bin) > Max ->
     #set_view_group{set_name = SetName, name = DDocId, type = Type} = Group,
     Error = iolist_to_binary(

@@ -75,7 +75,7 @@ write_new_root(Vt, Nodes) ->
 -spec insert_into_nodes(Vt :: #vtree{},
                         NodePartitions :: [[#kv_node{} | #kp_node{}]],
                         MbbO :: mbb(), ToInsert :: [#kv_node{} | #kp_node{}])
-                       -> [#kv_node{} | #kp_node{}].
+                       -> [[#kv_node{} | #kp_node{}]].
 insert_into_nodes(_Vt, NodePartitions, _MbbO, []) ->
     NodePartitions;
 insert_into_nodes(Vt, NodePartitions, MbbO, [ToInsert|Rest]) ->

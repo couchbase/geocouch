@@ -57,8 +57,9 @@
 }).
 
 -record(kp_node, {
-          key = [] :: mbb(),
-          childpointer = [] :: non_neg_integer(),
+          % Root nodes don't have a key
+          key = [] :: mbb() | nil,
+          childpointer = 0 :: non_neg_integer(),
           treesize = 0 :: non_neg_integer(),
           reduce = nil :: any(),
           mbb_orig = [] :: mbb()
