@@ -56,7 +56,7 @@ num_docs() -> 1024.  % keep it a multiple of num_set_partitions()
 main(_) ->
     test_util:init_code_path(),
 
-    etap:plan(10),
+    etap:plan(12),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -76,6 +76,7 @@ test() ->
 
     test_spatial_query_all(),
     test_spatial_query_range(),
+    test_spatial_query_range_error(),
 
     couch_set_view_test_util:delete_set_dbs(test_set_name(), num_set_partitions()),
     spatial_test_util:stop_server(),
@@ -126,6 +127,27 @@ test_spatial_query_range() ->
 
     shutdown_group().
 
+
+test_spatial_query_range_error() ->
+    setup_test(),
+    ok = configure_spatial_group(ddoc_id()),
+
+    Tests = [{[{1, 1}, {2, 2}, {3, 3}],
+              <<"The query range must have the same "
+                "dimensionality as the index.">>,
+              "Only 3 dimensions given for a 4 dimensional index"},
+             {[{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}],
+              <<"The query range must have the same "
+                "dimensionality as the index.">>,
+              "5 dimensions given for a 4 dimensional index"}],
+    lists:foreach(fun({Range, Expected, Message}) ->
+                          query_for_expected_error(
+                            Range, Expected, Message)
+                  end, Tests),
+
+    shutdown_group().
+
+
 query_for_expected_result(Range, Expected, Message) ->
     ViewArgs = #spatial_query_args{ range = Range},
     {ok, Rows} = (catch query_spatial_view(<<"test">>, ViewArgs)),
@@ -144,6 +166,14 @@ verify_rows(Rows) ->
         {Key, DocId, {_PartId, Value, nil}} <- Rows],
     etap:is(lists:sort(RowsWithoutKey), lists:sort(DocList),
             "Returned correct rows").
+
+
+query_for_expected_error(Range, Error, Message) ->
+    ViewArgs = #spatial_query_args{range = Range},
+    etap:throws_ok(
+      fun() -> query_spatial_view(<<"test">>, ViewArgs) end,
+      Error,
+      Message).
 
 
 query_spatial_view(ViewName, ViewArgs) ->

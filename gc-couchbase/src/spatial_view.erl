@@ -706,16 +706,27 @@ fold_fun(Fun, Node, Acc) ->
 
 
 fold(View, WrapperFun, Acc, Options) ->
-    Vt = View#spatial_view.vtree,
-    Range = couch_util:get_value(range, Options, []),
-    Result = case Range of
+    #spatial_view{
+       vtree = #vtree{
+           root = Root
+       } = Vt
+    } = View,
+    case Root of
+    nil ->
+        {ok, nil, Acc};
+    #kp_node{key = Key} ->
+        Range = couch_util:get_value(range, Options, []),
+        Result = case Range of
         [] ->
             vtree_search:all(Vt, WrapperFun, Acc);
+        _ when length(Range) =/= length(Key) ->
+            throw(<<"The query range must have the same "
+                "dimensionality as the index.">>);
         _ ->
             vtree_search:search(Vt, [Range], WrapperFun, Acc)
-    end,
-    {ok, nil, Result}.
-
+        end,
+        {ok, nil, Result}
+    end.
 
 
 % The following functions have their counterpart in couch_set_view
