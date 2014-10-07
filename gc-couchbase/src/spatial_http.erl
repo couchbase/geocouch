@@ -64,8 +64,25 @@ parse_qs(Key, Val, Args) ->
         Args;
     % bbox is for legacy support. Use start_range and end_range instead.
     "bbox" ->
-        {W, S, E, N} = list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]")),
-        Args#spatial_query_args{range=[{W, E}, {S, N}]};
+        Error = iolist_to_binary(
+                  [<<"bounding box was invalid, it needs to be bbox=W,S,E,N "
+                     "where each direction is a number. "
+                     "Your bounding box was `">>,
+                   Val, <<"`">>]),
+        try
+            {W, S, E, N} = list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]")),
+            case lists:all(fun(Num) -> is_number(Num) end, [W, S, E, N]) of
+            true ->
+                Args#spatial_query_args{range=[{W, E}, {S, N}]};
+            false ->
+                throw({query_parse_error, Error})
+            end
+        catch
+        error:{badmatch, _} ->
+            throw({query_parse_error, Error});
+        throw:{invalid_json, _} ->
+            throw({query_parse_error, Error})
+        end;
     "stale" when Val == "ok" orelse Val == "true"->
         Args#spatial_query_args{stale=ok};
     "stale" when Val == "false" ->
@@ -74,36 +91,43 @@ parse_qs(Key, Val, Args) ->
         Args#spatial_query_args{stale=update_after};
     "stale" ->
         throw({query_parse_error,
-            <<"stale only available as stale=ok, stale=update_after or "
-              "stale=false">>});
+            iolist_to_binary(
+              [<<"stale only available as stale=ok, stale=update_after or "
+                 "stale=false and not as stale=">>, Val])});
     "limit" ->
         Args#spatial_query_args{limit=parse_int(Val)};
     "skip" ->
         Args#spatial_query_args{skip=parse_int(Val)};
     "start_range" ->
+        Decoded = parse_range(Val),
         case Args#spatial_query_args.range of
-        %nil ->
         [] ->
-            Args#spatial_query_args{range=?JSON_DECODE(Val)};
+            Args#spatial_query_args{range=Decoded};
         % end_range already set the range
         Range ->
-            Args#spatial_query_args{range=merge_range(?JSON_DECODE(Val), Range)}
+            Args#spatial_query_args{range=merge_range(Decoded, Range)}
         end;
     "end_range" ->
+        Decoded = parse_range(Val),
         case Args#spatial_query_args.range of
-        %nil ->
         [] ->
-            Args#spatial_query_args{range=?JSON_DECODE(Val)};
+            Args#spatial_query_args{range=Decoded};
         % start_range already set the range
         Range ->
-            Args#spatial_query_args{range=merge_range(Range, ?JSON_DECODE(Val))}
+            Args#spatial_query_args{range=merge_range(Range, Decoded)}
         end;
     "debug" ->
         Args#spatial_query_args{debug=parse_bool_param(Val)};
     _ ->
         BKey = list_to_binary(Key),
         BVal = list_to_binary(Val),
-        Args#spatial_query_args{extra=[{BKey, BVal} | Args#spatial_query_args.extra]}
+        case Args#spatial_query_args.extra of
+        nil ->
+            Args#spatial_query_args{extra=[{BKey, BVal}]};
+        _ ->
+            Args#spatial_query_args{
+                extra=[{BKey, BVal} | Args#spatial_query_args.extra]}
+        end
     end.
 
 
@@ -127,7 +151,29 @@ parse_bool_param(Val) ->
         throw({query_parse_error, ?l2b(Msg)})
     end.
 
+
+parse_range(Val) ->
+    Decoded = ?JSON_DECODE(Val),
+    case is_list(Decoded) andalso
+        lists:all(fun(Num) -> is_number(Num) orelse Num =:= null end, Decoded) of
+    true ->
+        Decoded;
+    false ->
+        throw({query_parse_error,
+            iolist_to_binary(
+              [<<"range must be an array containing numbers or `null`s. "
+                 "Your range was `">>,
+               Val, "`"])})
+    end.
+
+
 % Merge the start_range and stop_range values into one list
+merge_range(RangeA, RangeB) when length(RangeA) =/= length(RangeB) ->
+    Msg = io_lib:format(
+            "start_range and end_range must have the same number of "
+            "dimensions. Your ranges were ~w and ~w",
+            [RangeA, RangeB]),
+    throw({query_parse_error, ?l2b(Msg)});
 merge_range(RangeA, RangeB) ->
     lists:zipwith(
         % `null` is a wildcard which will return all values
