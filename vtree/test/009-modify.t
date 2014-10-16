@@ -64,7 +64,7 @@ test_write_new_root() ->
     NodesKp = vtree_test_util:generate_kpnodes(5),
 
     Vtree1 = #vtree{
-                kp_chunk_threshold = (erlang:external_size(NodesKp)/5)*4.5,
+                kp_chunk_threshold = (?ext_size(NodesKp)/5)*4.5,
                 min_fill_rate = 0.4,
                 less = Less,
                 fd = Fd
@@ -129,13 +129,13 @@ insert_into_nodes(FillMax, MinRate) ->
 
     NodesFilledOkFun =
         fun(N) ->
-                NSize = erlang:external_size(N),
+                NSize = ?ext_size(N),
                 NSize >= FillMax*MinRate andalso NSize =< FillMax
         end,
     etap:ok(lists:all(NodesFilledOkFun, Inserted),
             "All child nodes have the right number of nodes"),
 
-    NodesSize = erlang:external_size([Nodes1, Nodes2]),
+    NodesSize = ?ext_size([Nodes1, Nodes2]),
     etap:ok(length(Inserted) >= NodesSize/FillMax andalso
             length(Inserted) =< NodesSize/(FillMax*MinRate),
             "Right number of child nodes").
@@ -170,21 +170,21 @@ test_get_chunk_threshold() ->
 test_get_overflowing_subset() ->
     Nodes1 = vtree_test_util:generate_kvnodes(10),
 
-    SplitSize1 = erlang:external_size(Nodes1)/3,
+    SplitSize1 = ?ext_size(Nodes1)/3,
     etap:is(?MOD:get_overflowing_subset(SplitSize1, Nodes1),
             lists:split(4, Nodes1),
             "Splitted at the right position (a)"),
-    SplitSize2 = erlang:external_size(Nodes1)/2,
+    SplitSize2 = ?ext_size(Nodes1)/2,
     etap:is(?MOD:get_overflowing_subset(SplitSize2, Nodes1),
             lists:split(5, Nodes1),
             "Splitted at the right position (b)"),
-    SplitSize3 = erlang:external_size(Nodes1),
+    SplitSize3 = ?ext_size(Nodes1),
     etap:is(?MOD:get_overflowing_subset(SplitSize3, Nodes1),
             lists:split(10, Nodes1),
             "Splitted at the right position (c)"),
 
     Nodes2 = vtree_test_util:generate_kvnodes(33),
-    SplitSize4 = erlang:external_size(Nodes2)/3,
+    SplitSize4 = ?ext_size(Nodes2)/3,
     etap:is(?MOD:get_overflowing_subset(SplitSize4, Nodes2),
             lists:split(11, Nodes2),
             "Splitted at the right position (d)").
@@ -208,7 +208,7 @@ test_write_nodes() ->
 write_nodes(Insert, Expected, Message) ->
     Less = fun(A, B) -> A < B end,
     Fd = vtree_test_util:create_file(?FILENAME),
-    NodeSize = erlang:external_size(vtree_test_util:generate_kpnodes(1))*1.5,
+    NodeSize = ?ext_size(vtree_test_util:generate_kpnodes(1))*1.5,
 
     Nodes = vtree_test_util:generate_kpnodes(Insert),
     Vtree = #vtree{
@@ -272,8 +272,8 @@ test_split_node() ->
     KvNodes = vtree_test_util:generate_kvnodes(7),
     KpNodes = vtree_test_util:generate_kpnodes(7),
     Vtree = #vtree{
-               kp_chunk_threshold = (erlang:external_size(KpNodes)/7)*6,
-               kv_chunk_threshold = (erlang:external_size(KvNodes)/7)*6,
+               kp_chunk_threshold = (?ext_size(KpNodes)/7)*6,
+               kv_chunk_threshold = (?ext_size(KvNodes)/7)*6,
                min_fill_rate = 0.4
      },
     KvMbbO = (hd(KvNodes))#kv_node.key,
@@ -286,7 +286,7 @@ test_split_node() ->
                                 [#kp_node{}|_] ->
                                     Vtree#vtree.kp_chunk_threshold
                             end,
-                NSize = erlang:external_size(N),
+                NSize = ?ext_size(N),
                 NSize >= Threshold*Vtree#vtree.min_fill_rate andalso
                     NSize =< Threshold
         end,

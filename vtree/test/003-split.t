@@ -13,8 +13,9 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--define(MOD, vtree_split).
+-include_lib("../include/vtree.hrl").
 
+-define(MOD, vtree_split).
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
@@ -67,7 +68,7 @@ test_split_inner() ->
     Node6 = {Mbb6, f},
     Nodes = [Node1, Node2, Node3, Node4, Node5, Node6],
 
-    Max = erlang:external_size([a,b,c,d]),
+    Max = ?ext_size([a,b,c,d]),
     {A, B} = ?MOD:split_inner(Nodes, Mbb1, 0.2*Max, Max, Less),
     etap:is(lists:sort(A ++ B), lists:sort(Nodes),
             "One candidate was choosen (inner node)"),
@@ -92,7 +93,7 @@ test_split_leaf() ->
     Node6 = {Mbb6, f},
     Nodes = [Node1, Node2, Node3, Node4, Node5, Node6],
 
-    Max = erlang:external_size([a,b,c,d]),
+    Max = ?ext_size([a,b,c,d]),
     {A, B} = ?MOD:split_leaf(Nodes, Mbb1, 0.2*Max, Max, Less),
     etap:is(lists:sort(A ++ B), lists:sort(Nodes),
             "One candidate was choosen (leaf node)"),
@@ -110,7 +111,7 @@ test_split_axis() ->
     Node2 = {Mbb2, 823},
     Node3 = {Mbb3, 96242},
 
-    Max = erlang:external_size([3487, 823]),
+    Max = ?ext_size([3487, 823]),
 
     etap:is(?MOD:split_axis([Node1, Node2, Node3], 0.5*Max, Max, Less),
             {5, [{[
@@ -156,7 +157,7 @@ test_choose_candidate() ->
     Node9 = {Mbb9, i},
 
     Nodes1 = [Node1, Node2, Node3, Node4, Node5, Node6],
-    Max1 = erlang:external_size([a,b,c,d,e]),
+    Max1 = ?ext_size([a,b,c,d,e]),
     Candidates1 = ?MOD:create_split_candidates(Nodes1, 0.2*Max1, Max1),
     MbbN1 = vtree_util:calc_mbb([Mbb1, Mbb2, Mbb3, Mbb4, Mbb5, Mbb6], Less),
     {_, Best1} = ?MOD:choose_candidate(Candidates1, 1, Mbb1, MbbN1, 0.2*Max1,
@@ -164,7 +165,7 @@ test_choose_candidate() ->
     etap:is(Best1, lists:nth(5, Candidates1), "Best candidate (6 nodes)"),
 
     Nodes2 = [Node3, Node4, Node5, Node6, Node2],
-    Max2 = erlang:external_size([c,d,e,f]),
+    Max2 = ?ext_size([c,d,e,f]),
     Candidates2 = ?MOD:create_split_candidates(Nodes2, 0.5*Max2, Max2),
     MbbN2 = vtree_util:calc_mbb([Mbb3, Mbb4, Mbb5, Mbb6, Mbb2], Less),
     {_, Best2} = ?MOD:choose_candidate(Candidates2, 2, Mbb3, MbbN2, 0.5*Max2,
@@ -172,7 +173,7 @@ test_choose_candidate() ->
     etap:is(Best2, lists:nth(2, Candidates2), "Best candidate (5 nodes)"),
 
     Nodes3 = [Node3, Node5],
-    Max3 = erlang:external_size([c]),
+    Max3 = ?ext_size([c]),
     Candidates3 = ?MOD:create_split_candidates(Nodes3, Max3, Max3),
     MbbN3 = vtree_util:calc_mbb([Mbb3, Mbb5], Less),
     {_, Best3} = ?MOD:choose_candidate(Candidates3, 1, Mbb3, MbbN3, Max3,
@@ -181,7 +182,7 @@ test_choose_candidate() ->
             "Best candidate (single partition)"),
 
     Nodes4 = [Node4, Node3],
-    Max4 = erlang:external_size([d]),
+    Max4 = ?ext_size([d]),
     Candidates4 = ?MOD:create_split_candidates(Nodes4, Max4, Max4),
     MbbN4 = vtree_util:calc_mbb([Mbb3, Mbb4], Less),
     {_, Best4} = ?MOD:choose_candidate(Candidates4, 1, Mbb3, MbbN4, Max4,
@@ -190,7 +191,7 @@ test_choose_candidate() ->
             "Best candidate (single partition, overlap-free)"),
 
     Nodes5 = [Node8, Node9, Node7],
-    Max5 = erlang:external_size([h,i]),
+    Max5 = ?ext_size([h,i]),
     Candidates5 = ?MOD:create_split_candidates(Nodes5, 0.5*Max5, Max5),
     MbbN5 = vtree_util:calc_mbb([Mbb7, Mbb8, Mbb9], Less),
     {_, Best5} = ?MOD:choose_candidate(Candidates5, 2, Mbb7, MbbN5, 0.5*Max5,
@@ -226,8 +227,8 @@ test_goal_fun() ->
     Node10 = {Mbb10, j},
 
     Nodes1 = [Node1, Node2, Node3, Node4, Node5],
-    Max1 = erlang:external_size([N || {_, N} <- tl(Nodes1)]),
-    Nodes1Size = Max1 + erlang:external_size(e),
+    Max1 = ?ext_size([N || {_, N} <- tl(Nodes1)]),
+    Nodes1Size = Max1 + ?ext_size(e),
     Wf1 = ?MOD:make_weighting_fun(
              0.7, 0.25*Max1, Nodes1Size),
     Candidates1 = ?MOD:create_split_candidates(Nodes1, 0.25*Max1, Max1),
@@ -245,8 +246,8 @@ test_goal_fun() ->
             "Goal function for non overlap-free case (d)"),
 
     Nodes2 = [Node6, Node7, Node8, Node9, Node10],
-    Max2 = erlang:external_size([N || {_, N} <- tl(Nodes2)]),
-    Nodes2Size = Max2 + erlang:external_size(j),
+    Max2 = ?ext_size([N || {_, N} <- tl(Nodes2)]),
+    Nodes2Size = Max2 + ?ext_size(j),
     Wf2 = ?MOD:make_weighting_fun(
              0.7, 0.25*Max2, Nodes2Size),
     Candidates2 = ?MOD:create_split_candidates(Nodes2, 0.25*Max2, Max2),
@@ -280,7 +281,7 @@ test_wg() ->
 
 
     Nodes1 = [Node1, Node2, Node3, Node4, Node5],
-    Max1 = erlang:external_size([a,b,c,d]),
+    Max1 = ?ext_size([a,b,c,d]),
     Candidates1 = ?MOD:create_split_candidates(Nodes1, 0.25*Max1, Max1),
     etap:is(?MOD:wg(lists:nth(1, Candidates1), Less),
             403044.4,
@@ -296,7 +297,7 @@ test_wg() ->
             "Original weighting function for non overlap-free case (d)"),
 
     Nodes2 = [Node1, Node2, Node3, Node4, Node6],
-    Max2 = erlang:external_size([a,b,c,d]),
+    Max2 = ?ext_size([a,b,c,d]),
     Candidates2 = ?MOD:create_split_candidates(Nodes2, 0.1*Max2, Max2),
     etap:is(?MOD:wg(lists:nth(4, Candidates2), Less),
             424,
@@ -322,7 +323,7 @@ test_wg_overlapfree() ->
     Node6 = {Mbb6, f},
 
     Nodes = [Node1, Node2, Node3, Node4, Node5, Node6],
-    Max = erlang:external_size([a,b,c,d,e]),
+    Max = ?ext_size([a,b,c,d,e]),
     Candidates = ?MOD:create_split_candidates(Nodes, 0.1*Max, Max),
     etap:is(?MOD:wg_overlapfree(lists:nth(1, Candidates), PerimMax, Less),
             12932.364,
@@ -479,7 +480,7 @@ test_create_split_candidates() ->
     Node10 = {j, j},
 
     Nodes1 = [Node1, Node2, Node3, Node4, Node5],
-    Max1 = erlang:external_size([N || {_, N} <- tl(Nodes1)]),
+    Max1 = ?ext_size([N || {_, N} <- tl(Nodes1)]),
     etap:is(?MOD:create_split_candidates(Nodes1, 0.2*Max1, Max1),
             [{[Node1], [Node2, Node3, Node4, Node5]},
              {[Node1, Node2], [Node3, Node4, Node5]},
@@ -501,7 +502,7 @@ test_create_split_candidates() ->
             "min_fill_rate=0.7. This min_fill_rate is too high for a proper"
             "split, hence it will return all possible candidates"),
 
-    Max2 = erlang:external_size([N || {_, N} <- lists:nthtail(2, Nodes1)]),
+    Max2 = ?ext_size([N || {_, N} <- lists:nthtail(2, Nodes1)]),
     etap:is(?MOD:create_split_candidates(Nodes1, 0.5*Max2, Max2),
             [{[Node1, Node2], [Node3, Node4, Node5]},
              {[Node1, Node2, Node3], [Node4, Node5]}],
@@ -509,7 +510,7 @@ test_create_split_candidates() ->
             "min_fill_rate=0.5"),
 
     Nodes2 = Nodes1 ++ [Node6, Node7, Node8, Node9, Node10],
-    Max3 = erlang:external_size([N || {_, N} <- lists:nthtail(2, Nodes2)]),
+    Max3 = ?ext_size([N || {_, N} <- lists:nthtail(2, Nodes2)]),
     etap:is(?MOD:create_split_candidates(Nodes2, 0.5*Max3, Max3),
             [{[Node1, Node2, Node3, Node4],
               [Node5, Node6, Node7, Node8, Node9, Node10]},
@@ -521,7 +522,7 @@ test_create_split_candidates() ->
             "min_fill_rate=0.5"),
 
     Nodes3 = [Node1, Node2, Node3, Node4, Node5, Node6, Node7],
-    Max4 = erlang:external_size([N || {_, N} <- tl(Nodes3)]),
+    Max4 = ?ext_size([N || {_, N} <- tl(Nodes3)]),
     etap:is(?MOD:create_split_candidates(Nodes3, 0.8*Max4, Max4),
             [{[Node1], [Node2, Node3, Node4, Node5, Node6, Node7]},
              {[Node1, Node2], [Node3, Node4, Node5, Node6, Node7]},
@@ -534,14 +535,14 @@ test_create_split_candidates() ->
             "split, hence it will return all possible candidates"),
 
     Nodes4 = [{a, a}, {b, "this is a much bigger node (in bytes)"}],
-    Max5 = erlang:external_size([N || {_, N} <- Nodes4]),
+    Max5 = ?ext_size([N || {_, N} <- Nodes4]),
     etap:is(?MOD:create_split_candidates(Nodes4, 0.5*Max5, Max5),
             [{[{a, a}], [{b, "this is a much bigger node (in bytes)"}]}],
             "2 split candidates with max=size of 2 elements, "
             "min_fill_rate=0.5, where one node has a much bigger byte size"),
 
     Nodes5 = [Node1, Node2],
-    Max6 = erlang:external_size(Nodes5)/4,
+    Max6 = ?ext_size(Nodes5)/4,
     etap:throws_ok(
       fun() -> ?MOD:create_split_candidates(Nodes5, 0.5*Max6, Max6) end,
       {error, "No split candidates found. Increase the chunk threshold."},
@@ -585,12 +586,12 @@ test_candidates_perimeter() ->
     Node2 = {Mbb2, 823},
     Node3 = {Mbb3, 96242},
 
-    Max1 = erlang:external_size([N || {_, N} <- [Node1, Node2]]),
+    Max1 = ?ext_size([N || {_, N} <- [Node1, Node2]]),
     etap:is(?MOD:candidates_perimeter([Node1, Node2], 0.5*Max1, Max1, Less),
             {14202.0,
              ?MOD:create_split_candidates([Node1, Node2], 0.5*Max1, Max1)},
             "Calculate the total perimeter of all split candidates"),
-    Max2 = erlang:external_size([N || {_, N} <- [Node2, Node3]]),
+    Max2 = ?ext_size([N || {_, N} <- [Node2, Node3]]),
     etap:is(?MOD:candidates_perimeter([Node2, Node3], 0.5*Max2, Max2, Less),
             {12788.56,
              ?MOD:create_split_candidates([Node2, Node3], 0.5*Max2, Max2)},

@@ -142,8 +142,8 @@ split_axis(Nodes, FillMin, FillMax, Less) ->
                        Less :: lessfun()) ->
                               {number(), candidate()}.
 choose_candidate([{F, S}|_]=Candidates, Dim, MbbO, MbbN, FillMin, Less) ->
-    CandidateSize = erlang:external_size([Node || {_, Node} <- F]) +
-        erlang:external_size([Node || {_, Node} <- S]),
+    CandidateSize = ?ext_size([Node || {_, Node} <- F]) +
+        ?ext_size([Node || {_, Node} <- S]),
 
     PerimMax = perim_max(MbbN),
     Asym = asym(Dim, MbbO, MbbN),
@@ -164,7 +164,7 @@ goal_fun({F, S}=Candidate, PerimMax, Wf, Less) ->
     MbbF = vtree_util:nodes_mbb(F, Less),
     MbbS = vtree_util:nodes_mbb(S, Less),
     % The `Offset` is bytes offset where the candidates were split
-    Offset = erlang:external_size([Node || {_, Node} <- F]),
+    Offset = ?ext_size([Node || {_, Node} <- F]),
 
     case vtree_util:intersect_mbb(MbbF, MbbS, Less) of
         overlapfree ->
@@ -292,8 +292,8 @@ create_split_candidates(_, [], _, _, Candidates) ->
     lists:reverse(Candidates);
 create_split_candidates(A, [HeadB|RestB]=B, FillMin, FillMax, Candidates0) ->
     % Use the sizes of the actual nodes
-    SizeA = erlang:external_size([Node || {_, Node} <- A]),
-    SizeB = erlang:external_size([Node || {_, Node} <- B]),
+    SizeA = ?ext_size([Node || {_, Node} <- A]),
+    SizeB = ?ext_size([Node || {_, Node} <- B]),
     Candidates =
         case (SizeA >= FillMin andalso SizeA =< FillMax) andalso
             (SizeB >= FillMin andalso SizeB =< FillMax) of

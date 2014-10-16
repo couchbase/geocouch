@@ -97,7 +97,7 @@ insert_into_nodes(Vt, NodePartitions, MbbO, [ToInsert|Rest]) ->
                               lists:seq(0, length(PartitionMbbs)-1)),
     {_, NodeIndex} = vtree_choose:choose_subtree(NodesNumbered, Mbb, Less),
     {A, [Nth|B]} = lists:split(NodeIndex, NodePartitions),
-    NewNodes = case erlang:external_size(Nth) > FillMax of
+    NewNodes = case ?ext_size(Nth) > FillMax of
                    % Maximum number of nodes reached, hence split it
                    true ->
                        {C, D} = split_node(Vt, [ToInsert|Nth], MbbO),
@@ -140,7 +140,7 @@ get_overflowing_subset(FillMax, Nodes) ->
 get_overflowing_subset(_FillMax, [], Acc) ->
     {lists:reverse(Acc), []};
 get_overflowing_subset(FillMax, [H|T]=Nodes, Acc) ->
-    case erlang:external_size(Acc) < FillMax of
+    case ?ext_size(Acc) < FillMax of
         true ->
             get_overflowing_subset(FillMax, T, [H|Acc]);
         false ->
@@ -159,11 +159,11 @@ write_nodes(_Vt, [], _MbbO) ->
     [];
 write_nodes(Vt, [#kv_node{}|_]=Nodes, MbbO) ->
     FillMax = Vt#vtree.kv_chunk_threshold,
-    Size = erlang:external_size(Nodes),
+    Size = ?ext_size(Nodes),
     write_nodes(Vt, Nodes, MbbO, FillMax, Size);
 write_nodes(Vt, [#kp_node{}|_]=Nodes, MbbO) ->
     FillMax = Vt#vtree.kp_chunk_threshold,
-    Size = erlang:external_size(Nodes),
+    Size = ?ext_size(Nodes),
     write_nodes(Vt, Nodes, MbbO, FillMax, Size).
 % Too many nodes for a single split, hence do something smart to get
 % all nodes stored in a good way. First take the first FillMax nodes

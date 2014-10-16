@@ -32,7 +32,7 @@ insert(#vtree{root=nil}=Vt, Nodes) ->
     MbbO = (hd(Nodes))#kv_node.key,
     Threshold = Vt#vtree.kv_chunk_threshold,
 
-    case erlang:external_size(Nodes) > Threshold of
+    case ?ext_size(Nodes) > Threshold of
         true ->
             {Nodes2, Rest} = vtree_modify:get_overflowing_subset(
                                Threshold, Nodes),

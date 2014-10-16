@@ -40,6 +40,7 @@
 
 -define(KP_NODE, 0).
 -define(KV_NODE, 1).
+-define(ext_size(T), erlang:external_size(T, [{minor_version, 1}])).
 
 
 -record(kv_node, {

@@ -346,7 +346,7 @@ get_vtree_state(Vt) ->
         } = Root,
         % TODO vmx 2013-06-27: Proper binary encoding would make sense,
         %     but this is good for now.
-        Rest = term_to_binary({Key, Reduce, MbbOrig}),
+        Rest = ?term_to_bin({Key, Reduce, MbbOrig}),
         <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>>
     end.
 
