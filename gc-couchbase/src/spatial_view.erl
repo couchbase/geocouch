@@ -321,8 +321,7 @@ index_builder_wait_loop(Port, Group, Acc) ->
 % the enclosing bounding box
 view_info(View) ->
     Mbb = ((View#spatial_view.vtree)#vtree.root)#kp_node.key,
-    MbbEncoded = << <<Min:64/native-float, Max:64/native-float>> ||
-        {Min, Max} <- Mbb>>,
+    MbbEncoded = vtree_io:encode_mbb(Mbb),
     Dimension = list_to_binary(integer_to_list(length(Mbb))),
     [Dimension, $\n, MbbEncoded].
 
@@ -364,7 +363,7 @@ set_vtree_state(Vt, Root0) ->
         nil;
     <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
         <<_NumMbb:16, BinMbb/binary>> = Rest,
-        MbbOrig = [M || <<M:64/native-float>> <= BinMbb],
+        MbbOrig = vtree_io:decode_mbb(BinMbb),
         Reduce = nil,
         Key = nil,
         % The root node pointer doesn't have a key
@@ -601,7 +600,7 @@ setup_views(Fd, _BtreeOptions, _Group, ViewStates, Views) ->
             nil;
         <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
             <<_NumMbb:16, BinMbb/binary>> = Rest,
-            MbbOrig = [M || <<M:64/native-float>> <= BinMbb],
+            MbbOrig = vtree_io:decode_mbb(BinMbb),
             Reduce = nil,
             Key = nil,
             % The root node pointer doesn't have a key

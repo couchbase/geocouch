@@ -24,6 +24,7 @@
 -include("couch_db.hrl").
 
 -export([write_node/3, read_node/2]).
+-export([encode_mbb/1, decode_mbb/1]).
 
 -ifdef(makecheck).
 -compile(export_all).
