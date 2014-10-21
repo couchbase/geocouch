@@ -64,7 +64,7 @@ test_spatial_emit_error_single_item_array() ->
     etap:diag("Error when emitting a single item array"),
     throw_error_test(
       <<"function(doc, meta) {emit([[doc.value]], doc.value);}">>,
-      {error, <<"A range cannot be single element array.">>},
+      {emit_key, <<"A range cannot be single element array.">>},
       "Single element array error was thrown").
 
 
@@ -74,7 +74,8 @@ test_spatial_emit_error_min_bigger_than_max() ->
     throw_error_test(
       <<"function(doc, meta) {emit([[doc.value, doc.value - 1]], "
         "doc.value);}">>,
-      {error, <<"The minimum of a range must be smaller than the maximum.">>},
+      {emit_key, <<"The minimum of a range must be smaller than "
+                   "the maximum.">>},
       "Min > max error was thrown").
 
 
@@ -82,7 +83,7 @@ test_spatial_emit_error_empty_range() ->
     etap:diag("Error when emitting an empty range"),
     throw_error_test(
       <<"function(doc, meta) {emit([doc.value, []], doc.value);}">>,
-      {error, <<"A range cannot be an empty array.">>},
+      {emit_key, <<"A range cannot be an empty array.">>},
       "Empty array error was thrown").
 
 
@@ -90,7 +91,7 @@ test_spatial_emit_error_non_geojson_legacy() ->
     etap:diag("Error when emitting JSON that is not GeoJSON (legacy)"),
     throw_error_test(
       <<"function(doc, meta) {emit({\"foo\": \"bar\"}, doc.value);}">>,
-      {error, <<"The supplied geometry must be valid GeoJSON.">>},
+      {emit_key, <<"The supplied geometry must be valid GeoJSON.">>},
       "Non valid GeoJSON error was thrown (legacy)").
 
 
@@ -98,7 +99,7 @@ test_spatial_emit_error_non_geojson() ->
     etap:diag("Error when emitting JSON that is not GeoJSON"),
     throw_error_test(
       <<"function(doc, meta) {emit([{\"foo\": \"bar\"}], doc.value);}">>,
-      {error, <<"The supplied geometry must be valid GeoJSON.">>},
+      {emit_key, <<"The supplied geometry must be valid GeoJSON.">>},
       "Non valid GeoJSON error was thrown").
 
 
@@ -107,8 +108,8 @@ test_spatial_emit_error_geometry_not_as_first() ->
     throw_error_test(
       <<"function(doc, meta) {emit([doc.value, "
         "{\"foo\": \"bar\"}], doc.value);}">>,
-      {error, <<"A geometry is only allowed as the first "
-                "element in the array.">>},
+      {emit_key, <<"A geometry is only allowed as the first element "
+                   "in the array.">>},
       "Geometry not allowed error was thrown").
 
 
@@ -116,8 +117,8 @@ test_spatial_emit_error_nan_single() ->
     etap:diag("Error when emitting other things than numbers as single item"),
     throw_error_test(
       <<"function(doc, meta) {emit([3, \"foo\"], doc.value);}">>,
-      {error, <<"The values of the key must be numbers or "
-                "a GeoJSON geometry.">>},
+      {emit_key, <<"The values of the key must be numbers or "
+                   "a GeoJSON geometry.">>},
       "Not a number error was thrown").
 
 
@@ -126,7 +127,7 @@ test_spatial_emit_error_nan_range_min() ->
               "in range"),
     throw_error_test(
       <<"function(doc, meta) {emit([7, [\"foo\", 5]], doc.value);}">>,
-      {error, <<"Ranges must be numbers.">>},
+      {emit_key, <<"Ranges must be numbers.">>},
       "Not a number error was thrown (range min)").
 
 
@@ -135,7 +136,7 @@ test_spatial_emit_error_nan_range_max() ->
               "in range"),
     throw_error_test(
       <<"function(doc, meta) {emit([9, [2, \"foo\"]], doc.value);}">>,
-      {error, <<"Ranges must be numbers.">>},
+      {emit_key, <<"Ranges must be numbers.">>},
       "Not a number error was thrown (range max)").
 
 
@@ -143,7 +144,7 @@ test_spatial_emit_error_nan_range() ->
     etap:diag("Error when emitting other things than numbers as range"),
     throw_error_test(
       <<"function(doc, meta) {emit([9, [2, \"foo\"]], doc.value);}">>,
-      {error, <<"Ranges must be numbers.">>},
+      {emit_key, <<"Ranges must be numbers.">>},
       "Not a number error was thrown (range)").
 
 
