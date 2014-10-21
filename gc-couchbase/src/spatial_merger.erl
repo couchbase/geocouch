@@ -22,6 +22,7 @@
 
 -include("couch_db.hrl").
 -include_lib("couch_spatial.hrl").
+-include_lib("vtree/include/vtree.hrl").
 -include_lib("couch_index_merger/include/couch_index_merger.hrl").
 -include_lib("couch_index_merger/include/couch_view_merger.hrl").
 -include_lib("couch_set_view/include/couch_set_view.hrl").
@@ -507,6 +508,26 @@ simple_spatial_view_query(Params, Group, View, ViewArgs) ->
             Row = spatial_row_obj(Kv, DebugMode),
             {ok, UAcc2} = Callback({row, Row}, UAcc),
             {ok, {AccLim - 1, 0, UAcc2}}
+    end,
+
+    Root = ((View#set_view.indexer)#spatial_view.vtree)#vtree.root,
+    case Root of
+    nil ->
+        ok;
+    % Use the original MBB for comparison as the key is not necessarily
+    % set. The original MBB is good enough for this check as it will have
+    % the same dimesionality.
+    #kp_node{mbb_orig = MbbOrig} ->
+        Range = ViewArgs#spatial_query_args.range,
+        case Range =:= [] orelse length(Range) =:= length(MbbOrig)  of
+        true ->
+            ok;
+        false ->
+            throw({query_parse_error, list_to_binary(io_lib:format(
+                  "The query range must have the same dimensionality as "
+                  "the index. Your range was `~10000p`, but the index has a "
+                  "dimensionality of `~p`.", [Range, length(MbbOrig)]))})
+        end
     end,
 
     RowCount = couch_set_view:get_row_count(Group, View),
