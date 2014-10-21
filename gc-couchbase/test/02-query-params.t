@@ -134,11 +134,15 @@ test_spatial_query_range_error() ->
 
     Tests = [{[{1, 1}, {2, 2}, {3, 3}],
               <<"The query range must have the same "
-                "dimensionality as the index.">>,
+                "dimensionality as the index. "
+                "Your range was `[{1,1},{2,2},{3,3}]`, "
+                "but the index has a dimensionality of `4`.">>,
               "Only 3 dimensions given for a 4 dimensional index"},
              {[{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}],
               <<"The query range must have the same "
-                "dimensionality as the index.">>,
+                "dimensionality as the index. "
+                "Your range was `[{1,1},{2,2},{3,3},{4,4},{5,5}]`, "
+                "but the index has a dimensionality of `4`.">>,
               "5 dimensions given for a 4 dimensional index"}],
     lists:foreach(fun({Range, Expected, Message}) ->
                           query_for_expected_error(

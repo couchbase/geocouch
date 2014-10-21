@@ -713,14 +713,19 @@ fold(View, WrapperFun, Acc, Options) ->
     case Root of
     nil ->
         {ok, nil, Acc};
-    #kp_node{key = Key} ->
+     % Use the original MBB for comparison as the key is not necessarily
+     % set. The original MBB is good enough for this check as it will have
+     % the same dimesionality.
+    #kp_node{mbb_orig = MbbOrig} ->
         Range = couch_util:get_value(range, Options, []),
         Result = case Range of
         [] ->
             vtree_search:all(Vt, WrapperFun, Acc);
-        _ when length(Range) =/= length(Key) ->
-            throw(<<"The query range must have the same "
-                "dimensionality as the index.">>);
+        _ when length(Range) =/= length(MbbOrig) ->
+            throw(list_to_binary(io_lib:format(
+                "The query range must have the same dimensionality as "
+                "the index. Your range was `~10000p`, but the index has a "
+                "dimensionality of `~p`.", [Range, length(MbbOrig)])));
         _ ->
             vtree_search:search(Vt, [Range], WrapperFun, Acc)
         end,
