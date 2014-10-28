@@ -61,7 +61,9 @@ write_node(Fd, Nodes, Less) ->
       key = Mbb,
       childpointer = Pointer,
       treesize = Size+TreeSize,
-      reduce = Reduce
+      reduce = Reduce,
+      % The original MBB is set to the MBB when the node is created
+      mbb_orig = Mbb
      },
     {ok, KpNode}.
 
