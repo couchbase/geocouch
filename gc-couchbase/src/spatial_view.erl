@@ -337,15 +337,15 @@ get_vtree_state(Vt) ->
         <<0:?POINTER_BITS, 0:?TREE_SIZE_BITS>>;
     #kp_node{} = Root ->
         #kp_node{
-            key = Key,
             childpointer = Pointer,
             treesize = Size,
-            reduce = Reduce,
             mbb_orig = MbbOrig
         } = Root,
-        % TODO vmx 2013-06-27: Proper binary encoding would make sense,
-        %     but this is good for now.
-        Rest = ?term_to_bin({Key, Reduce, MbbOrig}),
+        BinMbbOrig = vtree_io:encode_mbb(MbbOrig),
+        % The length is the number of doubles, not the dimension, hence use
+        % the length two times the length of MbbOrig
+        NumMbbOrig = length(MbbOrig) * 2,
+        Rest = <<NumMbbOrig:16, BinMbbOrig/binary>>,
         <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>>
     end.
 
