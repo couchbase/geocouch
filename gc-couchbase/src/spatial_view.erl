@@ -364,15 +364,11 @@ set_vtree_state(Vt, Root0) ->
     <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
         <<_NumMbb:16, BinMbb/binary>> = Rest,
         MbbOrig = vtree_io:decode_mbb(BinMbb),
-        Reduce = nil,
-        Key = nil,
-        % The root node pointer doesn't have a key
-        Key = nil,
         #kp_node{
-            key = Key,
+            % The root node pointer doesn't have a key
+            key = nil,
             childpointer = Pointer,
             treesize = Size,
-            reduce = Reduce,
             mbb_orig = MbbOrig
         }
     end,
@@ -601,14 +597,11 @@ setup_views(Fd, _BtreeOptions, _Group, ViewStates, Views) ->
         <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
             <<_NumMbb:16, BinMbb/binary>> = Rest,
             MbbOrig = vtree_io:decode_mbb(BinMbb),
-            Reduce = nil,
-            Key = nil,
-            % The root node pointer doesn't have a key
             #kp_node{
-                key = Key,
+                % The root node pointer doesn't have a key
+                key = nil,
                 childpointer = Pointer,
                 treesize = Size,
-                reduce = Reduce,
                 mbb_orig = MbbOrig
             }
         end,

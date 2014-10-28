@@ -62,7 +62,6 @@
           key = [] :: mbb() | nil,
           childpointer = 0 :: non_neg_integer(),
           treesize = 0 :: non_neg_integer(),
-          reduce = nil :: any(),
           mbb_orig = [] :: mbb()
 }).
 

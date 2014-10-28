@@ -55,13 +55,10 @@ write_node(Fd, Nodes, Less) ->
     geocouch_file:flush(Fd),
     % The enclosing bounding box for all children
     Mbb = vtree_util:nodes_mbb(Nodes, Less),
-    % XXX TODO calculate the reduce value somehow
-    Reduce = nil,
     KpNode = #kp_node{
       key = Mbb,
       childpointer = Pointer,
       treesize = Size+TreeSize,
-      reduce = Reduce,
       % The original MBB is set to the MBB when the node is created
       mbb_orig = Mbb
      },
@@ -143,7 +140,6 @@ encode_value(#kp_node{}=Node) ->
     SizeReduce = byte_size(BinReduce),
     BinValue = <<PointerNode:?POINTER_BITS, TreeSize:?TREE_SIZE_BITS,
                  SizeReduce:?RED_BITS, BinReduce:SizeReduce/binary>>,
-                 %SizeMbbO:?MBBO_BITS, BinMbbO/binary>>,
     % Return `0` as no additional bytes are written. The bytes that will
     % be written are accounted when the whole chunk gets written.
     {BinValue, 0}.
@@ -171,7 +167,6 @@ decode_kpnode_value(BinValue) ->
     #kp_node{
               childpointer = PointerNode,
               treesize = TreeSize,
-              reduce = nil,
               mbb_orig = MbbO
             }.
 
