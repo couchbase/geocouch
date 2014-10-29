@@ -367,10 +367,8 @@ view_qs(SpatialArgs, MergeParams) ->
         [];
     false ->
         {Start, End} = lists:unzip(Range),
-        ["start_range=" ++ ?b2l(iolist_to_binary(
-            io_lib:format("~w", [Start])))] ++
-        ["end_range=" ++ ?b2l(iolist_to_binary(
-            io_lib:format("~w", [End])))]
+        ["start_range=" ++ range_to_json(Start)] ++
+        ["end_range=" ++ range_to_json(End)]
     end ++
     case Stale =:= DefSpatialArgs#spatial_query_args.stale of
     true ->
@@ -403,6 +401,17 @@ view_qs(SpatialArgs, MergeParams) ->
     _ ->
         "?" ++ string:join(QsList, "&")
     end.
+
+
+% Convert the erlang range into a JSON string
+-spec range_to_json([number() | nil]) -> string().
+range_to_json(Range) ->
+    Strings = lists:map(fun(nil) ->
+        "null";
+    (Number) ->
+        io_lib:format("~w", [Number])
+    end, Range),
+    "[" ++ string:join(Strings, ",") ++ "]".
 
 
 % Query with a single view to merge, trigger a simpler code path
