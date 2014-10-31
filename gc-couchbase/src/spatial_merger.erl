@@ -430,10 +430,9 @@ simple_set_view_query(Params, DDoc, Req) ->
         category = Category
     } = SetViewSpec,
 
-    Stale = list_to_existing_atom(string:to_lower(
-        couch_httpd:qs_value(Req, "stale", "update_after"))),
-    Debug = couch_set_view_http:parse_bool_param(
-        couch_httpd:qs_value(Req, "debug", "false")),
+    QueryArgs = spatial_http:parse_qs(Req),
+    Debug = QueryArgs#spatial_query_args.debug,
+    % XXX vmx 2014-10-31: support the _type parameter properly
     IndexType = list_to_existing_atom(
         couch_httpd:qs_value(Req, "_type", "main")),
     Partitions = case IndexType of
@@ -443,7 +442,7 @@ simple_set_view_query(Params, DDoc, Req) ->
         []
     end,
     GroupReq = #set_view_group_req{
-        stale = Stale,
+        stale = QueryArgs#spatial_query_args.stale,
         update_stats = true,
         wanted_partitions = Partitions,
         debug = Debug,
@@ -472,12 +471,8 @@ simple_set_view_query(Params, DDoc, Req) ->
         throw({error, set_view_outdated})
     end,
 
-    % This code path is never triggered for _all_docs, hence we don't need
-    % to handle the special case to do raw collation for the query parameters
-    QueryArgs = spatial_http:parse_qs(Req),
     QueryArgs2 = QueryArgs#spatial_query_args{
-        view_name = ViewName,
-        stale = Stale
+        view_name = ViewName
      },
 
     case couch_view_merger:debug_info(Debug, Group, GroupReq) of
