@@ -97,15 +97,15 @@ insert_into_nodes(Vt, NodePartitions, MbbO, [ToInsert|Rest]) ->
                               lists:seq(0, length(PartitionMbbs)-1)),
     {_, NodeIndex} = vtree_choose:choose_subtree(NodesNumbered, Mbb, Less),
     {A, [Nth|B]} = lists:split(NodeIndex, NodePartitions),
-    NewNodes = case ?ext_size(Nth) > FillMax of
+    TmpInserted = [ToInsert | Nth],
+    NewNodes = case ?ext_size(TmpInserted) > FillMax of
                    % Maximum number of nodes reached, hence split it
                    true ->
-                       {C, D} = split_node(Vt, [ToInsert|Nth], MbbO),
+                       {C, D} = split_node(Vt, TmpInserted, MbbO),
                        A ++ [C, D] ++ B;
                    % No need to split the node, just insert the new one
                    false ->
-                       C = [ToInsert|Nth],
-                       A ++ [C] ++ B
+                       A ++ [TmpInserted] ++ B
                end,
     insert_into_nodes(Vt, NewNodes, MbbO, Rest).
 

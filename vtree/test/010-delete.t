@@ -122,7 +122,11 @@ test_delete_multiple() ->
              {Vtree1, 4, 1, 1, 0},
              {Vtree1, 4, 1, 4, 1},
              {Vtree1, 37, 1, 37, 1},
-             {Vtree1, 37, 1, 36, 1}
+             % Even if we delete everything except for one node, the
+             % tree depth is still the one before deletion. This makes
+             % the algorithm simpler and the tree always balanced (though
+             % degraded).
+             {Vtree1, 37, 1, 36, 2}
             ],
     lists:foreach(fun({Vtree, NumNodes, From, To, Depth}) ->
                           delete_multiple(Vtree, NumNodes, From, To, Depth)

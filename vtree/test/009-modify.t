@@ -198,8 +198,8 @@ test_write_nodes() ->
              {5, 1, "The maximum number of nodes were written"},
              {6, 2, "One more than maximum number of nodes were written"},
              {8, 2, "A bit more than maximum number of nodes were written"},
-             % The expected 9 nodes depend on the choose_subtree algorithm
-             {30, 9, "Way more than maximum number of nodes were written"}
+             % The expected 10 nodes depend on the choose_subtree algorithm
+             {30, 10, "Way more than maximum number of nodes were written"}
             ],
     lists:foreach(fun({Insert, Expected, Message}) ->
                           write_nodes(Insert, Expected, Message)
@@ -208,11 +208,11 @@ test_write_nodes() ->
 write_nodes(Insert, Expected, Message) ->
     Less = fun(A, B) -> A < B end,
     Fd = vtree_test_util:create_file(?FILENAME),
-    NodeSize = ?ext_size(vtree_test_util:generate_kpnodes(1))*1.5,
+    NodeSize = ?ext_size(vtree_test_util:generate_kpnodes(1)),
 
     Nodes = vtree_test_util:generate_kpnodes(Insert),
     Vtree = #vtree{
-               kp_chunk_threshold = 730,
+               kp_chunk_threshold = NodeSize*5,
                min_fill_rate = 0.3,
                less = Less,
                fd = Fd
