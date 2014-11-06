@@ -31,7 +31,7 @@ main(_) ->
     end,
 
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(37),
+    etap:plan(43),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -64,7 +64,7 @@ test_write_new_root() ->
     NodesKp = vtree_test_util:generate_kpnodes(5),
 
     Vtree1 = #vtree{
-                kp_chunk_threshold = (?ext_size(NodesKp)/5)*4.5,
+                kp_chunk_threshold = (?ext_size(NodesKp)/5)*4,
                 min_fill_rate = 0.4,
                 less = Less,
                 fd = Fd
@@ -100,17 +100,18 @@ test_write_new_root() ->
 
 
 test_insert_into_nodes() ->
-    NodeSize = 240,
     Tests = [
-             {4*NodeSize, 0.4},
-             {6*NodeSize, 0.4},
-             {30*NodeSize, 0.3}
+             {960, 0.4, 20},
+             {1440, 0.4, 20},
+             {7200, 0.3, 20},
+             {960, 0.4, 200},
+             {960, 0.4, 1}
             ],
-    lists:foreach(fun({FillMin, FillMax}) ->
-                          insert_into_nodes(FillMin, FillMax)
+    lists:foreach(fun({FillMin, FillMax, NumNodes}) ->
+                          insert_into_nodes(FillMin, FillMax, NumNodes)
                   end, Tests).
 
-insert_into_nodes(FillMax, MinRate) ->
+insert_into_nodes(FillMax, MinRate, NumNodes) ->
     Less = fun(A, B) -> A < B end,
 
     Vtree = #vtree{
@@ -120,11 +121,11 @@ insert_into_nodes(FillMax, MinRate) ->
               },
 
     Nodes1 = vtree_test_util:generate_kpnodes(4),
-    Nodes2 = vtree_test_util:generate_kpnodes(20),
+    Nodes2 = vtree_test_util:generate_kpnodes(NumNodes),
     MbbO = (hd(Nodes1))#kp_node.key,
 
     Inserted = ?MOD:insert_into_nodes(Vtree, [Nodes1], MbbO, Nodes2),
-    etap:is(length(lists:append(Inserted)), 24,
+    etap:is(length(lists:append(Inserted)), 4 + NumNodes,
             "All nodes got inserted"),
 
     NodesFilledOkFun =
@@ -168,7 +169,8 @@ test_get_chunk_threshold() ->
 
 
 test_get_overflowing_subset() ->
-    Nodes1 = vtree_test_util:generate_kvnodes(10),
+    Node = vtree_test_util:generate_kvnodes(1),
+    Nodes1 = lists:duplicate(10, Node),
 
     SplitSize1 = ?ext_size(Nodes1)/3,
     etap:is(?MOD:get_overflowing_subset(SplitSize1, Nodes1),
@@ -191,13 +193,12 @@ test_get_overflowing_subset() ->
 
 
 test_write_nodes() ->
-    % This tests depends on the values of the MBBs, hence reset the seed
-    random:seed(1, 11, 91),
     Tests = [
              {4, 1, "Less then the maximum number of nodes were written"},
              {5, 1, "The maximum number of nodes were written"},
-             {6, 2, "One more than maximum number of nodes were written"},
-             {8, 2, "A bit more than maximum number of nodes were written"},
+             {7, 2, "A bit more than maximum number of nodes were written"},
+             {11, 3,
+              "Less than double the maximum number of nodes were written"},
              % The expected 10 nodes depend on the choose_subtree algorithm
              {30, 10, "Way more than maximum number of nodes were written"}
             ],
@@ -206,19 +207,23 @@ test_write_nodes() ->
                   end, Tests).
 
 write_nodes(Insert, Expected, Message) ->
+    % This tests depends on the values of the MBBs, hence reset the seed
+    random:seed(1, 11, 91),
     Less = fun(A, B) -> A < B end,
     Fd = vtree_test_util:create_file(?FILENAME),
-    NodeSize = ?ext_size(vtree_test_util:generate_kpnodes(1)),
+    NodeSize = ?ext_size(vtree_test_util:generate_kvnodes(1)),
 
-    Nodes = vtree_test_util:generate_kpnodes(Insert),
+    Nodes = vtree_test_util:generate_kvnodes(Insert),
     Vtree = #vtree{
-               kp_chunk_threshold = NodeSize*5,
+               % Make the node size a bit bigger, so that we can insert
+               % 5 nodes savely
+               kv_chunk_threshold = 5 * NodeSize * 1.1,
                min_fill_rate = 0.3,
                less = Less,
                fd = Fd
               },
 
-    MbbO = (hd(Nodes))#kp_node.key,
+    MbbO = (hd(Nodes))#kv_node.key,
     WrittenNodes = ?MOD:write_nodes(Vtree, Nodes, MbbO),
     etap:is(length(WrittenNodes), Expected, Message),
     etap:ok(lists:all(fun(#kp_node{}) -> true; (_) -> false end, WrittenNodes),

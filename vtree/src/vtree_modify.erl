@@ -173,14 +173,10 @@ write_nodes(Vt, [#kp_node{}|_]=Nodes, MbbO) ->
 -spec write_nodes(Vt :: #vtree{}, Nodes :: [#kv_node{} | #kp_node{}],
                   MbbO :: mbb(), FillMax :: number(), Size :: pos_integer()) ->
                          [#kp_node{}].
-write_nodes(Vt, Nodes, MbbO, FillMax, Size) when Size > 2*FillMax ->
+write_nodes(Vt, Nodes, MbbO, FillMax, Size) when Size > FillMax ->
     {FirstNodes, Rest} = get_overflowing_subset(FillMax, Nodes),
     NewNodes = insert_into_nodes(Vt, [FirstNodes], MbbO, Rest),
     write_multiple_nodes(Vt, NewNodes);
-% A simple split into two nodes is possible
-write_nodes(Vt, Nodes, MbbO, FillMax, Size) when Size > FillMax ->
-    {NodesA, NodesB} = split_node(Vt, Nodes, MbbO),
-    write_multiple_nodes(Vt, [NodesA, NodesB]);
 % No split needed
 write_nodes(Vt, Nodes, MbbO, _FillMax, _Size) ->
     % `write_multiple_nodes/2` isn't used here, as it's the only case,
