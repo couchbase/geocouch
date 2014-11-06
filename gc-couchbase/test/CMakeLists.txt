@@ -4,7 +4,7 @@ IF(GEOCOUCH_BUILD_FOR_UNIT_TESTS)
 
   FOREACH (it ${TEST_FILES})
     GET_FILENAME_COMPONENT(testname ${it} NAME_WE)
-    ADD_TEST(geocouch-gc-couchbase-${testname} ${PYTHON_EXECUTABLE} ${COUCHDB_RUNTEST} -c ${COUCHSTORE_BIN_PATH} -p ${COUCHDB_BINARY_DIR}/src -l ${PROJECT_BINARY_DIR} -m "couch_set_view/test" -f "-pa ${CMAKE_CURRENT_BINARY_DIR}" -t ${it})
+    ADD_TEST(geocouch-gc-couchbase-${testname} ${PYTHON_EXECUTABLE} ${COUCHDB_RUNTEST} -c ${COUCHSTORE_BIN_PATH} -p ${COUCHDB_BINARY_DIR}/src -l ${PROJECT_BINARY_DIR} -m "couch_set_view/test" -f "-pa ${CMAKE_CURRENT_BINARY_DIR}" -t ${it} --verbose)
   ENDFOREACH (it)
 
   FILE(GLOB VTREE_TEST_SRC *.erl)
