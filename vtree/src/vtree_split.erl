@@ -277,8 +277,15 @@ create_split_candidates([H|T], FillMin, FillMax) ->
 % The minimum fill rate was already relaxed (see below) and there's still
 % no split candidate. The reason is probably that any of the nodes is
 % bigger in size (bytes) than the maximum chunk threshold.
-create_split_candidates(_, [], 0, _, []) ->
-    throw({error, "No split candidates found. Increase the chunk threshold."});
+% Instead of making it a fatal failure, create a single split candidate,
+% where the first partition contains as many nodes as possible until the
+% maximum threshold is overcome. This means the the maximum threshold
+% guarantee will be violated, but that's better than a fatal error.
+create_split_candidates(A, [], 0, FillMax, []) ->
+    ?LOG_ERROR("Warning: there is a node that is bigger than the maximum "
+               "chunk threshold (~p). Increase the chunk threshold.",
+               [FillMax]),
+    [vtree_modify:get_overflowing_subset(FillMax, A)];
 % No valid split candidates were found. Instead of returning an error, we
 % relax the minimum filled condition to zero. This case should rarely happen
 % (only in very extreme cases). For example if you have two nodes, one with a

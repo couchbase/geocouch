@@ -127,16 +127,20 @@ get_chunk_threshold(Vt, #kp_node{}) ->
 
 % Return a minimal subset of nodes that are just about bigger than `FillMax`
 -spec get_overflowing_subset(FillMax :: number(),
-                             Nodes :: [#kv_node{} | #kp_node{}]) ->
+                             Nodes :: [#kv_node{} | #kp_node{} |
+                                       split_node()]) ->
                                     {[#kv_node{}], [#kv_node{}]} |
-                                    {[#kp_node{}], [#kp_node{}]}.
+                                    {[#kp_node{}], [#kp_node{}]} |
+                                    {[split_node()], [split_node()]}.
 get_overflowing_subset(FillMax, Nodes) ->
     get_overflowing_subset(FillMax, Nodes, []).
 -spec get_overflowing_subset(FillMax :: number(),
-                             Nodes :: [#kv_node{} | #kp_node{}],
-                             Acc :: [#kv_node{} | #kp_node{}]) ->
+                             Nodes :: [#kv_node{} | #kp_node{} | split_node()],
+                             Acc :: [#kv_node{} | #kp_node{} |
+                                     split_node()]) ->
                                     {[#kv_node{}], [#kv_node{}]} |
-                                    {[#kp_node{}], [#kp_node{}]}.
+                                    {[#kp_node{}], [#kp_node{}]} |
+                                    {[split_node()], [split_node()]}.
 get_overflowing_subset(_FillMax, [], Acc) ->
     {lists:reverse(Acc), []};
 get_overflowing_subset(FillMax, [H|T]=Nodes, Acc) ->

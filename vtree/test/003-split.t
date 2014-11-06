@@ -19,7 +19,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(90),
+    etap:plan(93),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -541,12 +541,34 @@ test_create_split_candidates() ->
             "2 split candidates with max=size of 2 elements, "
             "min_fill_rate=0.5, where one node has a much bigger byte size"),
 
-    Nodes5 = [Node1, Node2],
+    % Tests whether there is always a split candidate, even if it violates
+    % the maximum chunk threshold
+
+    % This call is needed, else you'll get a badmatch error for every call
+    % to ?LOG_* (and create_split_candidates/3 will log an error.
+    disk_log:open([{name, couch_disk_logger}, {format, external}]),
+
+    Nodes5 = [Node1, Node2, Node3],
     Max6 = ?ext_size(Nodes5)/4,
-    etap:throws_ok(
-      fun() -> ?MOD:create_split_candidates(Nodes5, 0.5*Max6, Max6) end,
-      {error, "No split candidates found. Increase the chunk threshold."},
-      "2 split candidates where max size is smaller than any of the nodes").
+    [Candidate5] = ?MOD:create_split_candidates(Nodes5, 0.5*Max6, Max6),
+    {Overflow5, _} = Candidate5,
+    etap:is(Candidate5, {[Node1], [Node2, Node3]},
+            "The split candidate for the case when the maximum chunk threshold"
+            "guarantee is violated (a)"),
+    etap:ok(?ext_size(Overflow5) > Max6,
+            "The first partition of the split candidate is *as expected* "
+            "bigger than the maximum chunk threshold"),
+
+    Nodes6 = [Node1, {b, "this is again a huge node"}, Node3],
+    Max7 = ?ext_size(Nodes6)/3,
+    [Candidate6] = ?MOD:create_split_candidates(Nodes6, 0.5*Max7, Max7),
+    {Overflow6, _} = Candidate6,
+    etap:is(Candidate6, {[Node1, {b, "this is again a huge node"}], [Node3]},
+            "The split candidate for the case when the maximum chunk threshold"
+            "guarantee is violated (b)"),
+    etap:ok(?ext_size(Overflow6) > Max7,
+            "The first partition of the split candidate is *as expected* "
+            "bigger than the maximum chunk threshold (b)").
 
 
 test_nodes_perimeter() ->
