@@ -560,10 +560,28 @@ design_doc_to_set_view_group(SetName, #doc{id = Id, body = {Fields}}) ->
     set_view_sig(SetViewGroup).
 
 
+% Make sure the signature changes whenever the definitions of the spatial
+% views change. This way a view gets re-generated. Re-sorting the view
+% definitions within the JSON object won't change the signature.
+-spec set_view_for_sig(#set_view{}) -> [binary()].
+set_view_for_sig(SetView) ->
+    #set_view{
+        def = Def,
+        indexer = #spatial_view{
+            map_names = MapNames
+        }
+    } = SetView,
+    [MapNames, Def].
+
+
 -spec set_view_sig(#set_view_group{}) -> #set_view_group{}.
 set_view_sig(#set_view_group{views = SetViews} = Group) ->
-    Defs = [SetView#set_view.def || SetView <- SetViews],
-    Sig = couch_util:md5(term_to_binary(Defs)),
+    % With using an iolist for the signature, it's easier possible to replace
+    % it with a C-based implementation in the future. It's also easier to add
+    % additional optional things without changing the signature of exisisting
+    % views.
+    SetViews2 = [set_view_for_sig(SetView) || SetView <- SetViews],
+    Sig = couch_util:md5(iolist_to_binary(SetViews2)),
     Group#set_view_group{sig = Sig}.
 
 
