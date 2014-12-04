@@ -19,6 +19,13 @@
 -include_lib("couch_index_merger/include/couch_index_merger.hrl").
 
 
+handle_req(#httpd{path_parts = [<<"_spatial_view">>, SetName, <<"_design">>,
+        DDocId, <<"_info">>], method = 'GET'} = Req) ->
+    {ok, Info} = couch_set_view:get_group_info(
+        spatial_view, SetName, <<"_design/", DDocId/binary>>, prod),
+    couch_httpd:send_json(Req, 200, {Info});
+
+% For spatial view merger
 handle_req(#httpd{method = 'GET'} = Req) ->
     Views = couch_index_merger_validation:views_param(
         couch_httpd:qs_json_value(Req, "views", nil)),
@@ -33,6 +40,7 @@ handle_req(#httpd{method = 'GET'} = Req) ->
         Req, [], MergeParams0),
     couch_index_merger:query_index(spatial_merger, MergeParams1, Req);
 
+% For spatial view merger
 handle_req(#httpd{method = 'POST'} = Req) ->
     {Props} = couch_httpd:json_body_obj(Req),
     Views = couch_index_merger_validation:views_param(
