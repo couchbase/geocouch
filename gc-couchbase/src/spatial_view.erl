@@ -601,9 +601,16 @@ index_extension() ->
     ".spatial".
 
 
-%-spec view_group_data_size(#btree{}, [#set_view{}]) -> non_neg_integer().
-view_group_data_size(_IdBtree, _Views) ->
-    not_yet_implemented.
+-spec view_group_data_size(#btree{}, [#set_view{}]) -> non_neg_integer().
+view_group_data_size(IdBtree, Views) ->
+    lists:foldl(
+        fun(SetView, Acc) ->
+            Root = ((SetView#set_view.indexer)#spatial_view.vtree)#vtree.root,
+            Acc + vtree_io:treesize(Root)
+        end,
+        couch_btree:size(IdBtree),
+        Views).
+
 
 
 reset_view(View) ->

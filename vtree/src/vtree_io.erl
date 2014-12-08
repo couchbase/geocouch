@@ -25,6 +25,7 @@
 
 -export([write_node/3, read_node/2]).
 -export([encode_mbb/1, decode_mbb/1]).
+-export([treesize/1]).
 
 -ifdef(makecheck).
 -compile(export_all).
@@ -231,3 +232,10 @@ decode_key_docid(<<Num:16, KeyDocId/binary>>) ->
     KeySize = Num * 8,
     <<BinMbb:KeySize/binary, DocId/binary>> = KeyDocId,
     {decode_mbb(BinMbb), DocId}.
+
+
+-spec treesize(KpNode :: #kp_node{} | nil) -> non_neg_integer().
+treesize(nil) ->
+    0;
+treesize(#kp_node{treesize = Size}) ->
+    Size.
