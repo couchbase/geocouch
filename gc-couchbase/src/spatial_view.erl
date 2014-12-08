@@ -319,11 +319,22 @@ index_builder_wait_loop(Port, Group, Acc) ->
 
 % In order to build the spatial index bottom-up we need to have supply
 % the enclosing bounding box
-view_info(View) ->
-    Mbb = ((View#spatial_view.vtree)#vtree.root)#kp_node.key,
-    MbbEncoded = vtree_io:encode_mbb(Mbb),
-    Dimension = list_to_binary(integer_to_list(length(Mbb))),
-    [Dimension, $\n, MbbEncoded].
+view_info(#spatial_view{vtree = Vt}) ->
+    case Vt#vtree.root of
+    nil ->
+        [<<"0">>, $\n];
+    #kp_node{key = Mbb0, childpointer = Pointer} ->
+        Mbb = case Mbb0 of
+        nil ->
+            Children = vtree_io:read_node(Vt#vtree.fd, Pointer),
+            vtree_util:nodes_mbb(Children, Vt#vtree.less);
+        _ ->
+            Mbb0
+       end,
+       MbbEncoded = vtree_io:encode_mbb(Mbb),
+       Dimension = list_to_binary(integer_to_list(length(Mbb))),
+       [Dimension, $\n, MbbEncoded]
+    end.
 
 % Return the state of a view (which will be stored in the header)
 get_state(View) ->
