@@ -110,7 +110,7 @@ calc_mbb(KvList) ->
             {Key, Geom} = maybe_process_key(Key0),
             Acc = Key,
             Value = {PartId, Body, Geom},
-            {{{lists:flatten(Key), DocId}, Value}, Acc};
+            {{{Key, DocId}, Value}, Acc};
         ({{Key0, DocId}, {PartId, Body}}, Mbb) ->
             {Key, Geom} = maybe_process_key(Key0),
             Acc = lists:map(fun({[KeyMin, KeyMax], [MbbMin, MbbMax]}) ->
@@ -118,7 +118,7 @@ calc_mbb(KvList) ->
                  vtree_util:max({KeyMax, MbbMax}, Less)]
             end, lists:zip(Key, Mbb)),
             Value = {PartId, Body, Geom},
-            {{{lists:flatten(Key), DocId}, Value}, Acc}
+            {{{Key, DocId}, Value}, Acc}
     end, nil, KvList).
 
 
@@ -159,10 +159,15 @@ convert_primary_index_kvs_to_binary([H | Rest], Group, Acc)->
     convert_primary_index_kvs_to_binary(Rest, Group, [{KeyBin, V} | Acc]).
 
 
--spec encode_key_docid([number()], binary()) -> binary().
+-spec encode_key_docid([[number()]], binary()) -> binary().
 encode_key_docid(Key, DocId) ->
-    BinKey = list_to_binary([<<K:64/native-float>> || K <- Key]),
-    <<(length(Key)):16, BinKey/binary, DocId/binary>>.
+    BinKey = encode_key(Key),
+    % Prefix the key with the number of doubles
+    <<(length(Key) * 2):16, BinKey/binary, DocId/binary>>.
+
+-spec encode_key([[number()]]) -> binary().
+encode_key(Key) ->
+    << <<Min:64/native-float, Max:64/native-float>> || [Min, Max] <- Key>>.
 
 
 % Build the tree out of the sorted files
