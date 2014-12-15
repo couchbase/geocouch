@@ -19,7 +19,8 @@
 -export([write_kvs/3, finish_build/3, get_state/1,
          start_reduce_context/1, end_reduce_context/1, view_name/2,
          update_tmp_files/3, view_bitmap/1]).
--export([update_index/5]).
+-export([update_index/5, encode_key_docid/2]).
+-export([convert_primary_index_kvs_to_binary/3]).
 % For the group
 -export([design_doc_to_set_view_group/2, view_group_data_size/2,
          reset_view/1, setup_views/5, set_state/2]).
@@ -123,6 +124,18 @@ calc_mbb(KvList) ->
 
 
 % Convert the key from a list of 2-tuples to a list of raw doubles
+% NOTE vmx 2014-12-12: The first case could be more efficient, but for now
+% it's good enough. Once the enclosing MBB for the initial index build is
+% no longer needed, this case can go away as `calc_mbb` will be no longer
+% needed in `write_kvs/3`.
+-spec convert_primary_index_kvs_to_binary(
+        [{{binary(), binary()},
+          {partition_id(), binary()} | {partition_id(), binary(), geom()}}],
+        #set_view_group{}, [{binary(), binary()}]) -> [{binary(), binary()}].
+convert_primary_index_kvs_to_binary([{{_, _}, {_, _}} | _] = KvList0, Group,
+        Acc) ->
+    {KvList, _Mbb} = calc_mbb(KvList0),
+    convert_primary_index_kvs_to_binary(KvList, Group, Acc);
 convert_primary_index_kvs_to_binary([], _Group, Acc) ->
     lists:reverse(Acc);
 convert_primary_index_kvs_to_binary([H | Rest], Group, Acc)->
@@ -159,7 +172,11 @@ convert_primary_index_kvs_to_binary([H | Rest], Group, Acc)->
     convert_primary_index_kvs_to_binary(Rest, Group, [{KeyBin, V} | Acc]).
 
 
--spec encode_key_docid([[number()]], binary()) -> binary().
+-spec encode_key_docid(binary() | [[number()]], binary()) -> binary().
+encode_key_docid(BinMbb, DocId) when is_binary(BinMbb) ->
+    % A double has 8 bytes
+    NumDobules = byte_size(BinMbb) div 8,
+    <<NumDobules:16, BinMbb/binary, DocId/binary>>;
 encode_key_docid(Key, DocId) ->
     BinKey = encode_key(Key),
     % Prefix the key with the number of doubles
