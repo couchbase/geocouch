@@ -834,6 +834,7 @@ pid_to_sig_ets(dev) ->
 % dimensions.
 % In case of a geometry, calculate the bounding box and return it.
 % In case of a point instead of a range, create a collapsed range
+-spec maybe_process_key(binary()) -> {[[number()]], geom() | nil}.
 maybe_process_key(Key0) ->
     Key = ?JSON_DECODE(Key0),
     case is_tuple(Key) of
