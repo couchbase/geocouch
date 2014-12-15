@@ -18,7 +18,7 @@
 % For the updater
 -export([write_kvs/3, finish_build/3, get_state/1,
          start_reduce_context/1, end_reduce_context/1, view_name/2,
-         update_tmp_files/3, view_bitmap/1]).
+         update_spatial/3, view_bitmap/1]).
 -export([update_index/5, encode_key_docid/2]).
 -export([convert_primary_index_kvs_to_binary/3]).
 -export([convert_back_index_kvs_to_binary/2]).
@@ -186,6 +186,16 @@ encode_key_docid(Key, DocId) ->
 -spec encode_key([[number()]]) -> binary().
 encode_key(Key) ->
     << <<Min:64/native-float, Max:64/native-float>> || [Min, Max] <- Key>>.
+
+
+-spec decode_key_docid(binary()) -> {[number()], binary()}.
+decode_key_docid(<<NumDoubles:16, Rest/binary>>) ->
+    % A double has 8 bytes
+    KeySize = NumDoubles * 8,
+    <<BinKey:KeySize/binary, DocId/binary>> = Rest,
+    Key = [{Min, Max} ||
+        <<Min:64/native-float, Max:64/native-float>> <= BinKey],
+    {Key, DocId}.
 
 
 % Build the tree out of the sorted files
@@ -429,122 +439,92 @@ view_name(_SetViewGroup, _ViewPos) ->
     not_yet_implemented.
 
 
-% In the mapreduce views, this updates the temporary files that are used
-% by the C-based file sorter. The spatial view still use an Erlang code
-% path for incremental updates. Hence this function is a bit of a misnomer,
-% though it the future, once all the indexing is moved to C it won't be
-% anymore.
-% This is based on `write_changes/4 is based on an old revision of
-% `couch_set_view_updater` (6bbe1cf89b2f6b5c9cf098b81c5ea60d339f8f0a), before
-% parts of it were moved to C. `write_changes/4` got split into
-% `write_to_tmp_batch_files/3` and `maybe_update_btrees/1` in commit
-% e64bba5b58f5a4f555b06e6a1cb9ee8cdb6992f7
-% XXX vmx 2013-08-09: Support for cleanup is still missing.
-update_tmp_files(WriterAcc, ViewKeyValues, KeysToRemoveByView) ->
-    #writer_acc{
-       group = Group,
-       stats = Stats
-    } = WriterAcc,
-    % XXX vmx 2013-08-02: Use a real value for IdBtreePurgedKeyCount
-    IdBtreePurgedKeyCount = 0,
-    ViewKeyValuesToAddKvNodes = lists:map(
-        fun({View, AddKeyValues0}) ->
-            AddKeyValues = lists:map(fun({{Key, DocId}, {PartId, Body}}) ->
-                % NOTE vmx 2013-08-05: The vtree code expects the key to
-                % contain tuples. Think about changing the internal format
-                % so less conversion is needed.
-                {Key2, Geom} = maybe_process_key(Key),
-                Key3 = [{Min, Max} || [Min, Max] <- Key2],
-                couch_set_view_util:check_primary_value_size(
-                    Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key3, DocId, Group),
-                #kv_node{
-                    key = Key3,
-                    docid = DocId,
-                    body = Body,
-                    partition = PartId,
-                    geometry = Geom
-                }
-            end,
-            AddKeyValues0),
-            {View, AddKeyValues}
-        end,
-        ViewKeyValues),
-    ViewKeyValuesToRemoveKvNodes = dict:map(
-        fun(_View, RemoveKeyValues0) ->
-            RemoveKeyValues = dict:fold(fun(KeyDocId, nil, Acc) ->
-                % NOTE vmx 2013-08-07: Here we decode an just recently
-                %    encoded value. This can be made more efficient.
-                <<KeyLen:16, Key:KeyLen/binary, DocId/binary>> = KeyDocId,
-                {Key2, _Geom} = maybe_process_key(Key),
-                Key3 = [{Min, Max} || [Min, Max] <- Key2],
-                KvNode = #kv_node{
-                    key = Key3,
-                    docid = DocId
-                },
-                [KvNode | Acc]
-            end, [], RemoveKeyValues0),
-            RemoveKeyValues
-        end,
-        KeysToRemoveByView),
-    {SetViews, {CleanupKvCount, InsertedKvCount, DeletedKvCount}} =
-        lists:mapfoldl(fun({SetView, {_SetView, AddKeyValues}}, {AccC, AccI, AccD}) ->
-            #set_view{
-                id_num = IdNum,
-                indexer = View
-            } = SetView,
-            KeysToRemove = couch_util:dict_find(
-                IdNum, ViewKeyValuesToRemoveKvNodes, []),
-            case ?set_cbitmask(Group) of
-            0 ->
-                CleanupCount = 0,
-                Vtree = vtree_delete:delete(View#spatial_view.vtree, KeysToRemove),
-                Vtree3 = vtree_insert:insert(Vtree, AddKeyValues);
-            Cbitmask ->
-                % NOTE vmx 2014-08-04: Currently there's no easy way to get
-                % the number of cleaned up nodes, hence it's set to 0. the
-                % number displayed in the logs hence will be wrong (that's OK
-                % given the effort that would be needed to make it right).
-                CleanupCount = 0,
-                CleanupParts = couch_set_view_util:decode_bitmask(Cbitmask),
-                CleanupNodes = [#kv_node{partition = PartId} ||
-                    PartId <- CleanupParts],
-                Vtree = vtree_cleanup:cleanup(
-                    View#spatial_view.vtree, CleanupNodes),
-                Vtree2 = vtree_delete:delete(Vtree, KeysToRemove),
-                Vtree3 = vtree_insert:insert(Vtree2, AddKeyValues)
-            end,
-            NewSetView = SetView#set_view{
-                indexer = View#spatial_view{
-                    vtree = Vtree3
-                }
-            },
-            {NewSetView,
-                {AccC + CleanupCount, AccI + length(AddKeyValues),
-                 AccD + length(KeysToRemove)}}
-        end,
-        {IdBtreePurgedKeyCount, 0, 0},
-        lists:zip(Group#set_view_group.views, ViewKeyValuesToAddKvNodes)),
+% This function does what the C-based native updater does for mapreduce views
+-spec update_spatial([#set_view{}], [string()], non_neg_integer()) ->
+                            [#set_view{}].
+update_spatial(Views, [], _) ->
+    Views;
+update_spatial(Views, LogFiles, MaxBatchSize) ->
+    lists:zipwith(fun(View, LogFile) ->
+        {ok, Fd} = file2:open(LogFile, [read, raw, binary, read_ahead]),
+        try
+            process_log_file(View, Fd, MaxBatchSize, 0, [])
+        after
+            ok = file:close(Fd)
+        end
+    end, Views, LogFiles).
 
-    % The sequence number are not updated, it will be done code that
-    % deals with the id-btree.
-    Header = Group#set_view_group.index_header,
-    NewHeader = Header#set_view_index_header{
-        view_states = [get_state(V#set_view.indexer) || V <- SetViews]
-    },
-    NewGroup = Group#set_view_group{
-        views = SetViews,
-        index_header = NewHeader
-    },
-    couch_file:flush(Group#set_view_group.fd),
-    WriterAcc#writer_acc{
-        group = NewGroup,
-        stats = Stats#set_view_updater_stats{
-            cleanup_kv_count =
-                Stats#set_view_updater_stats.cleanup_kv_count + CleanupKvCount,
-            inserted_kvs =
-                Stats#set_view_updater_stats.inserted_kvs + InsertedKvCount,
-            deleted_kvs =
-                Stats#set_view_updater_stats.deleted_kvs + DeletedKvCount
+
+-spec process_log_file(#set_view{}, file:io_device(), non_neg_integer(),
+                       non_neg_integer(),
+                       [{insert, binary(), binary()} | {remove, binary()}]) ->
+                              #set_view{}.
+% Don't include the last operation as it made the batch size bigger than the
+% maximum batch size
+process_log_file(View0, LogFd, MaxBatchSize, BatchSize, [H | Ops])
+        when BatchSize > MaxBatchSize ->
+    View = flush_writes(View0, lists:reverse(Ops)),
+    process_log_file(View, LogFd, MaxBatchSize, 0, [H]);
+process_log_file(View, LogFd, MaxBatchSize, BatchSize, Ops) ->
+    case file:read(LogFd, 4) of
+    {ok, <<Size:32/native>>} ->
+        {ok, <<OpCode:8, KeySize:16, Key:KeySize/binary, Value/binary>>} =
+            file:read(LogFd, Size),
+        OpAtom = couch_set_view_updater_helper:code_to_op(OpCode),
+        Op = case OpAtom of
+        insert ->
+            {OpAtom, Key, Value};
+        remove ->
+            {OpAtom, Key}
+        end,
+        process_log_file(View, LogFd, MaxBatchSize, BatchSize + Size - 1 - 2, [Op | Ops]);
+    eof ->
+        flush_writes(View, lists:reverse(Ops));
+    {error, Error} ->
+        throw({file_read_error, Error})
+    end.
+
+% Insert the data into the view file
+-spec flush_writes(#set_view{},
+                   [{insert, binary(), binary()} | {remove, binary()}]) ->
+                          #set_view{}.
+flush_writes(SetView, Ops) ->
+    #set_view{
+        indexer = #spatial_view{
+            vtree = Vt
+        } = View
+    } = SetView,
+    {OpsToAdd, OpsToRemove} = lists:partition(
+        fun({insert, _, _}) -> true;
+           ({remove, _}) -> false
+        end, Ops),
+    KvNodesToRemove = lists:map(fun({remove, KeyDocId}) ->
+        {Key, DocId} = decode_key_docid(KeyDocId),
+        #kv_node{
+            key = Key,
+            docid = DocId
+        }
+    end, OpsToRemove),
+    KvNodesToAdd = lists:map(fun({insert, KeyDocId, Value}) ->
+        {Key, DocId} = decode_key_docid(KeyDocId),
+        % NOTE vmx 2014-12-10: No dups support for now
+        <<PartId:16, BodySize:?VIEW_SINGLE_VALUE_BITS,
+          GeomBinSize:?VIEW_GEOMETRY_BITS,
+          Body:BodySize/binary, GeomBin:GeomBinSize/binary>> = Value,
+        Geom = binary_to_term(GeomBin),
+        #kv_node{
+            key = Key,
+            docid = DocId,
+            body = Body,
+            partition = PartId,
+            geometry = Geom
+        }
+    end, OpsToAdd),
+    Vt2 = vtree_delete:delete(Vt, KvNodesToRemove),
+    Vt3 = vtree_insert:insert(Vt2, KvNodesToAdd),
+    SetView#set_view{
+        indexer = View#spatial_view{
+            vtree = Vt3
         }
     }.
 
