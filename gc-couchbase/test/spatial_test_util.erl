@@ -13,6 +13,7 @@
 -module(spatial_test_util).
 
 -export([start_server/1, stop_server/0]).
+-export([fold_id_btree/4]).
 
 -define(DCP_SERVER_PORT, 12345).
 
@@ -72,3 +73,15 @@ config_file() ->
 root_dir() ->
     EscriptName = filename:split(filename:absname(escript:script_name())),
     lists:sublist(EscriptName, length(EscriptName)-2).
+
+
+fold_id_btree(Btree, Fun, Acc, Args) ->
+    FunWrap = fun ({Id, Value}, AccRed, Acc0) ->
+        <<PartId:16, ValuesBin/binary>> = Value,
+        Vals = couch_set_view_util:parse_view_id_keys(ValuesBin),
+        ExpandedVals = lists:sort(lists:flatten([
+            [{ViewId, vtree_io:decode_mbb(KeyVal)} || KeyVal <- KeysVal]
+                || {ViewId,KeysVal} <- Vals])),
+        Fun({Id, {PartId, ExpandedVals}}, AccRed, Acc0)
+    end,
+    couch_btree:fold(Btree, FunWrap, Acc, Args).
