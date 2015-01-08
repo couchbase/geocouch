@@ -193,8 +193,7 @@ decode_key_docid(<<NumDoubles:16, Rest/binary>>) ->
     % A double has 8 bytes
     KeySize = NumDoubles * 8,
     <<BinKey:KeySize/binary, DocId/binary>> = Rest,
-    Key = [{Min, Max} ||
-        <<Min:64/native-float, Max:64/native-float>> <= BinKey],
+    Key = vtree_io:decode_mbb(BinKey),
     {Key, DocId}.
 
 
