@@ -428,8 +428,12 @@ end_reduce_context(_Group) ->
     ok.
 
 
-view_name(_SetViewGroup, _ViewPos) ->
-    not_yet_implemented.
+view_name(#set_view_group{views = SetViews}, ViewPos) ->
+    View = (lists:nth(ViewPos, SetViews))#set_view.indexer,
+    case View#spatial_view.map_names of
+    [Name | _] ->
+        Name
+    end.
 
 
 % This function does what the C-based native updater does for mapreduce views
