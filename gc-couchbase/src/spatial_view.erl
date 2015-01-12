@@ -251,7 +251,7 @@ finish_build(Group, TmpFiles, TmpDir) ->
         SetViews2),
 
     try
-        index_builder_wait_loop(Port, Group2, [])
+        couch_set_view_updater_helper:index_builder_wait_loop(Port, Group2, [])
     after
         catch port_close(Port)
     end,
@@ -292,52 +292,6 @@ finish_build(Group, TmpFiles, TmpDir) ->
         header_pos = NewHeaderPos
     },
     {NewGroup, NewFd}.
-
-
-% XXX vmx 2014-06-17: Carbon copy from mapreduce_view. Might make sense to refactor it
-index_builder_wait_loop(Port, Group, Acc) ->
-    #set_view_group{
-        set_name = SetName,
-        name = DDocId,
-        type = Type
-    } = Group,
-    receive
-    {Port, {exit_status, 0}} ->
-        ok;
-    {Port, {exit_status, 1}} ->
-        ?LOG_INFO("Set view `~s`, ~s group `~s`, index builder stopped successfully.",
-                   [SetName, Type, DDocId]),
-        exit(shutdown);
-    {Port, {exit_status, Status}} ->
-        throw({index_builder_exit, Status, ?l2b(Acc)});
-    {Port, {data, {noeol, Data}}} ->
-        index_builder_wait_loop(Port, Group, [Data | Acc]);
-    {Port, {data, {eol, Data}}} ->
-        #set_view_group{
-            set_name = SetName,
-            name = DDocId,
-            type = Type
-        } = Group,
-        Msg = ?l2b(lists:reverse([Data | Acc])),
-        ?LOG_ERROR("Set view `~s`, ~s group `~s`, received error from index builder: ~s",
-                   [SetName, Type, DDocId, Msg]),
-
-        % Propogate this message to query response error message
-        Msg2 = case Msg of
-        <<"Error building index", _/binary>> ->
-            [Msg];
-        _ ->
-            []
-        end,
-        index_builder_wait_loop(Port, Group, Msg2);
-    {Port, Error} ->
-        throw({index_builder_error, Error});
-    stop ->
-        ?LOG_INFO("Set view `~s`, ~s group `~s`, sending stop message to index builder.",
-                   [SetName, Type, DDocId]),
-        true = port_command(Port, "exit"),
-        index_builder_wait_loop(Port, Group, Acc)
-    end.
 
 
 % In order to build the spatial index bottom-up we need to have supply
