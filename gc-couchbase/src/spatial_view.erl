@@ -19,7 +19,7 @@
 -export([write_kvs/3, finish_build/3, get_state/1,
          start_reduce_context/1, end_reduce_context/1, view_name/2,
          update_spatial/3, view_bitmap/1]).
--export([update_index/5, encode_key_docid/2]).
+-export([encode_key_docid/2]).
 -export([convert_primary_index_kvs_to_binary/3]).
 -export([convert_back_index_kvs_to_binary/2]).
 % For the group
@@ -27,8 +27,6 @@
          reset_view/1, setup_views/5, set_state/2]).
 % For the utils
 -export([clean_views/2, view_info/1]).
-% For the compactor
--export([compact_view/6, apply_log/3]).
 % For the main module
 -export([get_row_count/1, make_wrapper_fun/2, fold/4, index_extension/0,
          make_key_options/1, should_filter/1]).
@@ -523,17 +521,6 @@ flush_writes(SetView, Ops) ->
     }.
 
 
-%-spec update_index(#btree{},
-%                   string(),
-%                   non_neg_integer(),
-%                   set_view_btree_purge_fun() | 'nil',
-%                   term()) ->
-%                          {'ok', term(), #btree{},
-%                           non_neg_integer(), non_neg_integer()}.
-update_index(_Bt, _FilePath, _BufferSize, _PurgeFun, _PurgeAcc) ->
-    not_yet_implemented.
-
-
 -spec design_doc_to_set_view_group(binary(), #doc{}) -> #set_view_group{}.
 design_doc_to_set_view_group(SetName, #doc{id = Id, body = {Fields}}) ->
     {DesignOptions} = couch_util:get_value(<<"options">>, Fields, {[]}),
@@ -672,19 +659,11 @@ clean_views(SetViews0, CleanupParts) ->
     {0, SetViews}.
 
 
-compact_view(_Fd, _SetView, _EmptySetView, _FilterFun, _BeforeKVWriteFun, _Acc0) ->
-    not_yet_implemented.
-
-
 -spec get_row_count(#set_view{}) -> non_neg_integer().
 get_row_count(_SetView) ->
     % XXX vmx 2013-07-04: Implement it properly with reduces. For now
     %     just always return 0 and hope it doesn't brak anything.
     0.
-
-
-apply_log(_Group, _ViewLogFiles, _TmpDir) ->
-    not_yet_implemented.
 
 
 make_wrapper_fun(Fun, Filter) ->
