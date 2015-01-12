@@ -1,0 +1,6 @@
+FILE(GLOB SOURCES src/*.erl)
+FILE(GLOB HEADERS include/*.hrl)
+
+ERL_BUILD_OTP (APPNAME "wkb" VERSION 1.2.0
+  INSTALL_PATH "lib/couchdb/plugins"
+  HEADERS ${HEADERS} SOURCES ${SOURCES})
