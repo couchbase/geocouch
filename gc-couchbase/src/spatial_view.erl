@@ -38,10 +38,7 @@
 
 -include_lib("couch_spatial.hrl").
 -include("couch_db.hrl").
-%-include_lib("couch_set_view/include/couch_set_view.hrl").
-% Only needed for #writer_acc{}
-% XXX vmx 2013-08-02: #writer_acc{} should be moved to public header
--include_lib("couch_set_view/src/couch_set_view_updater.hrl").
+-include_lib("couch_set_view/include/couch_set_view.hrl").
 -include_lib("vtree/include/vtree.hrl").
 
 % Same as in couch_btree.erl
