@@ -345,41 +345,41 @@ geojson_docs() ->
 [
  {<<"geoPoint">>, {
       1,
-      [{<<"type">>, 'Point'}, {<<"coordinates">>, [105.0, 5.0]}]}},
+      [{<<"type">>, <<"Point">>}, {<<"coordinates">>, [105.0, 5.0]}]}},
  {<<"geoLineString">>, {
       2,
-      [{<<"type">>, 'LineString'},
+      [{<<"type">>, <<"LineString">>},
        {<<"coordinates">>, [[200.0, 0.0], [201.0, 2.0]]}]}},
  {<<"geoPolygon">>, {
       3,
-      [{<<"type">>, 'Polygon'},
+      [{<<"type">>, <<"Polygon">>},
        {<<"coordinates">>, [[[400.0, 0.0], [401.0, 0.0], [400.0, 1.0],
                              [400.0, 0.0]]]}]}},
  {<<"geoLshapedPolygon">>, {
     4,
-    [{<<"type">>, 'Polygon'},
+    [{<<"type">>, <<"Polygon">>},
      {<<"coordinates">>, [[[-11.25, 48.1640625], [-11.953125, 22.8515625],
                            [35.859375, 21.4453125], [35.859375, -10.8984375],
                            [61.171875, -11.6015625], [60.46875, 47.4609375],
                            [60.46875, 46.0546875], [-11.25, 48.1640625]]]}]}},
  {<<"geoPolygonWithHole">>, {
     5,
-    [{<<"type">>, 'Polygon'},
+    [{<<"type">>, <<"Polygon">>},
      {<<"coordinates">>,
       [[ [300.0, 0.0], [301.0, 0.0], [300.0, 1.0], [300.0, 0.0] ],
        [ [300.2, 0.2], [300.6, 0.2], [300.2, 0.6], [300.2, 0.2] ]]}]}},
  {<<"geoMultiPoint">>, {
     6,
-    [{<<"type">>, 'MultiPoint'},
+    [{<<"type">>, <<"MultiPoint">>},
      {<<"coordinates">>,  [ [500.0, 0.0], [501.0, 1.0] ]}]}},
  {<<"geoMultiLineString">>, {
     7,
-    [{<<"type">>, 'MultiLineString'},
+    [{<<"type">>, <<"MultiLineString">>},
      {<<"coordinates">>, [[ [600.0, 0.0], [601.0, 1.0] ],
                           [ [602.0, 2.0], [603.0, 3.0] ]]}]}},
  {<<"geoMultiPolygon">>, {
     8,
-    [{<<"type">>, 'MultiPolygon'},
+    [{<<"type">>, <<"MultiPolygon">>},
      {<<"coordinates">>,
       [
        [
@@ -391,10 +391,10 @@ geojson_docs() ->
        ]]}]}},
  {<<"geoGeometryCollection">>, {
     9,
-    [{<<"type">>, 'GeometryCollection'},
+    [{<<"type">>, <<"GeometryCollection">>},
      {<<"geometries">>,
-      [{[{<<"type">>, 'Point'}, {<<"coordinates">>, [800.0, 0.0] }]},
-       {[{<<"type">>, 'LineString'}, {<<"coordinates">>,
+      [{[{<<"type">>, <<"Point">>}, {<<"coordinates">>, [800.0, 0.0] }]},
+       {[{<<"type">>, <<"LineString">>}, {<<"coordinates">>,
                                       [ [801.0, 0.0], [802.0, 1.0] ]}]}]}]}}
 ].
 

@@ -36,8 +36,6 @@
          pid_to_sig_ets/1]).
 % For the couch_set_view like calls
 -export([get_spatial_view/4]).
-% For spatial_merger
--export[geocouch_to_geojsongeom/1].
 
 
 -include_lib("couch_spatial.hrl").
@@ -160,13 +158,11 @@ convert_primary_index_kvs_to_binary([H | Rest], Group, Acc)->
     _ ->
         couch_set_view_util:check_primary_value_size(
             Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key, DocId, Group),
-        % TODO vmx 2014-08-05: Encode the geometry as WKB
-        GeomBin = ?term_to_bin(Geom),
         check_primary_geometry_size(
-            GeomBin, ?MAX_VIEW_GEOMETRY_SIZE, Key, DocId, Group),
+            Geom, ?MAX_VIEW_GEOMETRY_SIZE, Key, DocId, Group),
         <<PartId:16, (byte_size(Body)):?VIEW_SINGLE_VALUE_BITS,
-          (byte_size(GeomBin)):?VIEW_GEOMETRY_BITS,
-          Body/binary, GeomBin/binary>>
+          (byte_size(Geom)):?VIEW_GEOMETRY_BITS,
+          Body/binary, Geom/binary>>
     end,
     couch_set_view_util:check_primary_value_size(
         V, ?MAX_VIEW_ALL_VALUES_SIZE, Key, DocId, Group),
@@ -508,9 +504,8 @@ flush_writes(SetView, Ops) ->
         {Key, DocId} = decode_key_docid(KeyDocId),
         % NOTE vmx 2014-12-10: No dups support for now
         <<PartId:16, BodySize:?VIEW_SINGLE_VALUE_BITS,
-          GeomBinSize:?VIEW_GEOMETRY_BITS,
-          Body:BodySize/binary, GeomBin:GeomBinSize/binary>> = Value,
-        Geom = binary_to_term(GeomBin),
+          GeomSize:?VIEW_GEOMETRY_BITS,
+          Body:BodySize/binary, Geom:GeomSize/binary>> = Value,
         #kv_node{
             key = Key,
             docid = DocId,
@@ -723,7 +718,12 @@ fold_fun(Fun, Node, Acc) ->
         geometry = Geom,
         partition = PartId
     } = Node,
-    JsonGeom = spatial_view:geocouch_to_geojsongeom(Geom),
+    case Geom of
+    <<>> ->
+        JsonGeom = nil;
+    _ ->
+        {ok, JsonGeom} = wkb_reader:wkb_to_geojson(Geom)
+    end,
     % NOTE vmx 2013-07-11: The key needs to be able to be encoded as JSON.
     %     Think about how to encode the MBB so less conversion is needed.
     Key = [[Min, Max] || {Min, Max} <- Key0],
@@ -851,7 +851,7 @@ maybe_process_key(Key0) ->
             Key2 = Bbox ++ T;
         _ ->
             Key2 = Key,
-            Geom2 = nil
+            Geom2 = <<>>
         end,
         Key3 = lists:map(
             fun([]) ->
@@ -910,7 +910,7 @@ process_geometry(Geo) ->
     catch _:badarg ->
         throw({emit_key, <<"The supplied geometry must be valid GeoJSON.">>})
     end,
-    Geom = geojsongeom_to_geocouch(Geo),
+    {ok, Geom} = wkb_writer:geojson_to_wkb({Geo}),
     {Bbox, Geom}.
 
 
@@ -948,33 +948,6 @@ bbox([Coords|Rest], Range) ->
             [erlang:min(Coord, Min), erlang:max(Coord, Max)]
         end, Coords, Range),
     bbox(Rest, Range2).
-
-
-% @doc Transforms a GeoJSON geometry (as Erlang terms), to an internal
-% structure
-geojsongeom_to_geocouch(Geom) ->
-    Type = proplists:get_value(<<"type">>, Geom),
-    Coords = case Type of
-    <<"GeometryCollection">> ->
-        Geometries = proplists:get_value(<<"geometries">>, Geom),
-        [geojsongeom_to_geocouch(G) || {G} <- Geometries];
-    _ ->
-        proplists:get_value(<<"coordinates">>, Geom)
-    end,
-    {binary_to_atom(Type, utf8), Coords}.
-
-% @doc Transforms internal structure to a GeoJSON geometry (as Erlang terms)
-geocouch_to_geojsongeom(nil) ->
-    nil;
-geocouch_to_geojsongeom({Type, Coords}) ->
-    Coords2 = case Type of
-    'GeometryCollection' ->
-        Geoms = [geocouch_to_geojsongeom(C) || C <- Coords],
-        {<<"geometries">>, Geoms};
-    _ ->
-        {<<"coordinates">>, Coords}
-    end,
-    {[{<<"type">>, Type}, Coords2]}.
 
 
 -spec check_primary_geometry_size(binary(), pos_integer(), [number()],

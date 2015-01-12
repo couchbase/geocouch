@@ -125,9 +125,8 @@ encode_value(#kv_node{}=Node) ->
        partition = PartId,
        geometry = Geom
       } = Node,
-    BinGeom = ?term_to_bin(Geom),
-    Value = <<PartId:16, (byte_size(Body)):24, (byte_size(BinGeom)):24,
-              Body/binary, BinGeom/binary>>,
+    Value = <<PartId:16, (byte_size(Body)):24, (byte_size(Geom)):24,
+              Body/binary, Geom/binary>>,
     {Value, byte_size(Value)};
 encode_value(#kp_node{}=Node) ->
     #kp_node{
@@ -147,12 +146,11 @@ encode_value(#kp_node{}=Node) ->
 
 
 decode_kvnode_value(<<PartId:16, BodySize:24, GeomSize:24,
-                      Body:BodySize/binary, BinGeom:GeomSize/binary>>) ->
-    % XXX vmx 2014-07-20: Add support for geometries
+                      Body:BodySize/binary, Geom:GeomSize/binary>>) ->
     #kv_node{
        body = Body,
        partition = PartId,
-       geometry = binary_to_term(BinGeom),
+       geometry = Geom,
        % XXX vmx 2014-07-20: What is the size used for?
        size = 0
       }.

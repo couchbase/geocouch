@@ -22,15 +22,19 @@ random_kvnode(I) ->
            {erlang:min(C, D), erlang:max(C, D)},
            {erlang:min(E, F), erlang:max(E, F)},
            {erlang:min(G, H), erlang:max(G, H)}],
-    LineString = {'LineString', [[A, C, E, G],
-                               [(A+B)/2, (C+D)/2, (E+F)/2, (G+H)/2],
-                               [B, D, F, H]]},
+    LineString = {[{<<"type">>, <<"LineString">>},
+                   {<<"coordinates">>,
+                    [[A, C, E, G],
+                     [(A+B)/2, (C+D)/2, (E+F)/2, (G+H)/2],
+                     [B, D, F, H]]
+                    }]},
+    {ok, BinLineString} = wkb_writer:geojson_to_wkb(LineString),
     Id = list_to_binary("Node" ++ integer_to_list(I)),
     Value = list_to_binary("Value" ++ integer_to_list(I)),
     #kv_node {
                key = Mbb,
                docid = Id,
-               geometry = LineString,
+               geometry = BinLineString,
                body = Value
              }.
 
