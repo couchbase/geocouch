@@ -32,7 +32,7 @@ ddoc_id() -> <<"_design/test">>.
 main(_) ->
     test_util:init_code_path(),
 
-    etap:plan(35),
+    etap:plan(43),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -56,6 +56,8 @@ test() ->
     test_spatial_emit_without_geometry_range(),
     test_spatial_emit_without_geometry_point_and_range(),
     test_spatial_emit_multiple(),
+    test_spatial_emit_dups(),
+    test_spatial_emit_without_geometry_dups(),
 
 
     couch_set_view_test_util:delete_set_dbs(test_set_name(), num_set_partitions()),
@@ -282,6 +284,88 @@ test_spatial_emit_multiple() ->
     shutdown_group().
 
 
+test_spatial_emit_dups() ->
+    etap:diag("Testing multiple emits with the same key (dups)"),
+    setup_test(),
+    ok = configure_spatial_group(ddoc_id()),
+    Tests = [{[{2.7, 3.4}, {2.7, 3.4}],
+              [{<<"item3">>, [[3.0, 3.0], [3.0, 3.0]], 14,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[3.0,3.0]}]}},
+               {<<"item3">>, [[3.0, 3.0], [3.0, 3.0]], 15,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[3.0,3.0]}]}}],
+              "Correct items from emitting items with the same key "
+              "were returned (a)"},
+             {[{5, 7}, {5, 7}],
+              [{<<"item3">>, [[6.0, 6.0], [6.0, 6.0]], 16,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[6.0,6.0]}]}},
+               {<<"item5">>, [[5.0, 5.0], [5.0, 5.0]], 16,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[5.0,5.0]}]}},
+               {<<"item5">>, [[5.0, 5.0], [5.0, 5.0]], 17,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[5.0,5.0]}]}}],
+              "Correct items from emitting items with the same key "
+              "were returned (b)"},
+             {[{0.3, 2.3}, {0.3, 2.3}],
+              [{<<"item1">>, [[1.0, 1.0], [1.0, 1.0]], 12,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[1.0,1.0]}]}},
+               {<<"item1">>, [[1.0, 1.0], [1.0, 1.0]], 13,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[1.0,1.0]}]}},
+               {<<"item1">>, [[2.0, 2.0], [2.0, 2.0]], 14,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[2.0,2.0]}]}},
+               {<<"item2">>, [[2.0, 2.0], [2.0, 2.0]], 13,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[2.0,2.0]}]}},
+               {<<"item2">>, [[2.0, 2.0], [2.0, 2.0]], 14,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[2.0,2.0]}]}}],
+              "Correct items from emitting items with the same key "
+              "were returned (c)"},
+             {[{9.5, 10.5}, {9.5, 10.5}],
+              [{<<"item5">>, [[10, 10], [10, 10]], 18,
+                {[{<<"type">>,<<"Point">>},{<<"coordinates">>,[10.0,10.0]}]}}],
+              "Correct items from emitting items with the same key "
+              "were returned (d)"}
+            ],
+    lists:foreach(fun({Range, Expected, Message}) ->
+                          query_for_expected_result_multi(
+                            <<"dups">>, Range, Expected, Message)
+                  end, Tests),
+    shutdown_group().
+
+
+test_spatial_emit_without_geometry_dups() ->
+    etap:diag(
+        "Testing multiple emits with the same key without a geometry (dups)"),
+    setup_test(),
+    ok = configure_spatial_group(ddoc_id()),
+    Tests = [{[{2.7, 3.4}],
+              [{<<"item3">>, [[3.0, 3.0]], 14, nil},
+               {<<"item3">>, [[3.0, 3.0]], 15, nil}],
+              "Correct items from emitting items without geometry and with "
+              "the same key were returned (a)"},
+             {[{5, 7}],
+              [{<<"item3">>, [[6.0, 6.0]], 16, nil},
+               {<<"item5">>, [[5.0, 5.0]], 16, nil},
+               {<<"item5">>, [[5.0, 5.0]], 17, nil}],
+              "Correct items from emitting items without geometry and with "
+              "the same key were returned (b)"},
+             {[{0.3, 2.3}],
+              [{<<"item1">>, [[1.0, 1.0]], 12, nil},
+               {<<"item1">>, [[1.0, 1.0]], 13, nil},
+               {<<"item1">>, [[2.0, 2.0]], 14, nil},
+               {<<"item2">>, [[2.0, 2.0]], 13, nil},
+               {<<"item2">>, [[2.0, 2.0]], 14, nil}],
+              "Correct items from emitting items without geometry and with "
+              "the same key were returned (c)"},
+             {[{9.5, 10.5}],
+              [{<<"item5">>, [[10, 10]], 18, nil}],
+              "Correct items from emitting items without geometry and with "
+              "the same key were returned (d)"}
+            ],
+    lists:foreach(fun({Range, Expected, Message}) ->
+                          query_for_expected_result_multi(
+                            <<"withoutgeomdups">>, Range, Expected, Message)
+                  end, Tests),
+    shutdown_group().
+
+
 query_for_expected_result(View, Range, Expected, Message) ->
     ViewArgs = #spatial_query_args{range = Range},
     {ok, Rows} = (catch query_spatial_view(View, ViewArgs)),
@@ -376,6 +460,19 @@ setup_test() ->
                      <<"function(doc, meta) {if (doc.geom === undefined) {"
                        "emit([doc.value1 - 0.1], doc.value10 + 1);"
                        "emit([doc.value1 + 0.1], doc.value10 + 2);"
+                       "emit([doc.value2], doc.value10 + 3);}}">>},
+                {<<"dups">>,
+                     <<"function(doc, meta) {if (doc.geom === undefined) {"
+                       "emit({\"type\":\"Point\",\"coordinates\":"
+                       "[doc.value1, doc.value1]}, doc.value10 + 1);"
+                       "emit({\"type\":\"Point\",\"coordinates\":"
+                       "[doc.value1, doc.value1]}, doc.value10 + 2);"
+                       "emit({\"type\":\"Point\",\"coordinates\":"
+                       "[doc.value2, doc.value2]}, doc.value10 + 3);}}">>},
+                {<<"withoutgeomdups">>,
+                     <<"function(doc, meta) {if (doc.geom === undefined) {"
+                       "emit([doc.value1], doc.value10 + 1);"
+                       "emit([doc.value1], doc.value10 + 2);"
                        "emit([doc.value2], doc.value10 + 3);}}">>}
             ]}}
         ]}}

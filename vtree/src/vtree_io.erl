@@ -26,6 +26,7 @@
 -export([write_node/3, read_node/2]).
 -export([encode_mbb/1, decode_mbb/1]).
 -export([treesize/1]).
+-export([decode_dups/1]).
 
 -ifdef(makecheck).
 -compile(export_all).
@@ -42,6 +43,8 @@
 
 -define(MAX_KEY_SIZE,     ((1 bsl ?KEY_BITS) - 1)).
 -define(MAX_VALUE_SIZE,   ((1 bsl ?VALUE_BITS) - 1)).
+
+-define(BLOB_SIZE, 24).
 
 
 % Writes a node of the tree (which is a list of KV- or KV-nodes) to disk and
@@ -125,9 +128,18 @@ encode_value(#kv_node{}=Node) ->
        partition = PartId,
        geometry = Geom
       } = Node,
-    Value = <<PartId:16, (byte_size(Body)):24, (byte_size(Geom)):24,
-              Body/binary, Geom/binary>>,
-    {Value, byte_size(Value)};
+    Value = case Body of
+                {dups, BodyDups} ->
+                    {dups, GeomDups} = Geom,
+                    lists:foldl(fun(BodyGeom, Acc) ->
+                                        Bin = encode_body_geom(BodyGeom),
+                                        <<Acc/binary, Bin/binary>>
+                                end, <<>>, lists:zip(BodyDups, GeomDups));
+                _ ->
+                    encode_body_geom({Body, Geom})
+            end,
+    Value2 = <<PartId:16, Value/binary>>,
+    {Value2, byte_size(Value2)};
 encode_value(#kp_node{}=Node) ->
     #kp_node{
               childpointer = PointerNode,
@@ -145,15 +157,42 @@ encode_value(#kp_node{}=Node) ->
     {BinValue, 0}.
 
 
-decode_kvnode_value(<<PartId:16, BodySize:24, GeomSize:24,
-                      Body:BodySize/binary, Geom:GeomSize/binary>>) ->
-    #kv_node{
-       body = Body,
-       partition = PartId,
-       geometry = Geom,
-       % XXX vmx 2014-07-20: What is the size used for?
-       size = 0
-      }.
+-spec encode_body_geom({binary(), binary()}) -> binary().
+encode_body_geom({Body, Geom}) ->
+    <<(byte_size(Body)):?BLOB_SIZE, (byte_size(Geom)):?BLOB_SIZE,
+      Body/binary, Geom/binary>>.
+
+
+-spec decode_dups(binary()) -> [{binary(), binary()}].
+decode_dups(Dups) ->
+    [{Body, Geom} ||
+        <<BodySize:?BLOB_SIZE, GeomSize:?BLOB_SIZE,
+          Body:BodySize/binary, Geom:GeomSize/binary>> <= Dups].
+
+
+-spec decode_kvnode_value(binary()) -> #kv_node{}.
+decode_kvnode_value(<<PartId:16, BodySize:?BLOB_SIZE, GeomSize:?BLOB_SIZE,
+                      Body:BodySize/binary, Geom:GeomSize/binary,
+                      Dups/binary>>) ->
+    case Dups of
+        <<>> ->
+            #kv_node{
+               body = Body,
+               partition = PartId,
+               geometry = Geom,
+               % XXX vmx 2014-07-20: What is the size used for?
+               size = 0
+              };
+        _ ->
+            {Bodies, Geoms} = lists:unzip(decode_dups(Dups)),
+            #kv_node{
+               body = {dups, [Body | Bodies]},
+               partition = PartId,
+               geometry = {dups, [Geom | Geoms]},
+               % XXX vmx 2014-07-20: What is the size used for?
+               size = 0
+              }
+    end.
 
 
 % Decode the value of a KP-node pair

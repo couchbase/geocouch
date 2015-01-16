@@ -46,8 +46,8 @@
 -record(kv_node, {
           key = [] :: mbb(),
           docid = nil :: binary() | nil ,
-          geometry = <<>> :: binary(),
-          body = nil :: json() | nil | pos_integer(),
+          geometry = <<>> :: binary() | {dups, [binary()]},
+          body = nil :: binary() | nil | {dups, [binary()]},
           % The body and the geometry are stored on disk early. Store their
           % size here. A value of -1 means that the `geometry` and the `body`
           % property are pointers, but the size is not known. A value of 0

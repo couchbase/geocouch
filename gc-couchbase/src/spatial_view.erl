@@ -75,9 +75,9 @@
 
 write_kvs(Group, TmpFiles0, ViewKVs) ->
     lists:foldl(
-        fun({#set_view{id_num = Id}, KvList0}, {AccCount, TmpFiles}) ->
+        fun({#set_view{id_num = Id}, KvList}, {AccCount, TmpFiles}) ->
             TmpFileInfo0 = dict:fetch(Id, TmpFiles),
-            {KvList, Mbb} = calc_mbb(KvList0),
+            Mbb = calc_mbb(KvList),
             TmpFileInfo = TmpFileInfo0#set_view_tmp_file_info{extra = Mbb},
 
             KvBins = convert_primary_index_kvs_to_binary(KvList, Group, []),
@@ -95,26 +95,18 @@ write_kvs(Group, TmpFiles0, ViewKVs) ->
         {0, TmpFiles0}, ViewKVs).
 
 
-% Calculate the mbb and also returns the keys as flattened list of floats
-% TODO vmx 2013-07-01: Add support for geometries. They will get transformed
-%     in this function. Also support single item values that will be expanded
-%     to an 2-element array with the same value.
+% Calculates the enclosing multidimensional bounding box
+-spec calc_mbb([{{[[number()]], binary()}, binary()}]) -> [[number()]].
 calc_mbb(KvList) ->
     Less = fun(A, B) -> A < B end,
-    lists:mapfoldl(fun
-        ({{Key0, DocId}, {PartId, Body}}, nil) ->
-            {Key, Geom} = maybe_process_key(Key0),
-            Acc = Key,
-            Value = {PartId, Body, Geom},
-            {{{Key, DocId}, Value}, Acc};
-        ({{Key0, DocId}, {PartId, Body}}, Mbb) ->
-            {Key, Geom} = maybe_process_key(Key0),
-            Acc = lists:map(fun({[KeyMin, KeyMax], [MbbMin, MbbMax]}) ->
+    lists:foldl(fun
+        ({{Key, _DocId}, _PartIdValue}, nil) ->
+            Key;
+        ({{Key, _DocId}, _PartIdValue}, Mbb) ->
+            lists:map(fun({[KeyMin, KeyMax], [MbbMin, MbbMax]}) ->
                 [vtree_util:min({KeyMin, MbbMin}, Less),
                  vtree_util:max({KeyMax, MbbMax}, Less)]
-            end, lists:zip(Key, Mbb)),
-            Value = {PartId, Body, Geom},
-            {{{Key, DocId}, Value}, Acc}
+            end, lists:zip(Key, Mbb))
     end, nil, KvList).
 
 
@@ -125,44 +117,47 @@ calc_mbb(KvList) ->
 % needed in `write_kvs/3`.
 -spec convert_primary_index_kvs_to_binary(
         [{{binary(), binary()},
-          {partition_id(), binary()} | {partition_id(), binary(), geom()}}],
+          {partition_id(),
+           {dups, [{binary(), binary()}]} | [{binary(), binary()}]}}],
         #set_view_group{}, [{binary(), binary()}]) -> [{binary(), binary()}].
-convert_primary_index_kvs_to_binary([{{_, _}, {_, _}} | _] = KvList0, Group,
-        Acc) ->
-    {KvList, _Mbb} = calc_mbb(KvList0),
-    convert_primary_index_kvs_to_binary(KvList, Group, Acc);
 convert_primary_index_kvs_to_binary([], _Group, Acc) ->
     lists:reverse(Acc);
 convert_primary_index_kvs_to_binary([H | Rest], Group, Acc)->
-    {{Key, DocId}, {PartId, Body, Geom}} = H,
+    {{Key, DocId}, {PartId, Value}} = H,
     KeyBin = encode_key_docid(Key, DocId),
     couch_set_view_util:check_primary_key_size(
         KeyBin, ?MAX_KEY_SIZE, Key, DocId, Group),
-    V = case Body of
-    % TODO vmx 2013-07-01: Support dups properly (they are encoded here
-    %     but never really taken into account througout the code
-    % TODO vmx 2014-08-05: Think about how to deal with the geometry in dups
-    {dups, Values} ->
-        ValueListBinary = lists:foldl(
-            fun(V, Acc2) ->
-                couch_set_view_util:check_primary_value_size(
-                    V, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key, DocId, Group),
-                <<Acc2/binary, (byte_size(V)):24, V/binary>>
-            end,
-            <<>>, Values),
-        <<PartId:16, ValueListBinary/binary>>;
-    _ ->
-        couch_set_view_util:check_primary_value_size(
-            Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key, DocId, Group),
-        check_primary_geometry_size(
-            Geom, ?MAX_VIEW_GEOMETRY_SIZE, Key, DocId, Group),
-        <<PartId:16, (byte_size(Body)):?VIEW_SINGLE_VALUE_BITS,
-          (byte_size(Geom)):?VIEW_GEOMETRY_BITS,
-          Body/binary, Geom/binary>>
-    end,
+    ValueBin = convert_values_to_binary(Value, Key, DocId, Group),
+    ValueBin2 = <<PartId:16, ValueBin/binary>>,
     couch_set_view_util:check_primary_value_size(
-        V, ?MAX_VIEW_ALL_VALUES_SIZE, Key, DocId, Group),
-    convert_primary_index_kvs_to_binary(Rest, Group, [{KeyBin, V} | Acc]).
+        ValueBin2, ?MAX_VIEW_ALL_VALUES_SIZE, Key, DocId, Group),
+    convert_primary_index_kvs_to_binary(
+        Rest, Group, [{KeyBin, ValueBin2} | Acc]).
+
+
+-spec convert_body_geometry_to_binary({binary(), binary()}, [[number()]], binary(),
+                                      any()) -> binary().
+convert_body_geometry_to_binary({Body, Geom}, Key, DocId, Group) ->
+    couch_set_view_util:check_primary_value_size(
+        Body, ?MAX_VIEW_SINGLE_VALUE_SIZE, Key, DocId, Group),
+    check_primary_geometry_size(
+        Geom, ?MAX_VIEW_GEOMETRY_SIZE, Key, DocId, Group),
+    <<(byte_size(Body)):?VIEW_SINGLE_VALUE_BITS,
+      (byte_size(Geom)):?VIEW_GEOMETRY_BITS,
+      Body/binary, Geom/binary>>.
+
+
+-spec convert_values_to_binary(
+        {dups, [{binary(), binary()}]} | {binary(), binary()},
+        [[number()]], binary(), #set_view_group{}) -> binary().
+convert_values_to_binary({dups, Values}, Key, DocId, Group) ->
+    lists:foldl(fun(V, Acc2) ->
+        Bin = convert_body_geometry_to_binary(V, Key, DocId, Group),
+        <<Acc2/binary, Bin/binary>>
+    end, <<>>, Values);
+convert_values_to_binary(Value, Key, DocId, Group) ->
+    convert_body_geometry_to_binary(Value, Key, DocId, Group).
+
 
 
 -spec encode_key_docid(binary() | [[number()]], binary()) -> binary().
@@ -456,10 +451,15 @@ flush_writes(SetView, Ops) ->
     end, OpsToRemove),
     KvNodesToAdd = lists:map(fun({insert, KeyDocId, Value}) ->
         {Key, DocId} = decode_key_docid(KeyDocId),
-        % NOTE vmx 2014-12-10: No dups support for now
-        <<PartId:16, BodySize:?VIEW_SINGLE_VALUE_BITS,
-          GeomSize:?VIEW_GEOMETRY_BITS,
-          Body:BodySize/binary, Geom:GeomSize/binary>> = Value,
+        <<PartId:16, Values/binary>> = Value,
+        BodyGeoms = vtree_io:decode_dups(Values),
+        {Body, Geom} = case BodyGeoms of
+        [{B, G}] ->
+           {B, G};
+        _ ->
+           {BodyDups, GeomDups} = lists:unzip(BodyGeoms),
+           {{dups, BodyDups}, {dups, GeomDups}}
+        end,
         #kv_node{
             key = Key,
             docid = DocId,
@@ -627,25 +627,29 @@ make_wrapper_fun(Fun, Filter) ->
     case Filter of
     false ->
         fun(Node, Acc) ->
-            % XXX vmx 2014-07-20: Multiple emits is not supported yet
-            fold_fun(Fun, Node, Acc)
+            ExpandedNode = expand_dups(Node),
+            fold_fun(Fun, ExpandedNode, Acc)
         end;
     {true, _, IncludeBitmask} ->
         fun(Node, Acc) ->
-            % XXX vmx 2014-07-20: Multiple emits is not supported yet
             case (1 bsl Node#kv_node.partition) band IncludeBitmask of
             0 ->
                 {ok, Acc};
             _ ->
-                fold_fun(Fun, Node, Acc)
+                ExpandedNode = expand_dups(Node),
+                fold_fun(Fun, ExpandedNode, Acc)
            end
         end
     end.
 
 
-fold_fun(_Fun, nil, Acc) ->
+-spec fold_fun(
+        fun(({{[[number()]], binary()}, {partition_id(), binary(), json()}},
+             any()) -> {ok | stop, any()}),
+        [#kv_node{}], any()) -> {ok | stop, any()}.
+fold_fun(_Fun, [], Acc) ->
     {ok, Acc};
-fold_fun(Fun, Node, Acc) ->
+fold_fun(Fun, [Node | Rest], Acc) ->
     #kv_node{
         key = Key0,
         docid = DocId,
@@ -664,7 +668,7 @@ fold_fun(Fun, Node, Acc) ->
     Key = [[Min, Max] || {Min, Max} <- Key0],
     case Fun({{Key, DocId}, {PartId, Body, JsonGeom}}, Acc) of
     {ok, Acc2} ->
-        {ok, Acc2};
+        fold_fun(Fun, Rest, Acc2);
     {stop, Acc2} ->
         {stop, Acc2}
     end.
@@ -697,6 +701,15 @@ fold(View, WrapperFun, Acc, Options) ->
         end,
         {ok, nil, Result}
     end.
+
+
+-spec expand_dups(#kv_node{}) -> [#kv_node{}].
+expand_dups(#kv_node{body = {dups, BodyDups}, geometry = {dups, GeomDups}}
+        = Node) ->
+    [Node#kv_node{body = B, geometry = G} || {B, G}
+        <- lists:zip(BodyDups, GeomDups)];
+expand_dups(Node) ->
+    [Node].
 
 
 % The following functions have their counterpart in couch_set_view
@@ -910,9 +923,8 @@ convert_back_index_kvs_to_binary(
         fun({ViewId, Keys}, Acc2) ->
             KeyListBinary = lists:foldl(
                 fun(Key, AccKeys) ->
-                    {Key2, _Geom} = maybe_process_key(Key),
-                    Key3 = encode_key(Key2),
-                    <<AccKeys/binary, (byte_size(Key3)):16, Key3/binary>>
+                    Key2 = encode_key(Key),
+                    <<AccKeys/binary, (byte_size(Key2)):16, Key2/binary>>
                 end,
                 <<>>, Keys),
             NumKeys = length(Keys),
@@ -944,21 +956,23 @@ view_insert_doc_query_results(_DocId, _PartitionId, [], [], ViewKVsAcc,
     {lists:reverse(ViewKVsAcc), lists:reverse(ViewIdKeysAcc)};
 view_insert_doc_query_results(DocId, PartitionId, [ResultKVs | RestResults],
         [{View, KVs} | RestViewKVs], ViewKVsAcc, ViewIdKeysAcc) ->
+    ResultKvGeoms = [{maybe_process_key(Key), Val} || {Key, Val} <- ResultKVs],
     % Take any identical keys and combine the values
     {NewKVs, NewViewIdKeysAcc} = lists:foldl(
-        fun({Key, Val}, {[{{Key, PrevDocId} = Kd, PrevVal} | AccRest], AccVid})
-                when PrevDocId =:= DocId ->
-            AccKv2 = case PrevVal of
-            {PartitionId, {dups, Dups}} ->
-                [{Kd, {PartitionId, {dups, [Val | Dups]}}} | AccRest];
+        fun({{Key, Geom}, Val}, {[{{Key, PrevDocId} = Kd, PrevVal} | AccRest],
+                AccVid}) when PrevDocId =:= DocId ->
+            Dups = case PrevVal of
+            {PartitionId, {dups, Dups0}} ->
+                [{Val, Geom} | Dups0];
             {PartitionId, UserPrevVal} ->
-                [{Kd, {PartitionId, {dups, [Val, UserPrevVal]}}} | AccRest]
+                [{Val, Geom}, UserPrevVal]
             end,
-            {AccKv2, AccVid};
-        ({Key, Val}, {AccKv, AccVid}) ->
-            {[{{Key, DocId}, {PartitionId, Val}} | AccKv], [Key | AccVid]}
+            {[{Kd, {PartitionId, {dups, Dups}}} | AccRest], AccVid};
+        ({{Key, Geom}, Val}, {AccKv, AccVid}) ->
+            {[{{Key, DocId}, {PartitionId, {Val, Geom}}} | AccKv],
+                [Key | AccVid]}
         end,
-        {KVs, []}, lists:sort(ResultKVs)),
+        {KVs, []}, lists:sort(ResultKvGeoms)),
     NewViewKVsAcc = [{View, NewKVs} | ViewKVsAcc],
     case NewViewIdKeysAcc of
     [] ->
