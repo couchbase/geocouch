@@ -39,7 +39,7 @@ ELSE(GEOCOUCH_BUILD_FOR_UNIT_TESTS)
         -P ${CMAKE_MODULE_PATH}/ErlangCheckPlt.cmake)
 
   ADD_CUSTOM_COMMAND(OUTPUT ${GEOCOUCH_PLT_FILE}
-    COMMAND dialyzer
+    COMMAND ${DIALYZER_EXECUTABLE}
       --output_plt ${GEOCOUCH_PLT_FILE}
       --build_plt
       --apps crypto erts inets kernel ssl stdlib xmerl
@@ -47,7 +47,7 @@ ELSE(GEOCOUCH_BUILD_FOR_UNIT_TESTS)
     VERBATIM)
 
   ADD_CUSTOM_TARGET(geocouch-dialyzer
-    COMMAND  dialyzer
+    COMMAND ${DIALYZER_EXECUTABLE}
       --plt ${GEOCOUCH_PLT_FILE}
       --verbose
       -Wno_improper_lists
