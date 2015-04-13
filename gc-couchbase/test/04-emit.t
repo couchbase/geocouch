@@ -32,7 +32,7 @@ ddoc_id() -> <<"_design/test">>.
 main(_) ->
     test_util:init_code_path(),
 
-    etap:plan(43),
+    etap:plan(44),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -58,6 +58,7 @@ test() ->
     test_spatial_emit_multiple(),
     test_spatial_emit_dups(),
     test_spatial_emit_without_geometry_dups(),
+    test_spatial_emit_huge_geom(),
 
 
     couch_set_view_test_util:delete_set_dbs(test_set_name(), num_set_partitions()),
@@ -363,6 +364,54 @@ test_spatial_emit_without_geometry_dups() ->
                           query_for_expected_result_multi(
                             <<"withoutgeomdups">>, Range, Expected, Message)
                   end, Tests),
+    shutdown_group().
+
+
+test_spatial_emit_huge_geom() ->
+    etap:diag("Testing emit with a huge geometry (> 4KB) as key (MB-14401)"),
+    couch_set_view_test_util:delete_set_dbs(
+        test_set_name(), num_set_partitions()),
+    couch_set_view_test_util:create_set_dbs(
+        test_set_name(), num_set_partitions()),
+    DDoc = {[
+             {<<"meta">>, {[{<<"id">>, ddoc_id()}]}},
+             {<<"json">>,
+              {[{<<"spatial">>,
+                 {[{<<"geomonly">>,
+                    <<"function(doc, meta) {if (doc.geom) {"
+                      "emit([doc.geom], doc.value);}}">>}
+                  ]}}
+               ]}}
+            ]},
+    ok = couch_set_view_test_util:update_ddoc(test_set_name(), DDoc),
+
+    % These coordinates will lead to a geometry that is bigger than 4KB when
+    % serialized to JSON
+    Coords = lists:map(fun(I) -> [I, I + 10] end, lists:seq(0, 4000)),
+    Doc = {[
+            {<<"meta">>, {[{<<"id">>, <<"hugegeom">>}]}},
+            {<<"json">>,
+             {[{<<"value">>, 1},
+               {<<"geom">>,
+                {[{<<"type">>, <<"LineString">>},
+                  {<<"coordinates">>, Coords}]}}
+              ]}}
+           ]},
+
+    ok = couch_set_view_test_util:populate_set_sequentially(
+        test_set_name(),
+        lists:seq(0, 1),
+        [Doc]),
+    ok = configure_spatial_group(ddoc_id()),
+
+    ViewArgs = #spatial_query_args{},
+    {ok, Rows} = query_spatial_view(<<"geomonly">>, ViewArgs),
+    etap:is(Rows, [{[[0.0,4.0e3],[10.0,4010.0]], <<"hugegeom">>,
+                    {0,<<"1">>,
+                     {[{<<"type">>,<<"LineString">>},
+                       {<<"coordinates">>, Coords}]}
+                    }}],
+           "The document with the huge geometry got emitted"),
     shutdown_group().
 
 
