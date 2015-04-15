@@ -17,7 +17,8 @@
 -module(spatial_merger).
 
 -export([parse_http_params/4, make_funs/3, get_skip_and_limit/1,
-    make_event_fun/2, view_qs/2, process_extra_params/2]).
+    make_event_fun/2, view_qs/2, process_extra_params/2,
+    map_view_merge_callback/2]).
 -export([simple_set_view_query/3]).
 
 -include("couch_db.hrl").
@@ -39,15 +40,21 @@ make_funs(_DDoc, _IndexName, IndexMergeParams) ->
     #index_merge{
         http_params = #spatial_query_args{
             debug = DebugMode
-        }
+        },
+        make_row_fun = MakeRowFun0
     } = IndexMergeParams,
     {fun spatial_less_fun/2,
     fun spatial_view_folder/6,
     fun merge_spatial/1,
     fun(NumFolders, Callback, UserAcc) ->
         fun(Item) ->
-            MakeRowFun = fun(RowDetails) ->
-               spatial_row_obj(RowDetails, DebugMode)
+            MakeRowFun = case is_function(MakeRowFun0) of
+            true ->
+                MakeRowFun0;
+            false ->
+                fun(RowDetails) ->
+                   spatial_row_obj(RowDetails, DebugMode)
+                end
             end,
             couch_index_merger:collect_row_count(
                 NumFolders, 0, MakeRowFun, Callback, UserAcc, Item)
@@ -68,6 +75,28 @@ make_event_fun(_SpatialArgs, Queue) ->
 % callback!
 process_extra_params(_, EJson) ->
     EJson.
+
+% callback!
+map_view_merge_callback(start, Acc) ->
+    {ok, Acc};
+map_view_merge_callback({start, _}, Acc) ->
+    {ok, Acc};
+map_view_merge_callback(stop, Acc) ->
+    {ok, Acc};
+map_view_merge_callback({row, Row}, Macc) ->
+    #merge_acc{
+        fold_fun = Fun,
+        acc = Acc
+    } = Macc,
+    % The difference between spatial and mapredue is the arity of the fold fun
+    case Fun(Row, Acc) of
+    {ok, Acc2} ->
+        {ok, Macc#merge_acc{acc = Acc2}};
+    {stop, Acc2} ->
+        {stop, Macc#merge_acc{acc = Acc2}}
+    end;
+map_view_merge_callback({debug_info, _From, _Info}, Acc) ->
+    {ok, Acc}.
 
 
 % Optimized path, row assembled by couch_http_view_streamer
