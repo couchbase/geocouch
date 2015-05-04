@@ -26,7 +26,7 @@ ddoc_id() -> <<"_design/test">>.
 main(_) ->
     test_util:init_code_path(),
 
-    etap:plan(10),
+    etap:plan(15),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -50,6 +50,7 @@ test() ->
     test_spatial_emit_error_non_geojson_legacy(),
     test_spatial_emit_error_non_geojson(),
     test_spatial_emit_error_geometry_not_as_first(),
+    test_spatial_emit_error_no_array(),
     test_spatial_emit_error_nan_single(),
     test_spatial_emit_error_nan_range_min(),
     test_spatial_emit_error_nan_range_max(),
@@ -111,6 +112,32 @@ test_spatial_emit_error_geometry_not_as_first() ->
       {emit_key, <<"A geometry is only allowed as the first element "
                    "in the array.">>},
       "Geometry not allowed error was thrown").
+
+
+test_spatial_emit_error_no_array() ->
+    etap:diag("Error when emitting other things than an array or object"),
+    ErrorMessage = <<"The key must be an array of numbers which might"
+                     "have a GeoJSON geometry as first element.">>,
+    throw_error_test(
+      <<"function(doc, meta) {emit(\"foo\", doc.value);}">>,
+      {emit_key, ErrorMessage},
+      "Not emitting array or GeoJSON error was thrown (a)"),
+    throw_error_test(
+      <<"function(doc, meta) {emit(12345, doc.value);}">>,
+      {emit_key, ErrorMessage},
+      "Not emitting array or GeoJSON error was thrown (b)"),
+    throw_error_test(
+      <<"function(doc, meta) {emit(null, doc.value);}">>,
+      {emit_key, ErrorMessage},
+      "Not emitting array or GeoJSON error was thrown (c)"),
+    throw_error_test(
+      <<"function(doc, meta) {emit(true, doc.value);}">>,
+      {emit_key, ErrorMessage},
+      "Not emitting array or GeoJSON error was thrown (d)"),
+    throw_error_test(
+      <<"function(doc, meta) {emit(undefined, doc.value);}">>,
+      {emit_key, ErrorMessage},
+      "Not emitting array or GeoJSON error was thrown (e)").
 
 
 test_spatial_emit_error_nan_single() ->

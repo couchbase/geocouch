@@ -787,12 +787,11 @@ pid_to_sig_ets(dev) ->
 -spec maybe_process_key(binary()) -> {[[number()]], geom() | nil}.
 maybe_process_key(Key0) ->
     Key = ?JSON_DECODE(Key0),
-    case is_tuple(Key) of
+    case Key of
     % Legacy API when only a geometry is given
-    true ->
-        {Geom} = Key,
+    {Geom} ->
         process_geometry(Geom);
-    false ->
+    [_ | _] ->
         case Key of
         [{Geom} | T] ->
             {Bbox, Geom2} = process_geometry(Geom),
@@ -824,7 +823,10 @@ maybe_process_key(Key0) ->
                 [SingleValue, SingleValue]
             end,
         Key2),
-        {Key3, Geom2}
+        {Key3, Geom2};
+    _ ->
+        throw({emit_key, <<"The key must be an array of numbers which might"
+                           "have a GeoJSON geometry as first element.">>})
     end.
 
 
