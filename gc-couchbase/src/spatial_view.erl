@@ -35,6 +35,8 @@
          pid_to_sig_ets/1]).
 % For the couch_set_view like calls
 -export([get_spatial_view/4]).
+% For couch_db
+-export([validate_ddoc/1]).
 
 
 -include_lib("couch_spatial.hrl").
@@ -991,3 +993,67 @@ view_insert_doc_query_results(DocId, PartitionId, [ResultKVs | RestResults],
 -spec query_args_view_name(#spatial_query_args{}) -> binary().
 query_args_view_name(#spatial_query_args{view_name = ViewName}) ->
     ViewName.
+
+
+-spec validate_ddoc(#doc{}) -> ok.
+validate_ddoc(#doc{body = {Body}}) ->
+    Spatial = couch_util:get_value(<<"spatial">>, Body, {[]}),
+    case Spatial of
+    {L} when is_list(L) ->
+        ok;
+    _ ->
+        throw({error, <<"The field `spatial' is not a json object.">>})
+    end,
+    lists:foreach(
+        fun({SpatialName, Value}) ->
+            validate_spatial_definition(SpatialName, Value)
+        end,
+        element(1, Spatial)).
+
+
+-spec validate_spatial_definition(binary(), binary()) -> ok.
+validate_spatial_definition(<<"">>, _) ->
+    throw({error, <<"Spatial view name cannot be an empty string">>});
+validate_spatial_definition(SpatialName, SpatialDef) when
+        is_binary(SpatialDef) ->
+    validate_spatial_name(SpatialName, iolist_to_binary(io_lib:format(
+        "Spatial view name `~s` cannot have leading or trailing whitespace",
+        [SpatialName]))),
+    validate_spatial_function(SpatialName, SpatialDef);
+validate_spatial_definition(SpatialName, _) ->
+    ErrorMsg = io_lib:format("Value for spatial view `~s' is not "
+                             "a string.", [SpatialName]),
+    throw({error, iolist_to_binary(ErrorMsg)}).
+
+
+% Make sure the view name doesn't contain leading or trailing whitespace
+% (space, tab, newline or carriage return)
+-spec validate_spatial_name(binary(), binary()) -> ok.
+validate_spatial_name(<<" ", _Rest/binary>>, ErrorMsg) ->
+    throw({error, ErrorMsg});
+validate_spatial_name(<<"\t", _Rest/binary>>, ErrorMsg) ->
+    throw({error, ErrorMsg});
+validate_spatial_name(<<"\n", _Rest/binary>>, ErrorMsg) ->
+    throw({error, ErrorMsg});
+validate_spatial_name(<<"\r", _Rest/binary>>, ErrorMsg) ->
+    throw({error, ErrorMsg});
+validate_spatial_name(Bin, ErrorMsg) when size(Bin) > 1 ->
+    Size = size(Bin) - 1 ,
+    <<_:Size/binary, Trailing/bits>> = Bin,
+    % Check for trailing whitespace
+    validate_spatial_name(Trailing, ErrorMsg);
+validate_spatial_name(_, _) ->
+    ok.
+
+
+-spec validate_spatial_function(binary(), binary()) -> ok.
+validate_spatial_function(SpatialName, SpatialDef) ->
+    case mapreduce:start_map_context(spatial_view, [SpatialDef]) of
+    {ok, _Ctx} ->
+        ok;
+    {error, Reason} ->
+        ErrorMsg = io_lib:format("Syntax error in the spatial function of"
+                                 " the spatial view `~s': ~s",
+                                 [SpatialName, Reason]),
+        throw({error, iolist_to_binary(ErrorMsg)})
+    end.
