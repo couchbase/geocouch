@@ -999,16 +999,30 @@ query_args_view_name(#spatial_query_args{view_name = ViewName}) ->
 validate_ddoc(#doc{body = {Body}}) ->
     Spatial = couch_util:get_value(<<"spatial">>, Body, {[]}),
     case Spatial of
-    {L} when is_list(L) ->
+    {Views} when is_list(Views) ->
         ok;
     _ ->
+        Views = [],
         throw({error, <<"The field `spatial' is not a json object.">>})
+    end,
+    HasMapreduce = case couch_util:get_value(<<"views">>, Body, {[]}) of
+    {[]} ->
+        false;
+    _ ->
+        true
+    end,
+    case length(Views) > 0 andalso HasMapreduce of
+    true ->
+        throw({error, <<"A design document may only contain mapreduce *or* "
+            "spatial views">>});
+    false ->
+        ok
     end,
     lists:foreach(
         fun({SpatialName, Value}) ->
             validate_spatial_definition(SpatialName, Value)
         end,
-        element(1, Spatial)).
+        Views).
 
 
 -spec validate_spatial_definition(binary(), binary()) -> ok.
