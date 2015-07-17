@@ -60,7 +60,6 @@ add_remove(Fd, Pos, TargetTreeHeight, AddKeyValues, KeysToRemove) ->
         nil -> 0;
         _ -> TargetTreeHeight
     end,
-    T1 = now(),
 
 %    {NewPos2, TreeHeight} = lists:foldl(fun({{Mbr, DocId}, Value}, {CurPos, _}) ->
 %        %io:format("vtree: add (~p:~p): {~p,~p}~n", [Fd, CurPos, DocId, Value]),
@@ -81,7 +80,6 @@ add_remove(Fd, Pos, TargetTreeHeight, AddKeyValues, KeysToRemove) ->
     end, [], AddKeyValues),
     {ok, NewPos2, TreeHeight} = vtree_bulk:bulk_load(
             Fd, NewPos, NewTargetTreeHeight, AddKeyValues2),
-    ?LOG_DEBUG("It took: ~ps~n", [timer:now_diff(now(), T1)/1000000]),
     ?LOG_DEBUG("Tree height: ~p~n", [TreeHeight]),
     {ok, NewPos2, TreeHeight}.
     %{ok, 0}.
