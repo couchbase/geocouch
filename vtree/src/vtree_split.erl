@@ -285,7 +285,15 @@ create_split_candidates(A, [], 0, FillMax, []) ->
     ?LOG_ERROR("Warning: there is a node that is bigger than the maximum "
                "chunk threshold (~p). Increase the chunk threshold.",
                [FillMax]),
-    [vtree_modify:get_overflowing_subset(FillMax, A)];
+    case vtree_modify:get_overflowing_subset(FillMax, A) of
+        % The very last node lead to the overflow, hence the second partition
+        % is empty, but split candidates must be divided into two partitions
+        % that contain at least one item each.
+        {A, []} ->
+            [lists:split(length(A) - 1, A)];
+        Else ->
+            [Else]
+    end;
 % No valid split candidates were found. Instead of returning an error, we
 % relax the minimum filled condition to zero. This case should rarely happen
 % (only in very extreme cases). For example if you have two nodes, one with a

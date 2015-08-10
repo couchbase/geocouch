@@ -19,7 +19,7 @@
 
 main(_) ->
     code:add_pathz(filename:dirname(escript:script_name())),
-    etap:plan(93),
+    etap:plan(95),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -568,7 +568,22 @@ test_create_split_candidates() ->
             "guarantee is violated (b)"),
     etap:ok(?ext_size(Overflow6) > Max7,
             "The first partition of the split candidate is *as expected* "
-            "bigger than the maximum chunk threshold (b)").
+            "bigger than the maximum chunk threshold (b)"),
+
+    % MB-15975
+    Nodes7 = [Node1, {b, "this is again a huge node"}],
+    Min8 = ?ext_size(Node1),
+    Max8 = ?ext_size(Nodes7)/4,
+    [Candidate7] = ?MOD:create_split_candidates(Nodes7, Min8 , Max8),
+    {Overflow7, _} = Candidate7,
+    etap:is(Candidate7, {[Node1], [{b, "this is again a huge node"}]},
+            "The split candidate for the case when the maximum chunk "
+            "threshold guarantee is violated and the overflow happens after "
+            "the last node"),
+    etap:ok(?ext_size(Overflow7) < Max8,
+            "The first partition of the split candidate is *not* bigger than "
+            "the maximum chunk threshold as the node that made it overflow "
+            "was moved to the other partition").
 
 
 test_nodes_perimeter() ->
