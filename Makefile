@@ -2,6 +2,10 @@ ERL=erl
 VERSION=$(shell git describe)
 GEOCOUCH_PLT ?= ../geocouch.plt
 
+COMPILER_OPTIONS=$(shell $(ERL) -noinput +B -eval 'Options = case os:getenv("ERL_COMPILER_OPTIONS") of false ->[]; Else -> {ok,Tokens,_} = erl_scan:string(Else ++ "."),{ok,Term} = erl_parse:parse_term(Tokens), Term end, io:format("~p~n", [[{i, filename:absname("${COUCH_SRC}")}] ++ Options]), halt(0).')
+COMPILER_OPTIONS_MAKE_CHECK=$(shell $(ERL) -noinput +B -eval 'Options = case os:getenv("ERL_COMPILER_OPTIONS") of false -> []; Else -> {ok,Tokens,_} = erl_scan:string(Else ++ "."),{ok,Term} = erl_parse:parse_term(Tokens), Term end, io:format("~p~n", [[{i, filename:absname("${COUCH_SRC}")},{d, makecheck}] ++ Options]), halt(0).')
+
+
 couchbase couchbase-check: REBAR_CONFIG := rebar_couchbase.config
 couchdb couchdb-check: REBAR_CONFIG := rebar_couchdb.config
 
@@ -21,10 +25,10 @@ couchdb: compile
 couchdb-check: do-check clean-again
 
 compile:
-	./rebar -C $(REBAR_CONFIG) compile
+	ERL_COMPILER_OPTIONS='$(COMPILER_OPTIONS)' ./rebar -C $(REBAR_CONFIG) compile
 
 compileforcheck:
-	./rebar -C $(REBAR_CONFIG) -D makecheck compile
+	ERL_COMPILER_OPTIONS='$(COMPILER_OPTIONS_MAKE_CHECK)' ./rebar -C $(REBAR_CONFIG) compile
 
 runtests:
 	ERL_LIBS=. ERL_FLAGS="-pa ${COUCH_SRC} -pa ${COUCH_SRC}/../etap -pa ${COUCH_SRC}/../snappy -pa ${COUCH_SRC}/../../test/etap -pa ${COUCH_SRC}/../couch_set_view/ebin -pa ${COUCH_SRC}/../mochiweb -pa ${COUCH_SRC}/../lhttpc -pa ${COUCH_SRC}/../erlang-oauth -pa ${COUCH_SRC}/../ejson -pa ${COUCH_SRC}/../mapreduce" prove ./vtree/test/*.t
