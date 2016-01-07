@@ -72,7 +72,15 @@ After that you can compile GeoCouch from within the GeoCouch directory:
 
 Now copy the configuration file into your Apache CouchDB directory:
 
-    cp etc/couchdb/default.d/geocouch.ini <path-to-couchdb-source>/etc/couchdb/default.d/
+    cp gc-couchdb/etc/couchdb/default.d/geocouch.ini <path-to-couchdb-source>/etc/couchdb/default.d/
+
+
+### Running Apache CouchDB
+
+Apache CouchDB needs the compiled geocouch in the include path. You can either copy `gc-couchdb` and `vtree` into `<path-to-couchdb-source>/src/` or set the `ERL_LIBS` environment variable to the GeoCouch root directory.
+
+cd <path-to-couchdb-source>
+ERL_LIBS="<path-to-geocouch-source>" ./utils/run
 
 
 ### Running tests
