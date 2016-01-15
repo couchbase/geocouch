@@ -80,7 +80,8 @@ write_kvs(Group, TmpFiles0, ViewKVs) ->
         fun({#set_view{id_num = Id}, KvList}, {AccCount, TmpFiles}) ->
             TmpFileInfo0 = dict:fetch(Id, TmpFiles),
             Mbb = calc_mbb(KvList),
-            TmpFileInfo = TmpFileInfo0#set_view_tmp_file_info{extra = Mbb},
+            Mbb2 = merge_mbbs(Mbb, TmpFileInfo0#set_view_tmp_file_info.extra),
+            TmpFileInfo = TmpFileInfo0#set_view_tmp_file_info{extra = Mbb2},
 
             KvBins = convert_primary_index_kvs_to_binary(KvList, Group, []),
             ViewRecords = lists:foldr(
@@ -110,6 +111,19 @@ calc_mbb(KvList) ->
                  vtree_util:max({KeyMax, MbbMax}, Less)]
             end, lists:zip(Key, Mbb))
     end, nil, KvList).
+
+
+-spec merge_mbbs([[number()]] | nil, [[number()]] | nil) -> [[number()]] | nil.
+merge_mbbs(nil, MbbB) ->
+    MbbB;
+merge_mbbs(MbbA, nil) ->
+    MbbA;
+merge_mbbs(MbbA, MbbB) ->
+    Less = fun(A, B) -> A < B end,
+    lists:map(fun({[MinA, MaxA], [MinB, MaxB]}) ->
+        [vtree_util:min({MinA, MinB}, Less),
+         vtree_util:max({MaxA, MaxB}, Less)]
+    end, lists:zip(MbbA, MbbB)).
 
 
 % Convert the key from a list of 2-tuples to a list of raw doubles
