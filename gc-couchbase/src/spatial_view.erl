@@ -99,7 +99,7 @@ write_kvs(Group, TmpFiles0, ViewKVs) ->
 
 
 % Calculates the enclosing multidimensional bounding box
--spec calc_mbb([{{[[number()]], binary()}, binary()}]) -> [[number()]].
+-spec calc_mbb([{{[[number()]], binary()}, binary()}]) -> [[number()]] | nil.
 calc_mbb(KvList) ->
     Less = fun(A, B) -> A < B end,
     lists:foldl(fun
