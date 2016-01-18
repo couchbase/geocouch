@@ -334,7 +334,7 @@ get_state(View) ->
 get_vtree_state(Vt) ->
     case Vt#vtree.root of
     nil ->
-        <<0:?POINTER_BITS, 0:?TREE_SIZE_BITS>>;
+        nil;
     #kp_node{} = Root ->
         #kp_node{
             childpointer = Pointer,
@@ -358,8 +358,6 @@ set_state(View, State) ->
 set_vtree_state(Vt, Root0) ->
     Root = case Root0 of
     nil ->
-        nil;
-    <<0:?POINTER_BITS, 0:?TREE_SIZE_BITS>> ->
         nil;
     <<Pointer:?POINTER_BITS, Size:?TREE_SIZE_BITS, Rest/binary>> ->
         <<_NumMbb:16, BinMbb/binary>> = Rest,
