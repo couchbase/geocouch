@@ -16,8 +16,7 @@
 -compile(nowarn_deprecated_type).
 
 % For the updater
--export([write_kvs/3, finish_build/3, get_state/1,
-         start_reduce_context/1, end_reduce_context/1, view_name/2,
+-export([write_kvs/3, finish_build/3, get_state/1, view_name/2,
          update_spatial/3, view_bitmap/1]).
 -export([encode_key_docid/2]).
 -export([convert_primary_index_kvs_to_binary/3]).
@@ -378,16 +377,6 @@ set_vtree_state(Vt, Root0) ->
 % filtered out on query time
 view_bitmap(_View) ->
     0.
-
-
-% There is not reduce context for spatial indexes, hence it's a no-op
-start_reduce_context(_Group) ->
-    ok.
-
-% There is not reduce context for spatial indexes, hence it's a no-op
-end_reduce_context(_Group) ->
-    ok.
-
 
 view_name(#set_view_group{views = SetViews}, ViewPos) ->
     View = (lists:nth(ViewPos, SetViews))#set_view.indexer,
