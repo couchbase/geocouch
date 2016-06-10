@@ -89,6 +89,7 @@ cleanup(Db) ->
 
 
 spatial_fold(View, Args, Callback, UserAcc) ->
+    % TODO vmx 2016-06-10: Remove `bounds` completely
     #spatial_args{
         limit = Limit,
         skip = Skip,
@@ -106,7 +107,13 @@ spatial_fold(View, Args, Callback, UserAcc) ->
     finish_fold(Acc2, []).
 
 
-fold(Index, FoldFun, InitAcc, Mbb, Bounds) ->
+fold(Index, FoldFun, InitAcc, Range, _Bounds) ->
+    #spatial{
+       vtree = #vtree{
+           root = Root
+       } = Vt
+    } = Index,
+
     WrapperFun = fun(Node, Acc) ->
         % NOTE vmx 2012-11-28: in Apache CouchDB the body is stored as
         %     Erlang terms
@@ -115,17 +122,20 @@ fold(Index, FoldFun, InitAcc, Mbb, Bounds) ->
             [Node#kv_node{body=Value}], []),
         fold_fun(FoldFun, Expanded, Acc)
     end,
-    case Mbb of
+
+    case Root of
     nil ->
-        vtree_search:all(Index#spatial.vtree, WrapperFun, InitAcc);
-    Mbb ->
-        Mbbs = case Bounds of
-        nil ->
-            [Mbb];
-        _ ->
-            couch_spatial_util:split_bbox_if_flipped(Mbb, Bounds)
-        end,
-        vtree_search:search(Index#spatial.vtree, Mbbs, WrapperFun, InitAcc)
+        InitAcc;
+    #kp_node{key = Key} ->
+        case Range of
+        [] ->
+            vtree_search:all(Index#spatial.vtree, WrapperFun, InitAcc);
+        _ when length(Range) =/= length(Key) ->
+            throw(<<"The query range must have the same "
+                "dimensionality as the index.">>);
+        Range ->
+            vtree_search:search(Vt, [Range], WrapperFun, InitAcc)
+        end
     end.
 
 
