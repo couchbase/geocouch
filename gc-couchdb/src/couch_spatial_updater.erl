@@ -325,10 +325,10 @@ process_result([{Geo}|[Value]]) ->
 process_range(Range) ->
     lists:map(
         fun([Min, Max]) ->
-            {Min, Max};
+            [Min, Max];
         % A single value means that the mininum and the maximum are the same
         (Single) ->
-            {Single, Single}
+            [Single, Single]
     end, Range).
 
 
