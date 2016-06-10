@@ -163,9 +163,33 @@ parse_qs(Key, Val, Args) ->
     case Key of
     "" ->
         Args;
+    % bbox is for legacy support. Use start_range and end_range instead.
     "bbox" ->
-        {W, S, E, N} = list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]")),
-        Args#spatial_args{bbox=[{W, E}, {S, N}]};
+        Error = iolist_to_binary(
+                  [<<"bounding box was invalid, it needs to be bbox=W,S,E,N "
+                     "where each direction is a number. "
+                     "Your bounding box was `">>,
+                   Val, <<"`">>]),
+        try
+            {W, S, E, N} = list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]")),
+            case lists:all(fun(Num) -> is_number(Num) end, [W, S, E, N]) of
+            true ->
+                ok;
+            false ->
+                throw({query_parse_error, Error})
+            end,
+            case W =< E andalso S =< N of
+            true ->
+                Args#spatial_args{range=[{W, E}, {S, N}]};
+            false ->
+                throw({query_parse_error, Error})
+            end
+        catch
+        error:{badmatch, _} ->
+            throw({query_parse_error, Error});
+        throw:{invalid_json, _} ->
+            throw({query_parse_error, Error})
+        end;
     "stale" when Val == "ok" ->
         Args#spatial_args{stale=ok};
     "stale" when Val == "update_after" ->
@@ -185,20 +209,23 @@ parse_qs(Key, Val, Args) ->
     "skip" ->
         Args#spatial_args{skip=parse_int(Val)};
     "start_range" ->
+        Decoded = parse_range(Val),
         case Args#spatial_args.range of
-        nil ->
-            Args#spatial_args{range=?JSON_DECODE(Val)};
+        [] ->
+            Args#spatial_args{range=Decoded};
         % end_range already set the range
         Range ->
-            Args#spatial_args{range=merge_range(?JSON_DECODE(Val), Range)}
+            Args#spatial_args{range=merge_range(Decoded, Range)}
         end;
+
     "end_range" ->
+        Decoded = parse_range(Val),
         case Args#spatial_args.range of
-        nil ->
-            Args#spatial_args{range=?JSON_DECODE(Val)};
+        [] ->
+            Args#spatial_args{range=Decoded};
         % start_range already set the range
         Range ->
-            Args#spatial_args{range=merge_range(Range, ?JSON_DECODE(Val))}
+            Args#spatial_args{range=merge_range(Range, Decoded)}
         end;
     _ ->
         BKey = list_to_binary(Key),
@@ -218,7 +245,28 @@ parse_int(Val) ->
     end.
 
 
+parse_range(Val) ->
+    Decoded = ?JSON_DECODE(Val),
+    case is_list(Decoded) andalso
+        lists:all(fun(Num) -> is_number(Num) orelse Num =:= null end, Decoded) of
+    true ->
+        Decoded;
+    false ->
+        throw({query_parse_error,
+            iolist_to_binary(
+              [<<"range must be an array containing numbers or `null`s. "
+                 "Your range was `">>,
+               Val, "`"])})
+    end.
+
+
 % Merge the start_range and stop_range values into one list
+merge_range(RangeA, RangeB) when length(RangeA) =/= length(RangeB) ->
+    Msg = io_lib:format(
+            "start_range and end_range must have the same number of "
+            "dimensions. Your ranges were ~w and ~w",
+            [RangeA, RangeB]),
+    throw({query_parse_error, ?l2b(Msg)});
 merge_range(RangeA, RangeB) ->
     lists:zipwith(
         % `null` is a wildcard which will return all values

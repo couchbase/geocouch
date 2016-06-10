@@ -56,7 +56,8 @@
     bounds = nil,
     limit = 10000000000, % Huge number to simplify logic
     skip = 0,
-    range = nil,
+    % a multidimensional bounding box
+    range = [] :: [{number()|nil, number()|nil}],
     extra,
     preflight_fun
 }).

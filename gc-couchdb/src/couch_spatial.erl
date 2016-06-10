@@ -48,7 +48,7 @@ query_view_count(Db, DDoc, ViewName, Args) ->
         Db, DDoc, ViewName, Args),
 
     case Args2#spatial_args.range of
-    nil ->
+    [] ->
         vtree_search:count_all(View#spatial.vtree);
     Mbb ->
         vtree_search:count_search(View#spatial.vtree, [Mbb])
