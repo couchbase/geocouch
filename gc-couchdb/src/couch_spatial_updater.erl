@@ -389,10 +389,10 @@ extract_bbox(Type, Coords, InitBbox) ->
 bbox([], Range) ->
     Range;
 bbox([[X, Y]|Rest], nil) ->
-    bbox(Rest, [{X, X}, {Y, Y}]);
+    bbox(Rest, [[X, X], [Y, Y]]);
 bbox([Coords|Rest], Range) ->
     Range2 = lists:zipwith(
-        fun(Coord, {Min, Max}) ->
+        fun(Coord, [Min, Max]) ->
             {erlang:min(Coord, Min), erlang:max(Coord, Max)}
         end, Coords, Range),
     bbox(Rest, Range2).
