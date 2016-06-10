@@ -287,7 +287,10 @@ couchTests.spatial = function(debug) {
         { "type": "Point", "coordinates": [100.0, 0.0] },
         { "type": "LineString", "coordinates": [ [101.0, 0.0], [102.0, 1.0] ]}
       ]
-    }}
+    }},
+    {"_id": "geoPolygonWithBbox", "geom": { "type": "Polygon", "coordinates": [
+      [ [55100.0, 550.0], [55101.0, 550.0], [55100.0, 551.0], [55100.0, 550.0] ]
+    ], "bbox": [55100.0, 550.0, 55101.0, 551.0]}}
   ];
   db.bulkSave(geoJsonDocs);
 

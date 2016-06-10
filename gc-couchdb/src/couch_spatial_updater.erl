@@ -358,8 +358,8 @@ process_geometry(Geo) ->
                 case proplists:get_value(<<"bbox">>, Geo) of
                 undefined ->
                     extract_bbox(Type2, Coords, CurBbox);
-                Bbox2 ->
-                    Bbox2
+                [W, S, E, N] ->
+                   [{W, E}, {S, N}]
                 end
             end, nil, Geometries);
         _ ->
@@ -367,8 +367,8 @@ process_geometry(Geo) ->
             case proplists:get_value(<<"bbox">>, Geo) of
             undefined ->
                 extract_bbox(Type, Coords);
-            Bbox2 ->
-                Bbox2
+            [W, S, E, N] ->
+               [{W, E}, {S, N}]
             end
         end
     catch _:badarg ->
