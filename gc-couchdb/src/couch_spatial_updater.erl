@@ -416,7 +416,7 @@ geocouch_to_geojsongeom({Type, Coords}) ->
     Coords2 = case Type of
     'GeometryCollection' ->
         Geoms = [geocouch_to_geojsongeom(C) || C <- Coords],
-        {"geometries", Geoms};
+        {<<"geometries">>, Geoms};
     _ ->
         {<<"coordinates">>, Coords}
     end,
