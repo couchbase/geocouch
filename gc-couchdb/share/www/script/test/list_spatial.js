@@ -53,17 +53,17 @@ couchTests.list_spatial = function(debug) {
       simpleForm: stringFun(function(head, req) {
         log("simpleForm");
         send('<ul>');
-        var row, row_number = 0, prevBbox, firstBbox = null;
+        var row, row_number = 0, prevKey, firstKey = null;
         while (row = getRow()) {
           row_number += 1;
-          if (!firstBbox) firstBbox = row.bbox;
-          prevBbox = row.bbox;
-          send('\n<li>Bbox: '+row.bbox
+          if (!firstKey) firstKey = row.key;
+          prevKey = row.key;
+          send('\n<li>Key: '+row.key
           +' Value: '+row.value
           +' LineNo: '+row_number+'</li>');
         }
-        return '</ul><p>FirstBbox: '+ firstBbox +
-          ' LastBbox: '+ prevBbox+'</p>';
+        return '</ul><p>FirstKey: '+ firstKey +
+          ' LastKey: '+ prevKey+'</p>';
       }),
       acceptSwitch: stringFun(function(head, req) {
         // respondWith takes care of setting the proper headers
@@ -73,8 +73,8 @@ couchTests.list_spatial = function(debug) {
           var row, num = 0;
           while (row = getRow()) {
             num ++;
-            send('\n<li>Bbox: '
-              +row.bbox+' Value: '+row.value
+            send('\n<li>Key: '
+              +row.key+' Value: '+row.value
               +' LineNo: '+num+'</li>');
           }
 
@@ -89,7 +89,7 @@ couchTests.list_spatial = function(debug) {
           while (row = getRow()) {
             var entry = new XML('<entry/>');
             entry.id = row.id;
-            entry.title = row.bbox;
+            entry.title = row.key;
             entry.content = row.value;
             send(entry);
           }
@@ -173,7 +173,7 @@ couchTests.list_spatial = function(debug) {
             'fun(Head, {Req}) -> ' +
             '  Send(<<"[">>), ' +
             '  Fun = fun({Row}, Sep) -> ' +
-            '    Val = proplists:get_value(<<"bbox">>, Row, 23), ' +
+            '    Val = proplists:get_value(<<"key">>, Row, 23), ' +
             '    Send(list_to_binary(Sep ++ ' +
             '         lists:flatten(io_lib:format("~p", [Val])))), ' +
             '    {ok, ","} ' +
@@ -221,7 +221,7 @@ couchTests.list_spatial = function(debug) {
   T(resp.rows.length == 10);
   T(/"id":"9"/.test(xhr.responseText));
   T(/"value":"9"/.test(xhr.responseText));
-  T(/"bbox":\[-10,33,-10,33\]/.test(xhr.responseText));
+  T(/"key":\[\[-10,-10\],\[33,33\]\]/.test(xhr.responseText));
   T(/"geometry":\{"type":"Point","coordinates":\[-10,33\]\}/.test(
     xhr.responseText));
 
@@ -361,9 +361,9 @@ couchTests.list_spatial = function(debug) {
   var url = url_pre + "simpleForm/indexes/basicIndex" + url_bbox;
   xhr = CouchDB.request("GET", url);
   T(xhr.status == 200, "multiple design docs.");
-  T(/-10,29,-10,29/.test(xhr.responseText));
-  T(/-10,33,-10,33/.test(xhr.responseText));
-  T(/-21,26,-21,26/.test(xhr.responseText));
+  T(/-10,-10,29,29/.test(xhr.responseText));
+  T(/-10,-10,33,33/.test(xhr.responseText));
+  T(/-21,-21,26,26/.test(xhr.responseText));
 
   var erlViewTest = function() {
     T(db.save(erlListDoc).ok);
@@ -373,9 +373,9 @@ couchTests.list_spatial = function(debug) {
     T(xhr.status == 200, "multiple languages in design docs.");
     var list = JSON.parse(xhr.responseText);
     T(list.length == 11);
-    T(/-10,21,-10,21/.test(xhr.responseText));
-    T(/-10,31,-10,31/.test(xhr.responseText));
-    T(/-21,26,-21,26/.test(xhr.responseText));
+    T(/[-10.0,-10.0],[21.0,21.0]/.test(xhr.responseText));
+    T(/[-10.0,-10.0],[31.0,31.0]/.test(xhr.responseText));
+    T(/[-21.0,-21.0],[26.0,26.0]/.test(xhr.responseText));
   };
 
   run_on_modified_server([{
@@ -398,7 +398,8 @@ couchTests.list_spatial = function(debug) {
   xhr = CouchDB.request("GET", url_pre + "properties/basicIndex" + url_bbox);
   T(xhr.status == 200, "properties");
   resp = JSON.parse(xhr.responseText);
-  TEquals(4, resp.bbox.length);
+  TEquals(2, resp.key.length);
+  TEquals(2, resp.key[0].length);
   TEquals("Point", resp.geometry.type);
   TEquals(2, resp.geometry.coordinates.length);
 };
