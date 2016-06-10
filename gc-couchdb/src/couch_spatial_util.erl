@@ -22,7 +22,7 @@
 -export([get_row_count/1]).
 -export([validate_args/1]).
 -export([expand_dups/2]).
--export([row_to_ejson/1, split_bbox_if_flipped/2]).
+-export([row_to_ejson/1]).
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
@@ -179,7 +179,6 @@ validate_args(Args) ->
 
     #spatial_args{
         bbox = Bbox,
-        bounds = Bounds,
         range = Range
     } = Args,
 
@@ -201,25 +200,9 @@ validate_args(Args) ->
     case Bbox =:= nil orelse
         length(Bbox) == 2 of
     true ->
-        case {Bbox, Bounds} of
-        % Coordinates of the bounding box are flipped and no bounds for the
-        % cartesian plane were set
-        {[{W, E}, {S, N}], nil} when E < W; N < S ->
-            Msg2 = <<"Coordinates of the bounding box are flipped, but no "
-                    "bounds for the cartesian plane were specified "
-                    "(use the `plane_bounds` parameter)">>,
-            parse_error(Msg2);
-        _ ->
-            ok
-        end;
+        ok;
     false ->
         parse_error(<<"`bbox` must have 2 dimensions.">>)
-    end,
-
-    case Bounds =:= nil orelse
-            length(Bounds) == 2 of
-        true -> ok;
-        false -> parse_error(<<"`plane_bounds` must have 2 dimensions.">>)
     end,
 
     case Args#spatial_args.limit > 0 of
@@ -353,37 +336,3 @@ row_to_ejson({Mbb, DocId, Geom, Value}) ->
         {<<"id">>, DocId},
         {<<"key">>, [[Min, Max] || {Min, Max} <- Mbb]}
     ] ++ GeomData ++ [{<<"value">>, Value}]}.
-
-
-split_bbox_if_flipped([{W, E}, {S, N}]=Bbox, [{BW, BE}, {BS, BN}]=_Bounds) ->
-    case bbox_is_flipped(Bbox) of
-    {flipped, Direction} ->
-        Bboxes = case Direction of
-        both ->
-            [[{W, BE}, {S, BN}], [{W, BE}, {BS, N}],
-                [{BW, E}, {S, BN}], [{BW, E}, {BS, N}]];
-        x ->
-            [[{W, BE}, {S, N}], [{BW, E}, {S, N}]];
-        y ->
-            [[{W, E}, {S, BN}], [{W, E}, {BS, N}]]
-        end,
-        % if boxes are still flipped, they are out of the bounds
-        lists:foldl(fun(B, Acc) ->
-           case bbox_is_flipped(B) of
-               {flipped, _} -> Acc;
-               not_flipped -> [B|Acc]
-           end
-        end, [], Bboxes);
-    not_flipped ->
-        [Bbox]
-    end.
-
-
-bbox_is_flipped([{W, E}, {S, N}]) when E < W, N < S ->
-    {flipped, both};
-bbox_is_flipped([{W, E}, _]) when E < W ->
-    {flipped, x};
-bbox_is_flipped([_, {S, N}]) when N < S ->
-    {flipped, y};
-bbox_is_flipped(_Bbox) ->
-    not_flipped.

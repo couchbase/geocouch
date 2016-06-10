@@ -201,9 +201,6 @@ parse_qs(Key, Val, Args) ->
         Args#spatial_args{count=true};
     "count" ->
         throw({query_parse_error, <<"count only available as count=true">>});
-    "plane_bounds" ->
-        {W, S, E, N} = list_to_tuple(?JSON_DECODE("[" ++ Val ++ "]")),
-        Args#spatial_args{bounds=[{W, E}, {S, N}]};
     "limit" ->
         Args#spatial_args{limit=parse_int(Val)};
     "skip" ->

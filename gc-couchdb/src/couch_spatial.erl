@@ -89,11 +89,9 @@ cleanup(Db) ->
 
 
 spatial_fold(View, Args, Callback, UserAcc) ->
-    % TODO vmx 2016-06-10: Remove `bounds` completely
     #spatial_args{
         limit = Limit,
         skip = Skip,
-        bounds = Bounds,
         range = Range
     } = Args,
     Acc = #acc{
@@ -103,11 +101,11 @@ spatial_fold(View, Args, Callback, UserAcc) ->
         user_acc = UserAcc,
         update_seq = View#spatial.update_seq
     },
-    Acc2 = fold(View, fun do_fold/2, Acc, Range, Bounds),
+    Acc2 = fold(View, fun do_fold/2, Acc, Range),
     finish_fold(Acc2, []).
 
 
-fold(Index, FoldFun, InitAcc, Range, _Bounds) ->
+fold(Index, FoldFun, InitAcc, Range) ->
     #spatial{
        vtree = #vtree{
            root = Root

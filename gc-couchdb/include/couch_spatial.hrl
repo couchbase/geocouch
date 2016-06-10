@@ -52,8 +52,6 @@
     bbox = nil,
     stale = false,
     count = false,
-    % Bounds of the cartesian plane
-    bounds = nil,
     limit = 10000000000, % Huge number to simplify logic
     skip = 0,
     % a multidimensional bounding box
