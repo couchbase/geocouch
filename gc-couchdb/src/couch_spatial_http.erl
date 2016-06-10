@@ -148,10 +148,16 @@ row_to_json(Row) ->
 
 
 parse_qs(Req) ->
-    lists:foldl(fun({K, V}, Acc) ->
+    QueryArgs = lists:foldl(fun({K, V}, Acc) ->
         parse_qs(K, V, Acc)
-    end, #spatial_args{}, couch_httpd:qs(Req)).
-
+    end, #spatial_args{}, couch_httpd:qs(Req)),
+    lists:foreach(fun
+        ({_, _}) -> ok;
+        (_) ->
+             throw({query_parse_error,
+                 <<"start_range and end_range must be specified">>})
+    end, QueryArgs#spatial_args.range),
+    QueryArgs.
 
 parse_qs(Key, Val, Args) ->
     case Key of
