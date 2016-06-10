@@ -325,21 +325,21 @@ process_result([{Geo}|[Value]]) ->
 process_range(Range) ->
     lists:map(
         fun([]) ->
-            throw({error, <<"A range cannot be an empty array.">>});
+            throw({emit_key, <<"A range cannot be an empty array.">>});
         ([_SingleElementList]) ->
-            throw({error, <<"A range cannot be single element array.">>});
+            throw({emit_key, <<"A range cannot be single element array.">>});
         ([Min, Max]) when not (is_number(Min) andalso is_number(Max)) ->
-            throw({error, <<"Ranges must be numbers.">>});
+            throw({emit_key, <<"Ranges must be numbers.">>});
         ([Min, Max]) when Min > Max ->
-            throw({error, <<"The minimum of a range must be smaller than "
+            throw({emit_key, <<"The minimum of a range must be smaller than "
                             "the maximum.">>});
         ([Min, Max]) ->
             [Min, Max];
         (SingleValue) when is_tuple(SingleValue)->
-            throw({error, <<"A geometry is only allowed as the first "
+            throw({emit_key, <<"A geometry is only allowed as the first "
                             "element in the array.">>});
         (SingleValue) when not is_number(SingleValue)->
-            throw({error, <<"The values of the key must be numbers or "
+            throw({emit_key, <<"The values of the key must be numbers or "
                             "a GeoJSON geometry.">>});
         % A single value means that the mininum and the maximum are the same
         (SingleValue) ->
