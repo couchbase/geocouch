@@ -18,11 +18,8 @@
 
 -export([start_update/3, process_doc/3, finish_update/1]).
 
-% for output (couch_http_spatial, couch_http_spatial_list)
--export([geocouch_to_geojsongeom/1]).
-
 % for polygon search
--export([extract_bbox/2, geojsongeom_to_geocouch/1]).
+-export([extract_bbox/2]).
 
 -include("couch_db.hrl").
 -include("couch_spatial.hrl").
@@ -313,7 +310,7 @@ process_result([[{Geo}|Rest]|[Value]]) ->
 % The multidimensional case without a geometry
 process_result([MultiDim|[Value]]) when is_list(MultiDim) ->
     Tuples = process_range(MultiDim),
-    {Tuples, {nil, Value}};
+    {Tuples, {<<>>, Value}};
 % There old case when only two dimensions were supported
 process_result([{Geo}|[Value]]) ->
     {Bbox, Geom} = process_geometry(Geo),
@@ -377,7 +374,7 @@ process_geometry(Geo) ->
     catch _:badarg ->
         throw({emit_key, <<"The supplied geometry must be valid GeoJSON.">>})
     end,
-    Geom = geojsongeom_to_geocouch(Geo),
+    {ok, Geom} = wkb_writer:geojson_to_wkb({Geo}),
     {Bbox, Geom}.
 
 
@@ -415,28 +412,3 @@ bbox([Coords|Rest], Range) ->
             {erlang:min(Coord, Min), erlang:max(Coord, Max)}
         end, Coords, Range),
     bbox(Rest, Range2).
-
-
-% @doc Transforms a GeoJSON geometry (as Erlang terms), to an internal
-% structure
-geojsongeom_to_geocouch(Geom) ->
-    Type = proplists:get_value(<<"type">>, Geom),
-    Coords = case Type of
-    <<"GeometryCollection">> ->
-        Geometries = proplists:get_value(<<"geometries">>, Geom),
-        [geojsongeom_to_geocouch(G) || {G} <- Geometries];
-    _ ->
-        proplists:get_value(<<"coordinates">>, Geom)
-    end,
-    {binary_to_atom(Type, utf8), Coords}.
-
-% @doc Transforms internal structure to a GeoJSON geometry (as Erlang terms)
-geocouch_to_geojsongeom({Type, Coords}) ->
-    Coords2 = case Type of
-    'GeometryCollection' ->
-        Geoms = [geocouch_to_geojsongeom(C) || C <- Coords],
-        {<<"geometries">>, Geoms};
-    _ ->
-        {<<"coordinates">>, Coords}
-    end,
-    {[{<<"type">>, Type}, Coords2]}.

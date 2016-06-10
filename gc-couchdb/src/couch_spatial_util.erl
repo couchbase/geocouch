@@ -342,22 +342,12 @@ expand_dups([KV | Rest], Acc) ->
 
 
 row_to_ejson({Mbb, DocId, Geom, Value}) ->
-    % If there's no geometry in the output, there's no bbox to add
     GeomData = case Geom of
-    nil ->
+    <<>> ->
         [];
     _ ->
-        % XXX NOTE vmx 2012-11-28: Currently the first two dimensions are
-        %     expected to be the bounding box of the geometry
-        % XXX vmx 2012-11-28: I'm not sure if a bounding box should be
-        %     emitted at all. It's duplicated information you can get from
-        %     the key yourself.
-        {[{W, E}, {S, N}], _} = lists:split(2, Mbb),
-        [
-            {<<"bbox">>, [W, S, E, N]},
-            {<<"geometry">>,
-                couch_spatial_updater:geocouch_to_geojsongeom(Geom)}
-        ]
+        {ok, JsonGeom} = wkb_reader:wkb_to_geojson(Geom),
+        [{<<"geometry">>, JsonGeom}]
     end,
     {[
         {<<"id">>, DocId},
