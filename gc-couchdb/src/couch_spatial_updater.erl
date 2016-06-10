@@ -331,7 +331,7 @@ process_range(Range) ->
             throw({emit_key, <<"The minimum of a range must be smaller than "
                             "the maximum.">>});
         ([Min, Max]) ->
-            [Min, Max];
+            {Min, Max};
         (SingleValue) when is_tuple(SingleValue)->
             throw({emit_key, <<"A geometry is only allowed as the first "
                             "element in the array.">>});
@@ -340,7 +340,7 @@ process_range(Range) ->
                             "a GeoJSON geometry.">>});
         % A single value means that the mininum and the maximum are the same
         (SingleValue) ->
-             [SingleValue, SingleValue]
+             {SingleValue, SingleValue}
     end, Range).
 
 
@@ -405,10 +405,10 @@ extract_bbox(Type, Coords, InitBbox) ->
 bbox([], Range) ->
     Range;
 bbox([[X, Y]|Rest], nil) ->
-    bbox(Rest, [[X, X], [Y, Y]]);
+    bbox(Rest, [{X, X}, {Y, Y}]);
 bbox([Coords|Rest], Range) ->
     Range2 = lists:zipwith(
-        fun(Coord, [Min, Max]) ->
+        fun(Coord, {Min, Max}) ->
             {erlang:min(Coord, Min), erlang:max(Coord, Max)}
         end, Coords, Range),
     bbox(Rest, Range2).
