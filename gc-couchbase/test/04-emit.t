@@ -32,7 +32,7 @@ ddoc_id() -> <<"_design/test">>.
 main(_) ->
     test_util:init_code_path(),
 
-    etap:plan(44),
+    etap:plan(46),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -78,6 +78,10 @@ test_spatial_emit_geom_only() ->
               [{<<"geoLineString">>,
                 [[200.0, 201.0], [0.0, 2.0]]}],
               "LineString geometry was returned"},
+             {[{88200.0, 88200.4}, {-881.0, 881.0}],
+              [{<<"geoLineStringWithBbox">>,
+                [[88200.0, 88201.0], [880.0, 882.0]]}],
+              "LineString geometry with bounding box was returned"},
              {[{400.8, 401.0}, {0.8, 1.0}],
               [{<<"geoPolygon">>,
                 [[400.0,401.0], [0.0, 1.0]]}],
@@ -132,6 +136,10 @@ test_spatial_emit_geom_and_value() ->
               [{<<"geoLineString">>,
                 [[200.0, 201.0], [0.0, 2.0], [2.0, 2.0]]}],
               "LineString geometry was returned"},
+             {[{88200.0, 88200.4}, {-881.0, 881.0}, {0, 10}],
+              [{<<"geoLineStringWithBbox">>,
+                [[88200.0, 88201.0], [880.0, 882.0], [10.0, 10.0]]}],
+              "LineString geometry with boudning box was returned"},
              {[{400.8, 401.0}, {0.8, 1.0}, {0, 10}],
               [{<<"geoPolygon">>,
                 [[400.0, 401.0],[0.0,1.0], [3.0, 3.0]]}],
@@ -427,7 +435,9 @@ verify_rows(Rows, Expected, Message) ->
                                   false ->
                                       Acc;
                                   {DocId, Mbb} ->
-                                     [{DocId, Mbb, Val, {Geom}} | Acc]
+                                      GeomNoBbox =
+                                          lists:keydelete(<<"bbox">>, 1, Geom),
+                                      [{DocId, Mbb, Val, {GeomNoBbox}} | Acc]
                               end
                       end, [], geojson_docs()),
     RowsWithoutPartId = [{DocId, Key, ?JSON_DECODE(Value), Geom} ||
@@ -585,7 +595,12 @@ geojson_docs() ->
      {<<"geometries">>,
       [{[{<<"type">>, <<"Point">>}, {<<"coordinates">>, [800.0, 0.0] }]},
        {[{<<"type">>, <<"LineString">>}, {<<"coordinates">>,
-                                      [ [801.0, 0.0], [802.0, 1.0] ]}]}]}]}}
+                                      [ [801.0, 0.0], [802.0, 1.0] ]}]}]}]}},
+ {<<"geoLineStringWithBbox">>, {
+      10,
+      [{<<"type">>, <<"LineString">>},
+       {<<"coordinates">>, [[88200.0, 880.0], [88201.0, 882.0]]},
+       {<<"bbox">>, [88200.0, 880.0, 88201.0, 882.0]}]}}
 ].
 
 nogeom_docs() ->
