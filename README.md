@@ -23,7 +23,7 @@ be referred to as `<path-to-couchdb-source>`.
 
 Then checkout the GeoCouch source:
 
-    git clone -b newvtree https://github.com/couchbase/geocouch.git
+    git clone https://github.com/couchbase/geocouch.git
 
 There's a new directory called `geocouch` created. From now on this directory
 will be referred to as `<path-to-geocouch-source>`.

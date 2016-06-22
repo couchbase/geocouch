@@ -15,12 +15,10 @@ CouchDB (should be >= 1.1.0).
 This repository contains several branches, please make sure you use
 the correct one:
 
- - master: works with the CouchDB master branch from Couchbase's repo
-   (https://github.com/couchbase/couchdb)
+ - master: works with Apache CouchDB 1.6.x and supports multidimensional indexing
  - couchdb1.1.x: works with Apache CouchDB 1.1.x
  - couchdb1.2.x: works with Apache CouchDB 1.2.x
  - couchdb1.3.x: works with Apache CouchDB 1.3.x - 1.6.x
- - couchdb1.6.x: works with Apache CouchDB 1.6.x and support multidimensional indexing
 
 
 Installation
