@@ -888,7 +888,15 @@ extract_bbox(Type, Coords, InitBbox) ->
     'MultiPolygon' ->
         lists:foldl(fun(Polygon, CurBbox) ->
             bbox(hd(Polygon), CurBbox)
-        end, InitBbox, Coords)
+        end, InitBbox, Coords);
+    InvalidType ->
+        throw({emit_key,
+            <<"The supplied geometry type `",
+              (atom_to_binary(InvalidType, latin1))/binary,
+              "` is not a valid GeoJSON. "
+              "Valid geometry types are (case sensitive): "
+              "Point, LineString, Polygon, MultiPoint, MultiLineString, "
+              "MultiLineString">>})
     end.
 
 bbox([], Range) ->
