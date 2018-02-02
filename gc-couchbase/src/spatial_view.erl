@@ -919,7 +919,7 @@ check_primary_geometry_size(Bin, Max, Key, DocId, Group) when byte_size(Bin) > M
         io_lib:format("geometry emitted for key `~s`, document `~s`, is too big"
                       " (~p bytes)", [Key, DocId, byte_size(Bin)])),
     ?LOG_MAPREDUCE_ERROR("Bucket `~s`, ~s group `~s`, ~s",
-                         [SetName, Type, DDocId, Error]),
+                         [?LOG_USERDATA(SetName), Type, ?LOG_USERDATA(DDocId), ?LOG_USERDATA(Error)]),
     throw({error, Error});
 check_primary_geometry_size(_Bin, _Max, _Key, _DocId, _Group) ->
     ok.
