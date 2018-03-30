@@ -18,6 +18,7 @@
 -export([delete/2]).
 
 -ifdef(makecheck).
+-compile(nowarn_export_all).
 -compile(export_all).
 -endif.
 

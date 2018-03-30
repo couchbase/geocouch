@@ -24,6 +24,7 @@
 -export([split_inner/5, split_leaf/5]).
 
 -ifdef(makecheck).
+-compile(nowarn_export_all).
 -compile(export_all).
 -endif.
 

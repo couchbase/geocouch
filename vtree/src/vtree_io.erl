@@ -29,6 +29,7 @@
 -export([decode_dups/1]).
 
 -ifdef(makecheck).
+-compile(nowarn_export_all).
 -compile(export_all).
 -endif.
 

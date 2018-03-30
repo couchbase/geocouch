@@ -13,6 +13,7 @@
 -module(couch_spatial_updater).
 
 -ifdef(makecheck).
+-compile(nowarn_export_all).
 -compile(export_all).
 -endif.
 

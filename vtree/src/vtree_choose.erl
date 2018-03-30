@@ -22,6 +22,7 @@
 -export([choose_subtree/3]).
 
 -ifdef(makecheck).
+-compile(nowarn_export_all).
 -compile(export_all).
 -endif.
 
