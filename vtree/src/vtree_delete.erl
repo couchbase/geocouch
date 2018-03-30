@@ -30,7 +30,7 @@ delete(Vt, []) ->
 delete(#vtree{root=nil}=Vt, _Nodes) ->
     Vt;
 delete(Vt, Nodes) ->
-    T1 = now(),
+    T1 = erlang:monotonic_time(),
     Root = Vt#vtree.root,
     PartitionedNodes = [Nodes],
     KpNodes = delete_multiple(Vt, PartitionedNodes, [Root]),
@@ -40,7 +40,7 @@ delete(Vt, Nodes) ->
                       vtree_modify:write_new_root(Vt, KpNodes)
               end,
     ?LOG_DEBUG("Deletion took: ~ps~n",
-               [timer:now_diff(now(), T1)/1000000]),
+               [erlang:convert_time_unit(erlang:monotonic_time() - T1, native, microsecond)/1000000]),
     Vt#vtree{root=NewRoot}.
 
 
