@@ -200,7 +200,7 @@ decode_key_docid(<<NumDoubles:16, Rest/binary>>) ->
 
 
 % Build the tree out of the sorted files
--spec finish_build(#set_view_group{}, dict(), string()) ->
+-spec finish_build(#set_view_group{}, dict:dict(), string()) ->
                           {#set_view_group{}, pid()}.
 finish_build(Group, TmpFiles, TmpDir) ->
     #set_view_group{
