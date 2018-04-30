@@ -218,17 +218,17 @@ setup_test() ->
 
 
 create_docs(From, To) ->
-    random:seed(91, 1, 11),
+    rand:seed(exrop, {91, 1, 11}),
     lists:map(
         fun(I) ->
-            RandomMin = random:uniform(2000),
-            RandomMax = RandomMin + random:uniform(167),
-            RandomMin2 = random:uniform(1769),
-            RandomMax2 = RandomMin2 + random:uniform(132),
-            RandomMin3 = random:uniform(651),
-            RandomMax3 = RandomMin3 + random:uniform(201),
-            RandomMin4 = random:uniform(482),
-            RandomMax4 = RandomMin4 + random:uniform(26),
+            RandomMin = rand:uniform(2000),
+            RandomMax = RandomMin + rand:uniform(167),
+            RandomMin2 = rand:uniform(1769),
+            RandomMax2 = RandomMin2 + rand:uniform(132),
+            RandomMin3 = rand:uniform(651),
+            RandomMax3 = RandomMin3 + rand:uniform(201),
+            RandomMin4 = rand:uniform(482),
+            RandomMax4 = RandomMin4 + rand:uniform(26),
             {[
               {<<"meta">>, {[{<<"id">>, iolist_to_binary(["doc", integer_to_list(I)])}]}},
               {<<"json">>, {[

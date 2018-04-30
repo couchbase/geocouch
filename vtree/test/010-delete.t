@@ -21,7 +21,7 @@
 
 main(_) ->
     % Set the random seed once. It might be reset a certain tests
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     % Apache CouchDB doesn't have the couch_file_write_guard module
     try
@@ -104,7 +104,7 @@ test_delete() ->
 
 
 test_delete_multiple() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
     Fd = vtree_test_util:create_file(?FILENAME),
 
     Vtree1 = #vtree{

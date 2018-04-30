@@ -17,7 +17,7 @@
 
 main(_) ->
     % Set the random seed once, for the whole test suite
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     code:add_pathz(filename:dirname(escript:script_name())),
     etap:plan(55),

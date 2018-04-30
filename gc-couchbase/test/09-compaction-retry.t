@@ -381,7 +381,7 @@ create_set() ->
 
 update_documents(StartId, Count, ValueGenFun) ->
     etap:diag("Updating " ++ integer_to_list(Count) ++ " documents"),
-    random:seed(91, 1, 11),
+    rand:seed(exrop, {91, 1, 11}),
     DocList0 = lists:map(
         fun(I) ->
             Value = ValueGenFun(I),

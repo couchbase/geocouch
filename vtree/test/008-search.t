@@ -55,7 +55,7 @@ test() ->
 
 
 test_search() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
@@ -86,7 +86,7 @@ test_search() ->
 
 
 test_all() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
@@ -120,7 +120,7 @@ test_all() ->
 
 
 test_count_search() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
@@ -173,7 +173,7 @@ test_count_search() ->
 
 
 test_count_all() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
@@ -200,7 +200,7 @@ test_count_all() ->
 
 
 test_traverse() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
@@ -272,7 +272,7 @@ test_traverse() ->
 
 
 test_traverse_kv() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     Less = fun(A, B) -> A < B end,
     FoldFun = fun(Node, Acc) -> {ok, [Node|Acc]} end,
@@ -334,7 +334,7 @@ test_traverse_kv() ->
 
 
 test_traverse_all() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     Fd = vtree_test_util:create_file(?FILENAME),
     Less = fun(A, B) -> A < B end,
@@ -373,7 +373,7 @@ test_traverse_all() ->
 
 
 test_traverse_all_kv() ->
-    random:seed(1, 11, 91),
+    rand:seed(exrop, {1, 11, 91}),
 
     FoldFun = fun(Node, Acc) -> {ok, [Node|Acc]} end,
 

@@ -14,9 +14,9 @@ generate_kvnodes(Num) ->
 random_kvnode(I) ->
     Max = 1000,
     {A, B, C, D, E, F, G, H} = {
-      random:uniform(Max), random:uniform(Max), random:uniform(Max),
-      random:uniform(Max), random:uniform(Max), random:uniform(Max),
-      random:uniform(Max), random:uniform(Max)},
+      rand:uniform(Max), rand:uniform(Max), rand:uniform(Max),
+      rand:uniform(Max), rand:uniform(Max), rand:uniform(Max),
+      rand:uniform(Max), rand:uniform(Max)},
     Mbb = [
            {erlang:min(A, B), erlang:max(A, B)},
            {erlang:min(C, D), erlang:max(C, D)},
@@ -47,9 +47,9 @@ generate_kpnodes(Num) ->
 random_kpnode(I) ->
     Max = 1000,
     {A, B, C, D, E, F, G, H} = {
-      random:uniform(Max), random:uniform(Max), random:uniform(Max),
-      random:uniform(Max), random:uniform(Max), random:uniform(Max),
-      random:uniform(Max), random:uniform(Max)},
+      rand:uniform(Max), rand:uniform(Max), rand:uniform(Max),
+      rand:uniform(Max), rand:uniform(Max), rand:uniform(Max),
+      rand:uniform(Max), rand:uniform(Max)},
     Mbb = [
            {erlang:min(A, B), erlang:max(A, B)},
            {erlang:min(C, D), erlang:max(C, D)},
@@ -58,7 +58,7 @@ random_kpnode(I) ->
     #kp_node {
                key = Mbb,
                childpointer = I,
-               treesize = random:uniform(Max),
+               treesize = rand:uniform(Max),
                mbb_orig = Mbb
              }.
 

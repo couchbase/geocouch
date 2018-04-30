@@ -194,13 +194,13 @@ doc_id(I) ->
 create_docs(From, To) ->
     create_docs(From, To, 0).
 create_docs(From, To, AddToValue) ->
-    random:seed(91, 1, 11),
+    rand:seed(exrop, {91, 1, 11}),
     lists:map(
         fun(I) ->
-            RandomMin = random:uniform(2000),
-            RandomMax = RandomMin + random:uniform(167),
-            RandomMin2 = random:uniform(1769),
-            RandomMax2 = RandomMin2 + random:uniform(132),
+            RandomMin = rand:uniform(2000),
+            RandomMax = RandomMin + rand:uniform(167),
+            RandomMin2 = rand:uniform(1769),
+            RandomMax2 = RandomMin2 + rand:uniform(132),
             {[
               {<<"meta">>, {[{<<"id">>, doc_id(I)}]}},
               {<<"json">>, {[

@@ -300,13 +300,13 @@ replica_index_disk_size() ->
 
 
 create_docs(From, To) ->
-    random:seed(91, 1, 11),
+    rand:seed(exrop, {91, 1, 11}),
     lists:map(
         fun(I) ->
-            RandomMin = random:uniform(2000),
-            RandomMax = RandomMin + random:uniform(167),
-            RandomMin2 = random:uniform(1769),
-            RandomMax2 = RandomMin2 + random:uniform(132),
+            RandomMin = rand:uniform(2000),
+            RandomMax = RandomMin + rand:uniform(167),
+            RandomMin2 = rand:uniform(1769),
+            RandomMax2 = RandomMin2 + rand:uniform(132),
             DocId = iolist_to_binary(["doc", integer_to_list(I)]),
             {[
               {<<"meta">>, {[{<<"id">>, DocId}]}},
