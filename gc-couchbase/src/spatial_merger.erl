@@ -246,8 +246,7 @@ spatial_view_folder(ViewSpec, MergeParams, DDoc, Queue) ->
             ok = couch_view_merger_queue:queue(
                 Queue, {error, ?LOCAL,
                     couch_index_merger:ddoc_not_found_msg(DDocDbName, DDocId)});
-        _Tag:Error ->
-            Stack = erlang:get_stacktrace(),
+            _Tag:Error:Stack ->
             ?LOG_ERROR("Caught unexpected error "
                        "while serving view query ~s/~s: ~p~n~s",
                        [?LOG_USERDATA(SetName), ?LOG_USERDATA(DDocId), Error, ?LOG_USERDATA(Stack)]),
